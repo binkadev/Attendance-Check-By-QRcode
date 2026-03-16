@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -32,8 +33,7 @@ public class AbsenceRequestController {
     }
 
     @PostMapping("/groups/{groupId}/absence-requests")
-    @ResponseStatus(HttpStatus.CREATED)
-    public AbsenceResponse create(
+    public ResponseEntity<AbsenceResponse> create(
             @PathVariable UUID groupId,
             @AuthenticationPrincipal UserPrincipal me,
             @RequestBody @Valid CreateAbsenceRequest req
@@ -50,7 +50,9 @@ public class AbsenceRequestController {
                 )
         );
 
-        return toResponse(result);
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(toResponse(result));
     }
 
     @GetMapping("/groups/{groupId}/absence-requests")

@@ -2,12 +2,16 @@ package com.attendance.backend.attendance.api;
 
 import com.attendance.backend.attendance.service.AttendanceAdminService;
 import com.attendance.backend.common.exception.ApiException;
+import com.attendance.backend.domain.enums.AttendanceStatus;
+import com.attendance.backend.domain.enums.CheckInMethod;
 import com.attendance.backend.security.UserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -54,6 +58,49 @@ public class AttendanceAdminController {
                 result.checkinCloseAt(),
                 result.lateAfterMinutes(),
                 result.qrRotateSeconds()
+        );
+    }
+
+    @PostMapping("/{sessionId}/attendance/{userId}")
+    public AttendanceRecordResponse manualMarkAttendance(
+            @PathVariable UUID sessionId,
+            @PathVariable UUID userId,
+            @AuthenticationPrincipal UserPrincipal me,
+            @RequestBody ManualMarkAttendanceRequest req
+    ) {
+        if (me == null) {
+            throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
+        }
+        if (req == null || req.status() == null) {
+            throw ApiException.badRequest("MANUAL_STATUS_REQUIRED", "status is required");
+        }
+
+        var result = attendanceAdminService.manualMarkAttendance(
+                sessionId,
+                userId,
+                me.getUserId(),
+                AttendanceStatus.valueOf(req.status().name()),
+                req.note()
+        );
+
+        return new AttendanceRecordResponse(
+                result.sessionId(),
+                result.userId(),
+                result.attendanceStatus(),
+                result.checkInAt(),
+                result.checkInMethod(),
+                result.qrTokenId(),
+                result.deviceId(),
+                result.ipAddress(),
+                result.userAgent(),
+                result.geoLat(),
+                result.geoLng(),
+                result.distanceMeter(),
+                result.suspiciousFlag(),
+                result.suspiciousReason(),
+                result.excusedByRequestId(),
+                result.createdAt(),
+                result.updatedAt()
         );
     }
 
@@ -132,6 +179,37 @@ public class AttendanceAdminController {
             Instant checkinCloseAt,
             Integer lateAfterMinutes,
             Integer qrRotateSeconds
+    ) {}
+
+    public enum ManualAttendanceOverrideStatus {
+        ABSENT,
+        PRESENT,
+        LATE
+    }
+
+    public record ManualMarkAttendanceRequest(
+            ManualAttendanceOverrideStatus status,
+            @Size(max = 500) String note
+    ) {}
+
+    public record AttendanceRecordResponse(
+            UUID sessionId,
+            UUID userId,
+            AttendanceStatus attendanceStatus,
+            Instant checkInAt,
+            CheckInMethod checkInMethod,
+            String qrTokenId,
+            String deviceId,
+            String ipAddress,
+            String userAgent,
+            BigDecimal geoLat,
+            BigDecimal geoLng,
+            Integer distanceMeter,
+            boolean suspiciousFlag,
+            String suspiciousReason,
+            UUID excusedByRequestId,
+            Instant createdAt,
+            Instant updatedAt
     ) {}
 
     public record ResetAttendanceResponse(

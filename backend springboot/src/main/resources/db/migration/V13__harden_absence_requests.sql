@@ -6,21 +6,14 @@ ALTER TABLE absence_requests
     ADD COLUMN reverted_by_user_id BINARY(16) NULL AFTER cancelled_at,
     ADD COLUMN reverted_at DATETIME(3) NULL AFTER reverted_by_user_id,
     ADD COLUMN revert_note VARCHAR(500) NULL AFTER reverted_at,
+    ADD COLUMN pending_session_key BINARY(16) NULL AFTER linked_session_id,
+    ADD KEY idx_ar_reverted_by_user (reverted_by_user_id),
+    ADD UNIQUE KEY uk_ar_requester_pending_session (requester_user_id, pending_session_key),
+    ADD KEY idx_ar_session_requester_status (linked_session_id, requester_user_id, request_status),
+    ADD KEY idx_ar_group_session_status (group_id, linked_session_id, request_status),
     ADD CONSTRAINT fk_ar_reverted_by
         FOREIGN KEY (reverted_by_user_id) REFERENCES users(id)
             ON UPDATE CASCADE ON DELETE SET NULL;
-
-ALTER TABLE absence_requests
-    ADD COLUMN pending_session_key BINARY(16)
-        AS (
-            CASE
-                WHEN request_status = 'PENDING' THEN linked_session_id
-                ELSE NULL
-                END
-            ) STORED,
-    ADD UNIQUE KEY uk_ar_requester_pending_session (requester_user_id, pending_session_key),
-    ADD KEY idx_ar_session_requester_status (linked_session_id, requester_user_id, request_status),
-    ADD KEY idx_ar_group_session_status (group_id, linked_session_id, request_status);
 
 ALTER TABLE attendance_events
     MODIFY COLUMN event_type ENUM(
@@ -42,6 +35,8 @@ ALTER TABLE attendance_events
 DROP TRIGGER IF EXISTS trg_ar_target_xor_ins;
 DROP TRIGGER IF EXISTS trg_ar_target_xor_upd;
 DROP TRIGGER IF EXISTS trg_ar_status_flow;
+DROP TRIGGER IF EXISTS trg_ar_session_only_ins;
+DROP TRIGGER IF EXISTS trg_ar_session_only_upd;
 
 DELIMITER $$
 
@@ -58,6 +53,12 @@ BEGIN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'requested_date is legacy-only and not allowed for new requests';
     END IF;
+
+    IF NEW.request_status = 'PENDING' THEN
+        SET NEW.pending_session_key = NEW.linked_session_id;
+    ELSE
+        SET NEW.pending_session_key = NULL;
+    END IF;
 END$$
 
 CREATE TRIGGER trg_ar_session_only_upd
@@ -73,12 +74,7 @@ BEGIN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'requested_date is legacy-only and not allowed for mutable workflow';
     END IF;
-END$$
 
-CREATE TRIGGER trg_ar_status_flow
-    BEFORE UPDATE ON absence_requests
-    FOR EACH ROW
-BEGIN
     IF OLD.request_status = 'PENDING'
         AND NEW.request_status NOT IN ('PENDING','APPROVED','REJECTED','CANCELLED') THEN
         SIGNAL SQLSTATE '45000'
@@ -107,6 +103,12 @@ BEGIN
         AND NEW.request_status <> 'REVERTED' THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Invalid status transition from REVERTED';
+    END IF;
+
+    IF NEW.request_status = 'PENDING' THEN
+        SET NEW.pending_session_key = NEW.linked_session_id;
+    ELSE
+        SET NEW.pending_session_key = NULL;
     END IF;
 END$$
 

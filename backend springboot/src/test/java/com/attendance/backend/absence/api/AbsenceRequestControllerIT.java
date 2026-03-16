@@ -1,7 +1,6 @@
 package com.attendance.backend.absence.api;
 
 import com.attendance.backend.security.UserPrincipal;
-import com.attendance.backend.security.jwt.JwtAuthenticationFilter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.attendance.backend.support.AbstractMySqlIntegrationTest;
@@ -31,6 +30,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -47,9 +47,6 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
-
-    @MockitoBean
-    private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @MockitoBean
     private JavaMailSender javaMailSender;
@@ -94,6 +91,9 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                         .with(auth(member1Id))
                         .contentType(APPLICATION_JSON)
                         .content(body))
+                .andDo(print())
+                .andExpect(handler().handlerType(AbsenceRequestController.class))
+                .andExpect(handler().methodName("create"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.groupId").value(g2Id.toString()))
                 .andExpect(jsonPath("$.requesterUserId").value(member1Id.toString()))
@@ -429,6 +429,8 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                               "evidenceUrl": "s3://bucket/medical.jpg"
                             }
                         """.formatted(sessionId)))
+                .andExpect(handler().handlerType(AbsenceRequestController.class))
+                .andExpect(handler().methodName("create"))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
@@ -508,8 +510,13 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
     }
 
     private long count(String sql, UUID arg1, UUID arg2, UUID arg3) {
-        Number n = jdbcTemplate.queryForObject(sql, Number.class,
-                arg1.toString(), arg2.toString(), arg3.toString());
+        Number n = jdbcTemplate.queryForObject(
+                sql,
+                Number.class,
+                arg1.toString(),
+                arg2.toString(),
+                arg3.toString()
+        );
         return n == null ? 0L : n.longValue();
     }
 }

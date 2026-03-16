@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.math.BigDecimal;
 
 @Service
 public class AttendanceAdminService {
@@ -168,6 +169,157 @@ public class AttendanceAdminService {
     }
 
     @Transactional
+    public AttendanceRecordResult manualMarkAttendance(
+            UUID sessionId,
+            UUID targetUserId,
+            UUID actorUserId,
+            AttendanceStatus requestedStatus,
+            String note
+    ) {
+        Instant now = Instant.now(clock);
+
+        AttendanceSession session = attendanceSessionRepository.findByIdForUpdate(sessionId)
+                .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Session not found"));
+
+        ensureHostOrCoHost(session.getGroupId(), actorUserId);
+        ensureManualOverrideEnabled(sessionId);
+
+        if (session.getStatus() == SessionStatus.CANCELLED) {
+            throw ApiException.conflict("SESSION_CANCELLED", "Session is CANCELLED");
+        }
+
+        if (requestedStatus == null) {
+            throw ApiException.badRequest("MANUAL_STATUS_REQUIRED", "status is required");
+        }
+
+        if (requestedStatus == AttendanceStatus.EXCUSED) {
+            throw ApiException.unprocessable(
+                    "EXCUSED_ONLY_VIA_ABSENCE_REQUEST",
+                    "EXCUSED can only be set via approved absence request workflow"
+            );
+        }
+
+        SessionAttendance attendance = sessionAttendanceRepository
+                .findBySessionAndUserForUpdate(sessionId, targetUserId)
+                .orElseThrow(() -> ApiException.notFound(
+                        "ATTENDANCE_NOT_FOUND",
+                        "Attendance row not found for this session/user"
+                ));
+
+        if (attendance.attendanceStatus == AttendanceStatus.EXCUSED && attendance.excusedByRequestId != null) {
+            throw ApiException.conflict(
+                    "EXCUSED_MUST_BE_REVERTED_VIA_ABSENCE_WORKFLOW",
+                    "Excused attendance must be reverted via absence request workflow before manual override"
+            );
+        }
+
+        if (attendance.attendanceStatus == AttendanceStatus.EXCUSED) {
+            throw ApiException.conflict(
+                    "EXCUSED_MUST_BE_REVERTED_VIA_ABSENCE_WORKFLOW",
+                    "Excused attendance must be reverted via absence request workflow before manual override"
+            );
+        }
+
+        AttendanceStatus oldStatus = attendance.attendanceStatus;
+        Instant oldCheckInAt = attendance.checkInAt;
+        CheckInMethod oldCheckInMethod = attendance.checkInMethod;
+        String oldQrTokenId = attendance.qrTokenId;
+        String oldDeviceId = attendance.deviceId;
+        String oldIpAddress = attendance.ipAddress;
+        String oldUserAgent = attendance.userAgent;
+        BigDecimal oldGeoLat = attendance.geoLat;
+        BigDecimal oldGeoLng = attendance.geoLng;
+        Integer oldDistanceMeter = attendance.distanceMeter;
+        boolean oldSuspiciousFlag = attendance.suspiciousFlag;
+        String oldSuspiciousReason = attendance.suspiciousReason;
+        UUID oldExcusedByRequestId = attendance.excusedByRequestId;
+
+        boolean alreadyNoOp = isManualMarkNoOp(attendance, requestedStatus);
+        if (alreadyNoOp) {
+            return toAttendanceRecordResult(sessionId, targetUserId, attendance);
+        }
+
+        if (requestedStatus == AttendanceStatus.ABSENT) {
+            attendance.attendanceStatus = AttendanceStatus.ABSENT;
+            attendance.checkInAt = null;
+            attendance.checkInMethod = CheckInMethod.MANUAL;
+            attendance.qrTokenId = null;
+            attendance.deviceId = null;
+            attendance.ipAddress = null;
+            attendance.userAgent = null;
+            attendance.geoLat = null;
+            attendance.geoLng = null;
+            attendance.distanceMeter = null;
+            attendance.suspiciousFlag = false;
+            attendance.suspiciousReason = null;
+            attendance.excusedByRequestId = null;
+        } else {
+            attendance.attendanceStatus = requestedStatus;
+            attendance.checkInAt = now;
+            attendance.checkInMethod = CheckInMethod.MANUAL;
+            attendance.qrTokenId = null;
+            attendance.deviceId = null;
+            attendance.ipAddress = null;
+            attendance.userAgent = null;
+            attendance.geoLat = null;
+            attendance.geoLng = null;
+            attendance.distanceMeter = null;
+            attendance.suspiciousFlag = false;
+            attendance.suspiciousReason = null;
+            attendance.excusedByRequestId = null;
+        }
+
+        attendance.updatedAt = now;
+
+        sessionAttendanceRepository.saveAndFlush(attendance);
+
+        AttendanceEvent event = new AttendanceEvent();
+        event.id = UUID.randomUUID();
+        event.sessionId = sessionId;
+        event.userId = targetUserId;
+        event.actorUserId = actorUserId;
+        event.eventType = mapManualMarkEventType(requestedStatus);
+        event.oldStatus = oldStatus;
+        event.newStatus = attendance.attendanceStatus;
+        event.qrTokenId = oldQrTokenId;
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("action", "MANUAL_MARK_ATTENDANCE");
+        payload.put("requestedStatus", requestedStatus.name());
+        payload.put("actorUserId", actorUserId.toString());
+        putIfNotNull(payload, "note", note);
+        putIfNotNull(payload, "oldCheckInAt", oldCheckInAt);
+        if (oldCheckInMethod != null) {
+            payload.put("oldCheckInMethod", oldCheckInMethod.name());
+        }
+        putIfNotNull(payload, "oldQrTokenId", oldQrTokenId);
+        putIfNotNull(payload, "oldDeviceId", oldDeviceId);
+        putIfNotNull(payload, "oldIpAddress", oldIpAddress);
+        putIfNotNull(payload, "oldUserAgent", oldUserAgent);
+        if (oldGeoLat != null) {
+            payload.put("oldGeoLat", oldGeoLat);
+        }
+        if (oldGeoLng != null) {
+            payload.put("oldGeoLng", oldGeoLng);
+        }
+        if (oldDistanceMeter != null) {
+            payload.put("oldDistanceMeter", oldDistanceMeter);
+        }
+        payload.put("oldSuspiciousFlag", oldSuspiciousFlag);
+        putIfNotNull(payload, "oldSuspiciousReason", oldSuspiciousReason);
+        if (oldExcusedByRequestId != null) {
+            payload.put("oldExcusedByRequestId", oldExcusedByRequestId.toString());
+        }
+
+        event.eventPayload = payload;
+        event.createdAt = now;
+
+        attendanceEventRepository.saveAndFlush(event);
+
+        return toAttendanceRecordResult(sessionId, targetUserId, attendance);
+    }
+
+    @Transactional
     public ResetAttendanceResult resetAttendance(
             UUID sessionId,
             UUID targetUserId,
@@ -195,6 +347,13 @@ public class AttendanceAdminService {
         String oldUserAgent = attendance.userAgent;
 
         if (oldStatus == AttendanceStatus.EXCUSED && attendance.excusedByRequestId != null) {
+            throw ApiException.conflict(
+                    "EXCUSED_MUST_BE_REVERTED_VIA_ABSENCE_WORKFLOW",
+                    "Excused attendance must be reverted via absence request workflow before manual reset"
+            );
+        }
+
+        if (oldStatus == AttendanceStatus.EXCUSED) {
             throw ApiException.conflict(
                     "EXCUSED_MUST_BE_REVERTED_VIA_ABSENCE_WORKFLOW",
                     "Excused attendance must be reverted via absence request workflow before manual reset"
@@ -310,6 +469,92 @@ public class AttendanceAdminService {
         return new AttendanceEventsResult(sessionId, items);
     }
 
+    private void ensureManualOverrideEnabled(UUID sessionId) {
+        Number flag = (Number) entityManager.createNativeQuery("""
+        select s.allow_manual_override
+        from attendance_sessions s
+        where s.id = UUID_TO_BIN(:sessionId, 1)
+          and s.deleted_at is null
+    """)
+                .setParameter("sessionId", sessionId.toString())
+                .getSingleResult();
+
+        if (flag == null || flag.intValue() != 1) {
+            throw ApiException.conflict(
+                    "MANUAL_OVERRIDE_DISABLED",
+                    "Manual attendance override is disabled for this session"
+            );
+        }
+    }
+
+    private boolean isManualMarkNoOp(SessionAttendance attendance, AttendanceStatus requestedStatus) {
+        if (requestedStatus == AttendanceStatus.ABSENT) {
+            return attendance.attendanceStatus == AttendanceStatus.ABSENT
+                    && attendance.checkInAt == null
+                    && attendance.qrTokenId == null
+                    && attendance.deviceId == null
+                    && attendance.ipAddress == null
+                    && attendance.userAgent == null
+                    && attendance.geoLat == null
+                    && attendance.geoLng == null
+                    && attendance.distanceMeter == null
+                    && !attendance.suspiciousFlag
+                    && attendance.suspiciousReason == null
+                    && attendance.excusedByRequestId == null;
+        }
+
+        return attendance.attendanceStatus == requestedStatus
+                && attendance.checkInMethod == CheckInMethod.MANUAL
+                && attendance.qrTokenId == null
+                && attendance.deviceId == null
+                && attendance.ipAddress == null
+                && attendance.userAgent == null
+                && attendance.geoLat == null
+                && attendance.geoLng == null
+                && attendance.distanceMeter == null
+                && !attendance.suspiciousFlag
+                && attendance.suspiciousReason == null
+                && attendance.excusedByRequestId == null;
+    }
+
+    private EventType mapManualMarkEventType(AttendanceStatus requestedStatus) {
+        return switch (requestedStatus) {
+            case PRESENT -> EventType.MARK_MANUAL_PRESENT;
+            case LATE -> EventType.MARK_MANUAL_LATE;
+            case ABSENT -> EventType.MARK_MANUAL_ABSENT;
+            case EXCUSED -> throw ApiException.unprocessable(
+                    "EXCUSED_ONLY_VIA_ABSENCE_REQUEST",
+                    "EXCUSED can only be set via approved absence request workflow"
+            );
+        };
+    }
+
+    private AttendanceRecordResult toAttendanceRecordResult(
+            UUID sessionId,
+            UUID userId,
+            SessionAttendance attendance
+    ) {
+        return new AttendanceRecordResult(
+                sessionId,
+                userId,
+                attendance.attendanceStatus,
+                attendance.checkInAt,
+                attendance.checkInMethod,
+                attendance.qrTokenId,
+                attendance.deviceId,
+                attendance.ipAddress,
+                attendance.userAgent,
+                attendance.geoLat,
+                attendance.geoLng,
+                attendance.distanceMeter,
+                attendance.suspiciousFlag,
+                attendance.suspiciousReason,
+                attendance.excusedByRequestId,
+                attendance.createdAt,
+                attendance.updatedAt
+        );
+    }
+
     private void ensureHostOrCoHost(UUID groupId, UUID actorUserId) {
         Number cnt = (Number) entityManager.createNativeQuery("""
             select count(*)
@@ -393,5 +638,24 @@ public class AttendanceAdminService {
             String qrTokenId,
             Instant createdAt,
             com.fasterxml.jackson.databind.JsonNode eventPayload
+    ) {}
+    public record AttendanceRecordResult(
+            UUID sessionId,
+            UUID userId,
+            AttendanceStatus attendanceStatus,
+            Instant checkInAt,
+            CheckInMethod checkInMethod,
+            String qrTokenId,
+            String deviceId,
+            String ipAddress,
+            String userAgent,
+            BigDecimal geoLat,
+            BigDecimal geoLng,
+            Integer distanceMeter,
+            boolean suspiciousFlag,
+            String suspiciousReason,
+            UUID excusedByRequestId,
+            Instant createdAt,
+            Instant updatedAt
     ) {}
 }
