@@ -7,6 +7,8 @@ import com.attendance.backend.domain.enums.CheckInMethod;
 import com.attendance.backend.security.UserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -66,7 +68,7 @@ public class AttendanceAdminController {
             @PathVariable UUID sessionId,
             @PathVariable UUID userId,
             @AuthenticationPrincipal UserPrincipal me,
-            @RequestBody ManualMarkAttendanceRequest req
+            @Valid @RequestBody ManualMarkAttendanceRequest req
     ) {
         if (me == null) {
             throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
@@ -189,7 +191,9 @@ public class AttendanceAdminController {
 
     public record ManualMarkAttendanceRequest(
             ManualAttendanceOverrideStatus status,
-            @Size(max = 500) String note
+            @NotBlank
+            @Size(min = 3, max = 500)
+            String note
     ) {}
 
     public record AttendanceRecordResponse(

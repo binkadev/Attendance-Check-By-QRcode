@@ -1,9 +1,9 @@
 package com.attendance.backend.absence.api;
 
 import com.attendance.backend.security.UserPrincipal;
+import com.attendance.backend.support.AbstractMySqlIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.attendance.backend.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,9 +18,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -61,19 +61,53 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        ownerId = userId("owner@demo.local");
-        cohostId = userId("cohost@demo.local");
-        member1Id = userId("member1@demo.local");
-        member2Id = userId("member2@demo.local");
+        ownerId = UUID.randomUUID();
+        cohostId = UUID.randomUUID();
+        member1Id = UUID.randomUUID();
+        member2Id = UUID.randomUUID();
 
-        g2Id = groupId("ENG102-2026");
-        g2OpenSessionId = sessionIdByTitle("ENG102-2026", "G2 - OPEN (Live)");
-        seededApprovedRequestId = uuid("""
-            select BIN_TO_UUID(id, 1)
-            from absence_requests
-            where request_status = 'APPROVED'
-            limit 1
-        """);
+        g2Id = UUID.randomUUID();
+        g2OpenSessionId = UUID.randomUUID();
+        seededApprovedRequestId = UUID.randomUUID();
+
+        seedUser(ownerId, "owner@it.local");
+        seedUser(cohostId, "cohost@it.local");
+        seedUser(member1Id, "member1@it.local");
+        seedUser(member2Id, "member2@it.local");
+
+        seedGroup(g2Id, ownerId, "ENG102-2026", "English 102");
+        seedApprovedOwnerMembership(g2Id, ownerId);
+        seedApprovedCohostMembership(g2Id, cohostId);
+        seedApprovedMemberMembership(g2Id, member1Id);
+        seedApprovedMemberMembership(g2Id, member2Id);
+
+        seedOpenSession(g2OpenSessionId, g2Id, ownerId, "G2 - OPEN (Live)");
+
+        seedSessionAttendance(g2OpenSessionId, member1Id, "ABSENT");
+        seedSessionAttendance(g2OpenSessionId, member2Id, "ABSENT");
+
+        UUID approvedSessionId = UUID.randomUUID();
+        UUID approvedStudentId = UUID.randomUUID();
+
+        seedUser(approvedStudentId, "approved-member@it.local");
+        seedApprovedMemberMembership(g2Id, approvedStudentId);
+        seedClosedSession(approvedSessionId, g2Id, ownerId, "G2 - APPROVED");
+        seedSessionAttendance(approvedSessionId, approvedStudentId, "EXCUSED");
+
+        seedApprovedAbsenceRequest(
+                seededApprovedRequestId,
+                g2Id,
+                approvedStudentId,
+                approvedSessionId,
+                ownerId
+        );
+
+        jdbcTemplate.update("""
+            update session_attendance
+            set excused_by_request_id = UUID_TO_BIN(?, 1)
+            where session_id = UUID_TO_BIN(?, 1)
+              and user_id = UUID_TO_BIN(?, 1)
+        """, seededApprovedRequestId.toString(), approvedSessionId.toString(), approvedStudentId.toString());
     }
 
     @Test
@@ -468,37 +502,6 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
         return SecurityMockMvcRequestPostProcessors.authentication(authentication);
     }
 
-    private UUID userId(String email) {
-        return uuid("""
-            select BIN_TO_UUID(id, 1)
-            from users
-            where email_norm = lower(trim(?))
-        """, email);
-    }
-
-    private UUID groupId(String code) {
-        return uuid("""
-            select BIN_TO_UUID(id, 1)
-            from class_groups
-            where code = ?
-        """, code);
-    }
-
-    private UUID sessionIdByTitle(String groupCode, String title) {
-        return uuid("""
-            select BIN_TO_UUID(s.id, 1)
-            from attendance_sessions s
-            join class_groups g on g.id = s.group_id
-            where g.code = ?
-              and s.title = ?
-            limit 1
-        """, groupCode, title);
-    }
-
-    private UUID uuid(String sql, Object... args) {
-        return UUID.fromString(jdbcTemplate.queryForObject(sql, String.class, args));
-    }
-
     private long count(String sql, UUID arg1) {
         Number n = jdbcTemplate.queryForObject(sql, Number.class, arg1.toString());
         return n == null ? 0L : n.longValue();
@@ -518,5 +521,256 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                 arg3.toString()
         );
         return n == null ? 0L : n.longValue();
+    }
+
+    private void seedUser(UUID id, String email) {
+        jdbcTemplate.update("""
+            insert into users (
+                id,
+                email,
+                password_hash,
+                full_name,
+                status,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                ?,
+                '$2a$10$test.hash.test.hash.test.hash.test.hash.test.hash.test',
+                ?,
+                'ACTIVE',
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, id.toString(), email, email);
+    }
+
+    private void seedGroup(UUID groupId, UUID ownerUserId, String code, String name) {
+        String joinCode = "JOIN-" + code;
+        jdbcTemplate.update("""
+            insert into class_groups (
+                id,
+                owner_user_id,
+                code,
+                name,
+                join_code,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                ?,
+                ?,
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, groupId.toString(), ownerUserId.toString(), code, name, joinCode);
+    }
+
+    private void seedApprovedOwnerMembership(UUID groupId, UUID userId) {
+        seedMembership(groupId, userId, "OWNER");
+    }
+
+    private void seedApprovedCohostMembership(UUID groupId, UUID userId) {
+        seedMembership(groupId, userId, "CO_HOST");
+    }
+
+    private void seedApprovedMemberMembership(UUID groupId, UUID userId) {
+        seedMembership(groupId, userId, "MEMBER");
+    }
+
+    private void seedMembership(UUID groupId, UUID userId, String role) {
+        jdbcTemplate.update("""
+            insert into group_members (
+                group_id,
+                user_id,
+                role,
+                member_status,
+                joined_at,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                'APPROVED',
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, groupId.toString(), userId.toString(), role);
+    }
+
+    private void seedOpenSession(UUID sessionId, UUID groupId, UUID createdByUserId, String title) {
+        jdbcTemplate.update("""
+            insert into attendance_sessions (
+                id,
+                group_id,
+                title,
+                session_date,
+                start_at,
+                end_at,
+                checkin_open_at,
+                checkin_close_at,
+                status,
+                allow_manual_override,
+                late_after_minutes,
+                time_window_minutes,
+                qr_rotate_seconds,
+                session_secret,
+                note,
+                created_by_user_id,
+                created_at,
+                updated_at,
+                deleted_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                current_date(),
+                UTC_TIMESTAMP(6),
+                DATE_ADD(UTC_TIMESTAMP(6), interval 2 hour),
+                DATE_SUB(UTC_TIMESTAMP(6), interval 15 minute),
+                DATE_ADD(UTC_TIMESTAMP(6), interval 60 minute),
+                'OPEN',
+                true,
+                15,
+                60,
+                30,
+                'test-secret',
+                'seeded by AbsenceRequestControllerIT',
+                UUID_TO_BIN(?, 1),
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6),
+                null
+            )
+        """, sessionId.toString(), groupId.toString(), title, createdByUserId.toString());
+    }
+
+    private void seedClosedSession(UUID sessionId, UUID groupId, UUID createdByUserId, String title) {
+        jdbcTemplate.update("""
+            insert into attendance_sessions (
+                id,
+                group_id,
+                title,
+                session_date,
+                start_at,
+                end_at,
+                checkin_open_at,
+                checkin_close_at,
+                status,
+                allow_manual_override,
+                late_after_minutes,
+                time_window_minutes,
+                qr_rotate_seconds,
+                session_secret,
+                note,
+                created_by_user_id,
+                created_at,
+                updated_at,
+                deleted_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                current_date(),
+                DATE_SUB(UTC_TIMESTAMP(6), interval 3 hour),
+                DATE_SUB(UTC_TIMESTAMP(6), interval 1 hour),
+                DATE_SUB(UTC_TIMESTAMP(6), interval 4 hour),
+                DATE_SUB(UTC_TIMESTAMP(6), interval 2 hour),
+                'CLOSED',
+                true,
+                15,
+                60,
+                30,
+                'test-secret-closed',
+                'seeded closed session by AbsenceRequestControllerIT',
+                UUID_TO_BIN(?, 1),
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6),
+                null
+            )
+        """, sessionId.toString(), groupId.toString(), title, createdByUserId.toString());
+    }
+
+    private void seedSessionAttendance(UUID sessionId, UUID userId, String status) {
+        jdbcTemplate.update("""
+            insert into session_attendance (
+                session_id,
+                user_id,
+                attendance_status,
+                check_in_at,
+                check_in_method,
+                qr_token_id,
+                device_id,
+                ip_address,
+                user_agent,
+                geo_lat,
+                geo_lng,
+                distance_meter,
+                suspicious_flag,
+                suspicious_reason,
+                excused_by_request_id,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                null,
+                'MANUAL',
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, sessionId.toString(), userId.toString(), status);
+    }
+
+    private void seedApprovedAbsenceRequest(
+            UUID requestId,
+            UUID groupId,
+            UUID requesterUserId,
+            UUID linkedSessionId,
+            UUID reviewerUserId
+    ) {
+        jdbcTemplate.update("""
+            insert into absence_requests (
+                id,
+                group_id,
+                requester_user_id,
+                linked_session_id,
+                reason,
+                evidence_url,
+                request_status,
+                reviewer_user_id,
+                reviewer_note,
+                reviewed_at,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                'Approved seed request',
+                's3://bucket/approved-seed.jpg',
+                'APPROVED',
+                UUID_TO_BIN(?, 1),
+                'Approved in seed',
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, requestId.toString(), groupId.toString(), requesterUserId.toString(), linkedSessionId.toString(), reviewerUserId.toString());
     }
 }

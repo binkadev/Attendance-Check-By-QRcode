@@ -928,8 +928,12 @@ paths:
     post:
       tags:
         - Attendance
-      summary: Manual mark attendance (OWNER/CO_HOST, allow_manual_override must be
-        1)
+      summary: Manual mark attendance (OWNER/CO_HOST)
+      description: >
+        Manual override is allowed only when session.allowManualOverride = true.
+        Allowed target statuses: PRESENT, LATE, ABSENT.
+        EXCUSED is forbidden here and must go through absence request workflow.
+        If current status already equals requested status, operation is a no-op and no audit event is emitted.
       parameters:
         - $ref: '#/components/parameters/SessionId'
         - $ref: '#/components/parameters/UserId'
@@ -946,10 +950,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AttendanceRecordResponse'
-        '409':
-          $ref: '#/components/responses/Err409'
+        '401':
+          $ref: '#/components/responses/Err401'
         '403':
           $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+        '409':
+          $ref: '#/components/responses/Err409'
+        '422':
+          $ref: '#/components/responses/Err422'
   /sessions/{sessionId}/attendance/{userId}/reset:
     post:
       tags:
@@ -2322,9 +2332,11 @@ components:
           $ref: '#/components/schemas/ManualAttendanceOverrideStatus'
         note:
           type: string
+          minLength: 3
           maxLength: 500
       required:
         - status
+        - note
     AttendanceRecordResponse:
       type: object
       properties:
@@ -2339,37 +2351,48 @@ components:
         checkInAt:
           type: string
           format: date-time
+          nullable: true
         checkInMethod:
           $ref: '#/components/schemas/CheckInMethod'
+          nullable: true
         qrTokenId:
           type: string
           maxLength: 64
+          nullable: true
         deviceId:
           type: string
           maxLength: 120
+          nullable: true
         ipAddress:
           type: string
           maxLength: 45
+          nullable: true
         userAgent:
           type: string
           maxLength: 255
+          nullable: true
         geoLat:
           type: number
           format: double
+          nullable: true
         geoLng:
           type: number
           format: double
+          nullable: true
         distanceMeter:
           type: integer
           minimum: 0
+          nullable: true
         suspiciousFlag:
           type: boolean
         suspiciousReason:
           type: string
           maxLength: 500
+          nullable: true
         excusedByRequestId:
           type: string
           format: uuid
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -2380,6 +2403,7 @@ components:
         - sessionId
         - userId
         - attendanceStatus
+        - suspiciousFlag
         - createdAt
         - updatedAt
     ResetAttendanceResponse:
