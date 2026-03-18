@@ -87,3 +87,12 @@ management:
     web:
       exposure:
         include: health,info,mappings
+
+attendance:
+  policy:
+    defaults:
+      late-weight: 1.0
+      warning-below-rate: 85.0
+      critical-below-rate: 80.0
+      warning-absent-count: ~
+      critical-absent-count: ~

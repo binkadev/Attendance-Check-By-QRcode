@@ -389,6 +389,127 @@ paths:
         '409':
           $ref: '#/components/responses/Err409'
 
+  /groups/{groupId}/attendance-policy:
+    get:
+      tags: [ Attendance ]
+      summary: Get effective attendance policy of group (OWNER/CO_HOST)
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendancePolicyResponse'
+        '401': { $ref: '#/components/responses/Err401' }
+        '403': { $ref: '#/components/responses/Err403' }
+        '404': { $ref: '#/components/responses/Err404' }
+    put:
+      tags: [ Attendance ]
+      summary: Upsert attendance policy of group (OWNER)
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAttendancePolicyRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendancePolicyResponse'
+        '401': { $ref: '#/components/responses/Err401' }
+        '403': { $ref: '#/components/responses/Err403' }
+        '404': { $ref: '#/components/responses/Err404' }
+        '409': { $ref: '#/components/responses/Err409' }
+        '422': { $ref: '#/components/responses/Err422' }
+    delete:
+      tags: [ Attendance ]
+      summary: Reset custom policy back to application defaults (OWNER)
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '204':
+          description: No Content
+        '401': { $ref: '#/components/responses/Err401' }
+        '403': { $ref: '#/components/responses/Err403' }
+        '404': { $ref: '#/components/responses/Err404' }
+        '409': { $ref: '#/components/responses/Err409' }
+
+  /groups/{groupId}/attendance-policy/students:
+    get:
+      tags:
+        - Attendance
+      summary: Get paged attendance policy status of APPROVED group members (OWNER/CO_HOST)
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ fullName, email, joinedAt ]
+            default: fullName
+        - name: sortDir
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ asc, desc ]
+            default: asc
+        - name: policyStatus
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AttendancePolicyStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageAttendancePolicyStudentStatusResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+
+  /groups/{groupId}/me/attendance-policy-status:
+    get:
+      tags:
+        - Attendance
+      summary: Get my attendance policy status in a group
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyAttendancePolicyStatusResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+
   /groups/{groupId}/attendance/summary:
     get:
       tags:
@@ -1366,7 +1487,310 @@ components:
 
   schemas:
 
+    AttendancePolicySource:
+      type: string
+      enum: [ DEFAULT, CUSTOM ]
 
+    AttendancePolicyStatus:
+      type: string
+      enum: [ NO_DATA, NORMAL, WARNING, CRITICAL ]
+
+    AttendancePolicyBreachReason:
+      type: string
+      enum:
+        - RATE_BELOW_WARNING
+        - RATE_BELOW_CRITICAL
+        - ABSENT_COUNT_WARNING
+        - ABSENT_COUNT_CRITICAL
+
+    AttendancePolicyView:
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        source:
+          $ref: '#/components/schemas/AttendancePolicySource'
+        lateWeight:
+          type: number
+          format: double
+        warningBelowRate:
+          type: number
+          format: double
+        criticalBelowRate:
+          type: number
+          format: double
+          nullable: true
+        warningAbsentCount:
+          type: integer
+          nullable: true
+        criticalAbsentCount:
+          type: integer
+          nullable: true
+        excusedHandling:
+          type: string
+          example: EXCLUDE_FROM_DENOMINATOR
+        sessionScope:
+          type: string
+          example: CLOSED_NON_DELETED_ONLY
+        membershipScope:
+          type: string
+          example: AFTER_MEMBERSHIP_EFFECTIVE_AT
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedByUserId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+        - groupId
+        - source
+        - lateWeight
+        - warningBelowRate
+        - excusedHandling
+        - sessionScope
+        - membershipScope
+
+    UpdateAttendancePolicyRequest:
+        type: object
+        additionalProperties: false
+        properties:
+          lateWeight:
+            type: number
+            format: double
+            minimum: 0
+            maximum: 1
+          warningBelowRate:
+            type: number
+            format: double
+            minimum: 0
+            maximum: 100
+          criticalBelowRate:
+            type: number
+            format: double
+            minimum: 0
+            maximum: 100
+            nullable: true
+          warningAbsentCount:
+            type: integer
+            minimum: 1
+            nullable: true
+          criticalAbsentCount:
+            type: integer
+            minimum: 1
+            nullable: true
+        required:
+          - lateWeight
+          - warningBelowRate
+
+    AttendancePolicyResponse:
+        type: object
+        properties:
+          groupId:
+            type: string
+            format: uuid
+          source:
+            $ref: '#/components/schemas/AttendancePolicySource'
+          lateWeight:
+            type: number
+            format: double
+          warningBelowRate:
+            type: number
+            format: double
+          criticalBelowRate:
+            type: number
+            format: double
+            nullable: true
+          warningAbsentCount:
+            type: integer
+            nullable: true
+          criticalAbsentCount:
+            type: integer
+            nullable: true
+          excusedHandling:
+            type: string
+            example: EXCLUDE_FROM_DENOMINATOR
+          sessionScope:
+            type: string
+            example: CLOSED_NON_DELETED_ONLY
+          membershipScope:
+            type: string
+            example: AFTER_MEMBERSHIP_EFFECTIVE_AT
+          createdAt:
+            type: string
+            format: date-time
+            nullable: true
+          createdByUserId:
+            type: string
+            format: uuid
+            nullable: true
+          updatedAt:
+            type: string
+            format: date-time
+            nullable: true
+          updatedByUserId:
+            type: string
+            format: uuid
+            nullable: true
+        required:
+          - groupId
+          - source
+          - lateWeight
+          - warningBelowRate
+          - excusedHandling
+          - sessionScope
+          - membershipScope
+
+    AttendancePolicyStudentStatusResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        fullName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        closedSessionCount:
+          type: integer
+          format: int64
+        eligibleSessionCount:
+          type: integer
+          format: int64
+        presentCount:
+          type: integer
+          format: int64
+        lateCount:
+          type: integer
+          format: int64
+        absentCount:
+          type: integer
+          format: int64
+        excusedCount:
+          type: integer
+          format: int64
+        earnedAttendancePoints:
+          type: number
+          format: double
+        attendanceRate:
+          type: number
+          format: double
+          nullable: true
+        policyStatus:
+          $ref: '#/components/schemas/AttendancePolicyStatus'
+        breachReasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendancePolicyBreachReason'
+      required:
+        - closedSessionCount
+        - eligibleSessionCount
+        - presentCount
+        - lateCount
+        - absentCount
+        - excusedCount
+        - earnedAttendancePoints
+        - policyStatus
+        - breachReasons
+
+    PageAttendancePolicyStudentStatusResponse:
+      type: object
+      properties:
+        policy:
+          $ref: '#/components/schemas/AttendancePolicyView'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendancePolicyStudentStatusResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required:
+        - policy
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
+
+    MyAttendancePolicyStatusResponse:
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        groupName:
+          type: string
+        policy:
+          $ref: '#/components/schemas/AttendancePolicyView'
+        closedSessionCount:
+          type: integer
+          format: int64
+        eligibleSessionCount:
+          type: integer
+          format: int64
+        presentCount:
+          type: integer
+          format: int64
+        lateCount:
+          type: integer
+          format: int64
+        absentCount:
+          type: integer
+          format: int64
+        excusedCount:
+          type: integer
+          format: int64
+        earnedAttendancePoints:
+          type: number
+          format: double
+        attendanceRate:
+          type: number
+          format: double
+          nullable: true
+        policyStatus:
+          $ref: '#/components/schemas/AttendancePolicyStatus'
+        breachReasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendancePolicyBreachReason'
+      required:
+        - groupId
+        - groupName
+        - policy
+        - closedSessionCount
+        - eligibleSessionCount
+        - presentCount
+        - lateCount
+        - absentCount
+        - excusedCount
+        - earnedAttendancePoints
+        - policyStatus
+        - breachReasons
 
     WarningLevel:
       type: string
