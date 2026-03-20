@@ -34,6 +34,7 @@ public class AttendanceAdminService {
     private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final AttendancePolicyNotificationOrchestrator attendancePolicyNotificationOrchestrator;
 
     public AttendanceAdminService(
             AttendanceSessionRepository attendanceSessionRepository,
@@ -41,7 +42,8 @@ public class AttendanceAdminService {
             AttendanceEventRepository attendanceEventRepository,
             EntityManager entityManager,
             ObjectMapper objectMapper,
-            Clock clock
+            Clock clock,
+            AttendancePolicyNotificationOrchestrator attendancePolicyNotificationOrchestrator
     ) {
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.sessionAttendanceRepository = sessionAttendanceRepository;
@@ -49,6 +51,7 @@ public class AttendanceAdminService {
         this.entityManager = entityManager;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.attendancePolicyNotificationOrchestrator = attendancePolicyNotificationOrchestrator;
     }
 
     @Transactional
@@ -316,6 +319,14 @@ public class AttendanceAdminService {
 
         attendanceEventRepository.saveAndFlush(event);
 
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            attendancePolicyNotificationOrchestrator.reevaluateOne(
+                    session.getGroupId(),
+                    targetUserId,
+                    sessionId
+            );
+        }
+
         return toAttendanceRecordResult(sessionId, targetUserId, attendance);
     }
 
@@ -451,6 +462,14 @@ public class AttendanceAdminService {
         event.createdAt = now;
 
         attendanceEventRepository.saveAndFlush(event);
+
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            attendancePolicyNotificationOrchestrator.reevaluateOne(
+                    session.getGroupId(),
+                    targetUserId,
+                    sessionId
+            );
+        }
 
         return new ResetAttendanceResult(
                 sessionId,

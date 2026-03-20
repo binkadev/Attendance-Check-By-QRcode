@@ -4,6 +4,7 @@ import com.attendance.backend.absence.repository.AbsenceRequestRepository;
 import com.attendance.backend.attendance.repository.AttendanceEventRepository;
 import com.attendance.backend.attendance.repository.AttendanceSessionRepository;
 import com.attendance.backend.attendance.repository.SessionAttendanceRepository;
+import com.attendance.backend.attendance.service.AttendancePolicyNotificationOrchestrator;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.domain.entity.AbsenceRequest;
 import com.attendance.backend.domain.entity.AttendanceEvent;
@@ -43,6 +44,8 @@ public class AbsenceRequestService {
     private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final AbsenceNotificationPublisher absenceNotificationPublisher;
+    private final AttendancePolicyNotificationOrchestrator attendancePolicyNotificationOrchestrator;
 
     public AbsenceRequestService(
             AbsenceRequestRepository absenceRequestRepository,
@@ -51,7 +54,9 @@ public class AbsenceRequestService {
             AttendanceEventRepository attendanceEventRepository,
             EntityManager entityManager,
             ObjectMapper objectMapper,
-            Clock clock
+            Clock clock,
+            AbsenceNotificationPublisher absenceNotificationPublisher,
+            AttendancePolicyNotificationOrchestrator attendancePolicyNotificationOrchestrator
     ) {
         this.absenceRequestRepository = absenceRequestRepository;
         this.attendanceSessionRepository = attendanceSessionRepository;
@@ -60,6 +65,8 @@ public class AbsenceRequestService {
         this.entityManager = entityManager;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.absenceNotificationPublisher = absenceNotificationPublisher;
+        this.attendancePolicyNotificationOrchestrator = attendancePolicyNotificationOrchestrator;
     }
 
     @Transactional
@@ -135,6 +142,8 @@ public class AbsenceRequestService {
                 null,
                 null
         );
+
+        absenceNotificationPublisher.onCreated(request);
 
         return toView(request);
     }
@@ -257,6 +266,8 @@ public class AbsenceRequestService {
                     null
             );
 
+            absenceNotificationPublisher.onRejected(request, actorUserId);
+
             return toView(request);
         }
 
@@ -281,6 +292,27 @@ public class AbsenceRequestService {
             if (request.id.equals(attendance.excusedByRequestId)) {
                 request.requestStatus = AbsenceRequestStatus.APPROVED;
                 absenceRequestRepository.saveAndFlush(request);
+
+                appendRequestLifecycleEvent(
+                        request,
+                        actorUserId,
+                        EventType.ABSENCE_REQUEST_APPROVED,
+                        AbsenceRequestStatus.PENDING,
+                        AbsenceRequestStatus.APPROVED,
+                        request.reviewerNote,
+                        null
+                );
+
+                absenceNotificationPublisher.onApproved(request, actorUserId);
+
+                if (session.getStatus() == SessionStatus.CLOSED) {
+                    attendancePolicyNotificationOrchestrator.reevaluateOne(
+                            request.groupId,
+                            request.requesterUserId,
+                            request.linkedSessionId
+                    );
+                }
+
                 return toView(request);
             }
             throw ApiException.conflict(
@@ -325,6 +357,16 @@ public class AbsenceRequestService {
                 null
         );
 
+        absenceNotificationPublisher.onApproved(request, actorUserId);
+
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            attendancePolicyNotificationOrchestrator.reevaluateOne(
+                    request.groupId,
+                    request.requesterUserId,
+                    request.linkedSessionId
+            );
+        }
+
         return toView(request);
     }
 
@@ -365,6 +407,8 @@ public class AbsenceRequestService {
                 null,
                 null
         );
+
+        absenceNotificationPublisher.onCancelled(request);
 
         return toView(request);
     }
@@ -447,6 +491,16 @@ public class AbsenceRequestService {
                 AttendanceStatus.ABSENT,
                 request.revertNote
         );
+
+        absenceNotificationPublisher.onReverted(request, actorUserId);
+
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            attendancePolicyNotificationOrchestrator.reevaluateOne(
+                    request.groupId,
+                    request.requesterUserId,
+                    request.linkedSessionId
+            );
+        }
 
         return toView(request);
     }

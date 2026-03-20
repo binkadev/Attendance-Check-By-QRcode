@@ -17,9 +17,14 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import static org.mockito.ArgumentMatchers.any;
 
 import java.util.List;
 import java.util.UUID;
@@ -51,15 +56,47 @@ class AttendanceAdminManualMarkControllerIT extends AbstractMySqlIntegrationTest
     private UUID cohostId;
     private UUID member1Id;
     private UUID member2Id;
+    private UUID excusedMemberId;
+    private UUID g2Id;
     private UUID g2OpenSessionId;
 
     @BeforeEach
-    void setUp() {
-        ownerId = userId("owner@demo.local");
-        cohostId = userId("cohost@demo.local");
-        member1Id = userId("member1@demo.local");
-        member2Id = userId("member2@demo.local");
-        g2OpenSessionId = sessionIdByTitle("ENG102-2026", "G2 - OPEN (Live)");
+    void setUp() throws Exception {
+        Mockito.doAnswer(invocation -> {
+            ServletRequest request = invocation.getArgument(0);
+            ServletResponse response = invocation.getArgument(1);
+            FilterChain chain = invocation.getArgument(2);
+            chain.doFilter(request, response);
+            return null;
+        }).when(jwtAuthenticationFilter).doFilter(any(), any(), any());
+
+        ownerId = UUID.randomUUID();
+        cohostId = UUID.randomUUID();
+        member1Id = UUID.randomUUID();
+        member2Id = UUID.randomUUID();
+        excusedMemberId = UUID.randomUUID();
+
+        g2Id = UUID.randomUUID();
+        g2OpenSessionId = UUID.randomUUID();
+
+        seedUser(ownerId, "owner@it.local");
+        seedUser(cohostId, "cohost@it.local");
+        seedUser(member1Id, "member1@it.local");
+        seedUser(member2Id, "member2@it.local");
+        seedUser(excusedMemberId, "excused-member@it.local");
+
+        seedGroup(g2Id, ownerId, "ENG102-2026", "English 102");
+        seedApprovedOwnerMembership(g2Id, ownerId);
+        seedApprovedCohostMembership(g2Id, cohostId);
+        seedApprovedMemberMembership(g2Id, member1Id);
+        seedApprovedMemberMembership(g2Id, member2Id);
+        seedApprovedMemberMembership(g2Id, excusedMemberId);
+
+        seedOpenSession(g2OpenSessionId, g2Id, ownerId, "G2 - OPEN (Live)");
+
+        seedSessionAttendance(g2OpenSessionId, member1Id, "ABSENT");
+        seedSessionAttendance(g2OpenSessionId, member2Id, "ABSENT");
+        seedSessionAttendance(g2OpenSessionId, excusedMemberId, "EXCUSED");
     }
 
     @Test
@@ -193,8 +230,11 @@ class AttendanceAdminManualMarkControllerIT extends AbstractMySqlIntegrationTest
                         .with(auth(member2Id))
                         .contentType(APPLICATION_JSON)
                         .content("""
-                            { "status": "PRESENT" }
-                        """))
+                        {
+                          "status": "PRESENT",
+                          "note": "normal member is not allowed to manual mark"
+                        }
+                    """))
                 .andExpect(status().isForbidden());
     }
 
@@ -213,42 +253,31 @@ class AttendanceAdminManualMarkControllerIT extends AbstractMySqlIntegrationTest
     @DisplayName("manual override disabled -> 409")
     void manual_override_disabled_conflict() throws Exception {
         jdbcTemplate.update("""
-            update attendance_sessions
-            set allow_manual_override = 0
-            where id = UUID_TO_BIN(?, 1)
-        """, g2OpenSessionId.toString());
+        update attendance_sessions
+        set allow_manual_override = 0
+        where id = UUID_TO_BIN(?, 1)
+    """, g2OpenSessionId.toString());
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/attendance/{userId}", g2OpenSessionId, member1Id)
                         .with(auth(ownerId))
                         .contentType(APPLICATION_JSON)
                         .content("""
-                            { "status": "PRESENT" }
-                        """))
+                        {
+                          "status": "PRESENT",
+                          "note": "manual override disabled should conflict"
+                        }
+                    """))
                 .andExpect(status().isConflict());
     }
 
     @Test
     @DisplayName("manual mark row đang EXCUSED -> 409")
     void manual_mark_excused_row_conflict() throws Exception {
-        UUID excusedSessionId = uuid("""
-            select BIN_TO_UUID(session_id, 1)
-            from session_attendance
-            where attendance_status = 'EXCUSED'
-            limit 1
-        """);
-
-        UUID excusedUserId = uuid("""
-            select BIN_TO_UUID(user_id, 1)
-            from session_attendance
-            where attendance_status = 'EXCUSED'
-            limit 1
-        """);
-
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/attendance/{userId}", excusedSessionId, excusedUserId)
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/attendance/{userId}", g2OpenSessionId, excusedMemberId)
                         .with(auth(ownerId))
                         .contentType(APPLICATION_JSON)
                         .content("""
-                            { "status": "PRESENT" }
+                            { "status": "PRESENT", "note": "should fail because row is excused" }
                         """))
                 .andExpect(status().isConflict());
     }
@@ -308,31 +337,180 @@ class AttendanceAdminManualMarkControllerIT extends AbstractMySqlIntegrationTest
         return SecurityMockMvcRequestPostProcessors.authentication(authentication);
     }
 
-    private UUID userId(String email) {
-        return uuid("""
-            select BIN_TO_UUID(id, 1)
-            from users
-            where email_norm = lower(trim(?))
-        """, email);
-    }
-
-    private UUID sessionIdByTitle(String groupCode, String title) {
-        return uuid("""
-            select BIN_TO_UUID(s.id, 1)
-            from attendance_sessions s
-            join class_groups g on g.id = s.group_id
-            where g.code = ?
-              and s.title = ?
-            limit 1
-        """, groupCode, title);
-    }
-
-    private UUID uuid(String sql, Object... args) {
-        return UUID.fromString(jdbcTemplate.queryForObject(sql, String.class, args));
-    }
-
     private long count(String sql, UUID arg1, UUID arg2) {
-        Number n = jdbcTemplate.queryForObject(sql, Number.class, arg1.toString(), arg2.toString());
+        Number n = jdbcTemplate.queryForObject(
+                sql,
+                Number.class,
+                arg1.toString(),
+                arg2.toString()
+        );
         return n == null ? 0L : n.longValue();
+    }
+
+    private void seedUser(UUID id, String email) {
+        jdbcTemplate.update("""
+            insert into users (
+                id,
+                email,
+                password_hash,
+                full_name,
+                status,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                ?,
+                '$2a$10$test.hash.test.hash.test.hash.test.hash.test.hash.test',
+                ?,
+                'ACTIVE',
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, id.toString(), email, email);
+    }
+
+    private void seedGroup(UUID groupId, UUID ownerUserId, String code, String name) {
+        String joinCode = "JOIN-" + code;
+        jdbcTemplate.update("""
+            insert into class_groups (
+                id,
+                owner_user_id,
+                code,
+                name,
+                join_code,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                ?,
+                ?,
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, groupId.toString(), ownerUserId.toString(), code, name, joinCode);
+    }
+
+    private void seedApprovedOwnerMembership(UUID groupId, UUID userId) {
+        seedMembership(groupId, userId, "OWNER");
+    }
+
+    private void seedApprovedCohostMembership(UUID groupId, UUID userId) {
+        seedMembership(groupId, userId, "CO_HOST");
+    }
+
+    private void seedApprovedMemberMembership(UUID groupId, UUID userId) {
+        seedMembership(groupId, userId, "MEMBER");
+    }
+
+    private void seedMembership(UUID groupId, UUID userId, String role) {
+        jdbcTemplate.update("""
+            insert into group_members (
+                group_id,
+                user_id,
+                role,
+                member_status,
+                joined_at,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                'APPROVED',
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, groupId.toString(), userId.toString(), role);
+    }
+
+    private void seedOpenSession(UUID sessionId, UUID groupId, UUID createdByUserId, String title) {
+        jdbcTemplate.update("""
+            insert into attendance_sessions (
+                id,
+                group_id,
+                title,
+                session_date,
+                start_at,
+                end_at,
+                checkin_open_at,
+                checkin_close_at,
+                status,
+                allow_manual_override,
+                late_after_minutes,
+                time_window_minutes,
+                qr_rotate_seconds,
+                session_secret,
+                note,
+                created_by_user_id,
+                created_at,
+                updated_at,
+                deleted_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                current_date(),
+                UTC_TIMESTAMP(6),
+                DATE_ADD(UTC_TIMESTAMP(6), interval 2 hour),
+                DATE_SUB(UTC_TIMESTAMP(6), interval 15 minute),
+                DATE_ADD(UTC_TIMESTAMP(6), interval 60 minute),
+                'OPEN',
+                true,
+                15,
+                60,
+                30,
+                'test-secret',
+                'seeded by AttendanceAdminManualMarkControllerIT',
+                UUID_TO_BIN(?, 1),
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6),
+                null
+            )
+        """, sessionId.toString(), groupId.toString(), title, createdByUserId.toString());
+    }
+
+    private void seedSessionAttendance(UUID sessionId, UUID userId, String status) {
+        jdbcTemplate.update("""
+            insert into session_attendance (
+                session_id,
+                user_id,
+                attendance_status,
+                check_in_at,
+                check_in_method,
+                qr_token_id,
+                device_id,
+                ip_address,
+                user_agent,
+                geo_lat,
+                geo_lng,
+                distance_meter,
+                suspicious_flag,
+                suspicious_reason,
+                excused_by_request_id,
+                created_at,
+                updated_at
+            ) values (
+                UUID_TO_BIN(?, 1),
+                UUID_TO_BIN(?, 1),
+                ?,
+                null,
+                'MANUAL',
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                UTC_TIMESTAMP(6),
+                UTC_TIMESTAMP(6)
+            )
+        """, sessionId.toString(), userId.toString(), status);
     }
 }

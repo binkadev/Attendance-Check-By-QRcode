@@ -33,4 +33,25 @@ public class LoggingMailService implements MailService {
                 resetUrl
         );
     }
+
+    @Override
+    public void sendNotificationEmail(String toEmail,
+                                      String subject,
+                                      String title,
+                                      String body) {
+        log.info("""
+                
+                ==================== DEV NOTIFICATION MAIL ======================
+                toEmail   : {}
+                subject   : {}
+                title     : {}
+                body      : {}
+                =================================================================
+                """,
+                toEmail,
+                subject,
+                title,
+                body
+        );
+    }
 }

@@ -17,7 +17,7 @@ tags:
   - name: Absence
   - name: Events
   - name: Admin Security
-
+  - name: Notifications
 paths:
   /auth/login:
     post:
@@ -179,6 +179,96 @@ paths:
           $ref: '#/components/responses/Err401'
         '404':
           $ref: '#/components/responses/Err404'
+
+  /me/notifications:
+    get:
+      tags:
+        - Notifications
+      summary: List my notifications
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/NotificationType'
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/NotificationSeverity'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageNotificationResponse'
+        '400':
+          $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+
+  /me/notifications/unread-count:
+      get:
+        tags:
+          - Notifications
+        summary: Get my unread notification count
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/NotificationUnreadCountResponse'
+          '401':
+            $ref: '#/components/responses/Err401'
+
+  /me/notifications/{notificationId}/read:
+      post:
+        tags:
+          - Notifications
+        summary: Mark one notification as read
+        parameters:
+          - name: notificationId
+            in: path
+            required: true
+            schema:
+              type: string
+              format: uuid
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/NotificationResponse'
+          '401':
+            $ref: '#/components/responses/Err401'
+          '404':
+            $ref: '#/components/responses/Err404'
+
+  /me/notifications/read-all:
+      post:
+        tags:
+          - Notifications
+        summary: Mark all my notifications as read
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/NotificationReadAllResponse'
+          '401':
+            $ref: '#/components/responses/Err401'
 
   /me/absence-requests:
     get:
@@ -389,6 +479,27 @@ paths:
         '409':
           $ref: '#/components/responses/Err409'
 
+  /groups/{groupId}/notifications:
+    get:
+      tags:
+        - Notifications
+      summary: List notifications of current user in a group
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageNotificationResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '404':
+          $ref: '#/components/responses/Err404'
+
   /groups/{groupId}/attendance-policy:
     get:
       tags: [ Attendance ]
@@ -555,6 +666,66 @@ paths:
           $ref: '#/components/responses/Err403'
         '404':
           $ref: '#/components/responses/Err404'
+
+  /admin/notification-deliveries:
+    get:
+      tags:
+        - Notifications
+      summary: List notification deliveries for admin
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: channel
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/NotificationChannel'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/NotificationDeliveryStatus'
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageNotificationDeliveryAdminResponse'
+        '400':
+          $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+
+  /admin/notification-deliveries/{deliveryId}/retry:
+      post:
+        tags:
+          - Notifications
+        summary: Retry one notification delivery
+        parameters:
+          - name: deliveryId
+            in: path
+            required: true
+            schema:
+              type: string
+              format: uuid
+        responses:
+          '200':
+            description: OK
+          '401':
+            $ref: '#/components/responses/Err401'
+          '403':
+            $ref: '#/components/responses/Err403'
+          '404':
+            $ref: '#/components/responses/Err404'
+          '409':
+            $ref: '#/components/responses/Err409'
 
   /admin/security/overview:
     get:
@@ -1486,6 +1657,191 @@ components:
                 message: Too many requests
 
   schemas:
+
+    NotificationType:
+      type: string
+
+    NotificationSeverity:
+        type: string
+
+    NotificationSourceType:
+        type: string
+
+    NotificationChannel:
+        type: string
+
+    NotificationDeliveryStatus:
+        type: string
+
+    NotificationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+          nullable: true
+        sessionId:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        title:
+          type: string
+        body:
+          type: string
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        severity:
+          $ref: '#/components/schemas/NotificationSeverity'
+        sourceType:
+          $ref: '#/components/schemas/NotificationSourceType'
+        sourceRefId:
+          type: string
+          format: uuid
+          nullable: true
+        isRead:
+          type: boolean
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationUnreadCountResponse:
+      type: object
+      required:
+        - unreadCount
+      properties:
+        unreadCount:
+          type: integer
+          format: int64
+
+    NotificationReadAllResponse:
+      type: object
+      required:
+        - updatedCount
+        - readAt
+      properties:
+        updatedCount:
+          type: integer
+          format: int32
+        readAt:
+          type: string
+          format: date-time
+
+    PageNotificationResponse:
+      type: object
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+
+    NotificationDeliveryAdminResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        notificationId:
+          type: string
+          format: uuid
+        recipientUserId:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        channel:
+          $ref: '#/components/schemas/NotificationChannel'
+        status:
+          $ref: '#/components/schemas/NotificationDeliveryStatus'
+        emailOutboxId:
+          type: string
+          format: uuid
+          nullable: true
+        retryCount:
+          type: integer
+          format: int32
+        nextAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        lockedAt:
+          type: string
+          format: date-time
+          nullable: true
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastErrorCode:
+          type: string
+          nullable: true
+        lastErrorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PageNotificationDeliveryAdminResponse:
+      type: object
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationDeliveryAdminResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
 
     AttendancePolicySource:
       type: string

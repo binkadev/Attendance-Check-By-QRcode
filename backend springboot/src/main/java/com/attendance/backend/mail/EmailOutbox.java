@@ -30,6 +30,9 @@ public class EmailOutbox {
     public static final String STATUS_SENT = "SENT";
     public static final String STATUS_DEAD = "DEAD";
 
+    public static final String AGGREGATE_TYPE_PASSWORD_RESET = "PASSWORD_RESET";
+    public static final String AGGREGATE_TYPE_NOTIFICATION_DELIVERY = "NOTIFICATION_DELIVERY";
+
     @Id
     @Type(value = MysqlUuidBinary16SwapType.class)
     @Column(name = "id", columnDefinition = "BINARY(16)")

@@ -47,17 +47,11 @@ public class SmtpMailService implements MailService {
 
             helper.setTo(toEmail);
             helper.setSubject("Reset your password");
-
-            if (StringUtils.hasText(mailProperties.getFromAddress())) {
-                String fromName = StringUtils.hasText(mailProperties.getFromName())
-                        ? mailProperties.getFromName()
-                        : "Attendance System";
-                helper.setFrom(new InternetAddress(mailProperties.getFromAddress(), fromName));
-            }
+            applyFrom(helper);
 
             helper.setText(
-                    buildTextBody(fullName, resetUrl, expiresAt),
-                    buildHtmlBody(fullName, resetUrl, expiresAt)
+                    buildPasswordResetTextBody(fullName, resetUrl, expiresAt),
+                    buildPasswordResetHtmlBody(fullName, resetUrl, expiresAt)
             );
 
             mailSender.send(mimeMessage);
@@ -68,7 +62,46 @@ public class SmtpMailService implements MailService {
         }
     }
 
-    private String buildTextBody(String fullName, String resetUrl, Instant expiresAt) {
+    @Override
+    public void sendNotificationEmail(String toEmail,
+                                      String subject,
+                                      String title,
+                                      String body) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(
+                    mimeMessage,
+                    false,
+                    StandardCharsets.UTF_8.name()
+            );
+
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            applyFrom(helper);
+
+            helper.setText(
+                    buildNotificationTextBody(title, body),
+                    buildNotificationHtmlBody(title, body)
+            );
+
+            mailSender.send(mimeMessage);
+            log.info("Notification email sent successfully");
+        } catch (Exception ex) {
+            log.error("Failed to send notification email", ex);
+            throw new IllegalStateException("Failed to send notification email", ex);
+        }
+    }
+
+    private void applyFrom(MimeMessageHelper helper) throws Exception {
+        if (StringUtils.hasText(mailProperties.getFromAddress())) {
+            String fromName = StringUtils.hasText(mailProperties.getFromName())
+                    ? mailProperties.getFromName()
+                    : "Attendance System";
+            helper.setFrom(new InternetAddress(mailProperties.getFromAddress(), fromName));
+        }
+    }
+
+    private String buildPasswordResetTextBody(String fullName, String resetUrl, Instant expiresAt) {
         String displayName = StringUtils.hasText(fullName) ? fullName : "User";
         return """
                 Hello %s,
@@ -87,7 +120,7 @@ public class SmtpMailService implements MailService {
                 """.formatted(displayName, resetUrl, DATE_TIME_FORMATTER.format(expiresAt));
     }
 
-    private String buildHtmlBody(String fullName, String resetUrl, Instant expiresAt) {
+    private String buildPasswordResetHtmlBody(String fullName, String resetUrl, Instant expiresAt) {
         String displayName = HtmlUtils.htmlEscape(StringUtils.hasText(fullName) ? fullName : "User");
         String escapedUrl = HtmlUtils.htmlEscape(resetUrl);
         String expiresText = HtmlUtils.htmlEscape(DATE_TIME_FORMATTER.format(expiresAt));
@@ -111,5 +144,41 @@ public class SmtpMailService implements MailService {
                   </body>
                 </html>
                 """.formatted(displayName, escapedUrl, escapedUrl, escapedUrl, expiresText);
+    }
+
+    private String buildNotificationTextBody(String title, String body) {
+        String safeTitle = StringUtils.hasText(title) ? title : "Notification";
+        String safeBody = StringUtils.hasText(body) ? body : "";
+
+        return """
+                %s
+
+                %s
+
+                Regards,
+                Attendance System
+                """.formatted(safeTitle, safeBody);
+    }
+
+    private String buildNotificationHtmlBody(String title, String body) {
+        String safeTitle = HtmlUtils.htmlEscape(StringUtils.hasText(title) ? title : "Notification");
+        String safeBody = toHtmlMultiline(body);
+
+        return """
+                <html>
+                  <body style="font-family: Arial, sans-serif; color: #1f2937;">
+                    <h2 style="margin-bottom: 16px;">%s</h2>
+                    <div style="line-height: 1.6;">%s</div>
+                    <p style="margin-top: 24px;">Regards,<br/>Attendance System</p>
+                  </body>
+                </html>
+                """.formatted(safeTitle, safeBody);
+    }
+
+    private String toHtmlMultiline(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return "";
+        }
+        return HtmlUtils.htmlEscape(raw).replace("\n", "<br/>");
     }
 }

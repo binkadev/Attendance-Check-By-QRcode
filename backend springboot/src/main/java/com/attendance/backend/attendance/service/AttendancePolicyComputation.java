@@ -23,9 +23,54 @@ public final class AttendancePolicyComputation {
             long absentCount,
             long excusedCount
     ) {
+        return computeInternal(
+                policy.lateWeight(),
+                policy.warningBelowRate(),
+                policy.criticalBelowRate(),
+                policy.warningAbsentCount(),
+                policy.criticalAbsentCount(),
+                presentCount,
+                lateCount,
+                absentCount,
+                excusedCount
+        );
+    }
+
+    public static ComputedPolicyStatus compute(
+            AttendancePolicyService.EffectivePolicy policy,
+            long presentCount,
+            long lateCount,
+            long absentCount,
+            long excusedCount
+    ) {
+        return computeInternal(
+                policy.lateWeight(),
+                policy.warningBelowRate(),
+                policy.criticalBelowRate(),
+                policy.warningAbsentCount(),
+                policy.criticalAbsentCount(),
+                presentCount,
+                lateCount,
+                absentCount,
+                excusedCount
+        );
+    }
+
+    private static ComputedPolicyStatus computeInternal(
+            BigDecimal lateWeight,
+            BigDecimal warningBelowRate,
+            BigDecimal criticalBelowRate,
+            Integer warningAbsentCount,
+            Integer criticalAbsentCount,
+            long presentCount,
+            long lateCount,
+            long absentCount,
+            long excusedCount
+    ) {
         long eligibleSessionCount = presentCount + lateCount + absentCount;
+
         BigDecimal earnedAttendancePoints = BigDecimal.valueOf(presentCount)
-                .add(policy.lateWeight().multiply(BigDecimal.valueOf(lateCount)));
+                .add(lateWeight.multiply(BigDecimal.valueOf(lateCount)));
 
         if (eligibleSessionCount <= 0) {
             return new ComputedPolicyStatus(
@@ -43,14 +88,16 @@ public final class AttendancePolicyComputation {
 
         List<AttendancePolicyBreachReason> breachReasons = new ArrayList<>();
 
-        boolean criticalByRate = policy.criticalBelowRate() != null
-                && attendanceRate.compareTo(policy.criticalBelowRate()) < 0;
-        boolean criticalByAbsentCount = policy.criticalAbsentCount() != null
-                && absentCount >= policy.criticalAbsentCount();
+        boolean criticalByRate = criticalBelowRate != null
+                && attendanceRate.compareTo(criticalBelowRate) < 0;
 
-        boolean warningByRate = attendanceRate.compareTo(policy.warningBelowRate()) < 0;
-        boolean warningByAbsentCount = policy.warningAbsentCount() != null
-                && absentCount >= policy.warningAbsentCount();
+        boolean criticalByAbsentCount = criticalAbsentCount != null
+                && absentCount >= criticalAbsentCount;
+
+        boolean warningByRate = attendanceRate.compareTo(warningBelowRate) < 0;
+
+        boolean warningByAbsentCount = warningAbsentCount != null
+                && absentCount >= warningAbsentCount;
 
         if (criticalByRate) {
             breachReasons.add(AttendancePolicyBreachReason.RATE_BELOW_CRITICAL);

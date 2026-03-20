@@ -53,16 +53,16 @@ public class EmailOutboxProcessorService {
         }
 
         try {
-            EmailOutboxService.PasswordResetMailPayload payload = emailOutboxService.readPasswordResetPayload(row);
+            switch (row.aggregateType) {
+                case EmailOutbox.AGGREGATE_TYPE_PASSWORD_RESET -> processPasswordReset(row, now);
+                case EmailOutbox.AGGREGATE_TYPE_NOTIFICATION_DELIVERY -> processNotification(row, now);
+                default -> row.markDead(
+                        now,
+                        "UNSUPPORTED_AGGREGATE_TYPE",
+                        trimError("Unsupported aggregate type: " + row.aggregateType)
+                );
+            }
 
-            mailService.sendPasswordResetEmail(
-                    row.toEmail,
-                    payload.fullName(),
-                    payload.resetUrl(),
-                    payload.expiresAt()
-            );
-
-            row.markSent(now);
             repository.save(row);
         } catch (Exception ex) {
             String errorMessage = trimError(ex.getMessage());
@@ -76,6 +76,32 @@ public class EmailOutboxProcessorService {
 
             repository.save(row);
         }
+    }
+
+    private void processPasswordReset(EmailOutbox row, Instant now) {
+        EmailOutboxService.PasswordResetMailPayload payload = emailOutboxService.readPasswordResetPayload(row);
+
+        mailService.sendPasswordResetEmail(
+                row.toEmail,
+                payload.fullName(),
+                payload.resetUrl(),
+                payload.expiresAt()
+        );
+
+        row.markSent(now);
+    }
+
+    private void processNotification(EmailOutbox row, Instant now) {
+        EmailOutboxService.NotificationMailPayload payload = emailOutboxService.readNotificationPayload(row);
+
+        mailService.sendNotificationEmail(
+                row.toEmail,
+                row.subject,
+                payload.title(),
+                payload.body()
+        );
+
+        row.markSent(now);
     }
 
     private long computeBackoffSeconds(int currentRetryCount) {

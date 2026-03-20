@@ -22,7 +22,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -452,6 +454,234 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
         assertThat(markExcusedCount).isEqualTo(1L);
     }
 
+    @Test
+    @DisplayName("approve closed request -> tạo ATTENDANCE_POLICY_WARNING")
+    void approve_closed_request_should_create_policy_warning_notification() throws Exception {
+        UUID isolatedGroupId = createIsolatedPolicyGroup("PW", "Policy Warning Group");
+
+        UUID policyStudentId = UUID.randomUUID();
+        seedUser(policyStudentId, "policy-warning@it.local");
+        seedApprovedMemberMembership(isolatedGroupId, policyStudentId);
+        backdateMembershipForHistory(isolatedGroupId, policyStudentId);
+
+        replacePolicy(
+                isolatedGroupId,
+                ownerId,
+                new BigDecimal("1.00"),
+                new BigDecimal("80.00"),
+                new BigDecimal("40.00"),
+                2,
+                4
+        );
+
+        UUID closedPresentSessionId = UUID.randomUUID();
+        seedClosedSession(closedPresentSessionId, isolatedGroupId, ownerId, "Policy closed present");
+        seedSessionAttendance(closedPresentSessionId, policyStudentId, "PRESENT");
+
+        UUID closedAbsentSessionId = UUID.randomUUID();
+        seedClosedSession(closedAbsentSessionId, isolatedGroupId, ownerId, "Policy closed absent");
+        seedSessionAttendance(closedAbsentSessionId, policyStudentId, "ABSENT");
+
+        UUID linkedClosedSessionId = UUID.randomUUID();
+        seedClosedSession(linkedClosedSessionId, isolatedGroupId, ownerId, "Policy linked closed absent");
+        seedSessionAttendance(linkedClosedSessionId, policyStudentId, "ABSENT");
+
+        UUID pendingRequestId = UUID.randomUUID();
+        seedPendingAbsenceRequest(
+                pendingRequestId,
+                isolatedGroupId,
+                policyStudentId,
+                linkedClosedSessionId
+        );
+
+        mockMvc.perform(patch("/api/v1/absence-requests/{requestId}/review", pendingRequestId)
+                        .with(auth(ownerId))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                            {
+                              "action": "APPROVE",
+                              "reviewerNote": "approve closed request for policy warning"
+                            }
+                            """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestStatus").value("APPROVED"));
+
+        assertThat(countPolicyNotifications(
+                policyStudentId,
+                "ATTENDANCE_POLICY_WARNING",
+                linkedClosedSessionId
+        )).isEqualTo(1L);
+
+        Map<String, Object> row = findPolicyNotificationRow(
+                policyStudentId,
+                "ATTENDANCE_POLICY_WARNING",
+                linkedClosedSessionId
+        );
+
+        assertThat(row.get("severity")).isEqualTo("WARNING");
+        assertThat(row.get("source_type")).isEqualTo("ATTENDANCE_POLICY");
+
+        JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
+        assertThat(payload.get("policyStatus").asText()).isEqualTo("WARNING");
+        assertThat(payload.get("closedSessionCount").asLong()).isEqualTo(3L);
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(2L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("absentCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("excusedCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("50.00");
+    }
+
+    @Test
+    @DisplayName("approve open request -> không tạo policy notification")
+    void approve_open_request_should_not_create_policy_notification() throws Exception {
+        replacePolicy(
+                g2Id,
+                ownerId,
+                new BigDecimal("1.00"),
+                new BigDecimal("80.00"),
+                new BigDecimal("40.00"),
+                2,
+                4
+        );
+
+        UUID requestId = createPendingRequest(member1Id, g2Id, g2OpenSessionId);
+
+        mockMvc.perform(patch("/api/v1/absence-requests/{requestId}/review", requestId)
+                        .with(auth(ownerId))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "action": "APPROVE",
+                                  "reviewerNote": "approve open session request"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestStatus").value("APPROVED"));
+
+        assertThat(countAnyPolicyNotifications(member1Id)).isZero();
+    }
+
+    @Test
+    @DisplayName("revert closed approved request -> tạo ATTENDANCE_POLICY_CRITICAL")
+    void revert_closed_request_should_create_policy_critical_notification() throws Exception {
+        UUID policyGroupId = createIsolatedPolicyGroup("POLICY-CRIT", "Policy Critical Group");
+
+        UUID policyStudentId = UUID.randomUUID();
+        seedUser(policyStudentId, "policy-critical@it.local");
+        seedApprovedMemberMembership(policyGroupId, policyStudentId);
+        backdateMembershipForHistory(policyGroupId, policyStudentId);
+
+        replacePolicy(
+                policyGroupId,
+                ownerId,
+                new BigDecimal("1.00"),
+                new BigDecimal("80.00"),
+                new BigDecimal("40.00"),
+                1,
+                2
+        );
+
+        UUID closedPresent1 = UUID.randomUUID();
+        seedClosedSession(closedPresent1, policyGroupId, ownerId, "Policy present 1");
+        seedSessionAttendance(closedPresent1, policyStudentId, "PRESENT");
+
+        UUID closedPresent2 = UUID.randomUUID();
+        seedClosedSession(closedPresent2, policyGroupId, ownerId, "Policy present 2");
+        seedSessionAttendance(closedPresent2, policyStudentId, "PRESENT");
+
+        UUID closedAbsent = UUID.randomUUID();
+        seedClosedSession(closedAbsent, policyGroupId, ownerId, "Policy absent 1");
+        seedSessionAttendance(closedAbsent, policyStudentId, "ABSENT");
+
+        UUID linkedClosedSessionId = UUID.randomUUID();
+        seedClosedSession(linkedClosedSessionId, policyGroupId, ownerId, "Policy linked excused");
+        seedSessionAttendance(linkedClosedSessionId, policyStudentId, "EXCUSED");
+
+        UUID approvedRequestId = UUID.randomUUID();
+        seedApprovedAbsenceRequest(
+                approvedRequestId,
+                policyGroupId,
+                policyStudentId,
+                linkedClosedSessionId,
+                ownerId
+        );
+
+        jdbcTemplate.update("""
+            update session_attendance
+            set excused_by_request_id = UUID_TO_BIN(?, 1)
+            where session_id = UUID_TO_BIN(?, 1)
+              and user_id = UUID_TO_BIN(?, 1)
+        """, approvedRequestId.toString(), linkedClosedSessionId.toString(), policyStudentId.toString());
+
+        mockMvc.perform(post("/api/v1/absence-requests/{requestId}/revert", approvedRequestId)
+                        .with(auth(ownerId))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                { "revertNote": "revert closed request for policy critical" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestStatus").value("REVERTED"));
+
+        assertThat(countPolicyNotifications(
+                policyStudentId,
+                "ATTENDANCE_POLICY_CRITICAL",
+                linkedClosedSessionId
+        )).isEqualTo(1L);
+
+        Map<String, Object> row = findPolicyNotificationRow(
+                policyStudentId,
+                "ATTENDANCE_POLICY_CRITICAL",
+                linkedClosedSessionId
+        );
+
+        assertThat(row.get("severity")).isEqualTo("CRITICAL");
+        assertThat(row.get("source_type")).isEqualTo("ATTENDANCE_POLICY");
+
+        JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
+        assertThat(payload.get("policyStatus").asText()).isEqualTo("CRITICAL");
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(4L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(2L);
+        assertThat(payload.get("absentCount").asLong()).isEqualTo(2L);
+        assertThat(payload.get("excusedCount").asLong()).isEqualTo(0L);
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("50.00");
+    }
+
+    @Test
+    @DisplayName("revert open approved request -> không tạo policy notification")
+    void revert_open_request_should_not_create_policy_notification() throws Exception {
+        UUID openStudentId = UUID.randomUUID();
+        seedUser(openStudentId, "open-revert@it.local");
+        seedApprovedMemberMembership(g2Id, openStudentId);
+        seedSessionAttendance(g2OpenSessionId, openStudentId, "EXCUSED");
+
+        UUID approvedOpenRequestId = UUID.randomUUID();
+        seedApprovedAbsenceRequest(
+                approvedOpenRequestId,
+                g2Id,
+                openStudentId,
+                g2OpenSessionId,
+                ownerId
+        );
+
+        jdbcTemplate.update("""
+            update session_attendance
+            set excused_by_request_id = UUID_TO_BIN(?, 1)
+            where session_id = UUID_TO_BIN(?, 1)
+              and user_id = UUID_TO_BIN(?, 1)
+        """, approvedOpenRequestId.toString(), g2OpenSessionId.toString(), openStudentId.toString());
+
+        mockMvc.perform(post("/api/v1/absence-requests/{requestId}/revert", approvedOpenRequestId)
+                        .with(auth(ownerId))
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                { "revertNote": "open session revert should not trigger policy notification" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestStatus").value("REVERTED"));
+
+        assertThat(countAnyPolicyNotifications(openStudentId)).isZero();
+    }
+
     private UUID createPendingRequest(UUID requesterUserId, UUID groupId, UUID sessionId) throws Exception {
         String response = mockMvc.perform(post("/api/v1/groups/{groupId}/absence-requests", groupId)
                         .with(auth(requesterUserId))
@@ -487,6 +717,147 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
         """, String.class, requestId.toString());
 
         return objectMapper.readTree(json);
+    }
+
+    private void replacePolicy(
+            UUID groupId,
+            UUID actorUserId,
+            BigDecimal lateWeight,
+            BigDecimal warningBelowRate,
+            BigDecimal criticalBelowRate,
+            Integer warningAbsentCount,
+            Integer criticalAbsentCount
+    ) {
+        jdbcTemplate.update(
+                "delete from attendance_policies where group_id = UUID_TO_BIN(?, 1)",
+                groupId.toString()
+        );
+
+        jdbcTemplate.update("""
+                insert into attendance_policies (
+                    id,
+                    group_id,
+                    late_weight,
+                    warning_below_rate,
+                    critical_below_rate,
+                    warning_absent_count,
+                    critical_absent_count,
+                    created_by_user_id,
+                    updated_by_user_id,
+                    created_at,
+                    updated_at
+                ) values (
+                    UUID_TO_BIN(?, 1),
+                    UUID_TO_BIN(?, 1),
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    UUID_TO_BIN(?, 1),
+                    UUID_TO_BIN(?, 1),
+                    UTC_TIMESTAMP(6),
+                    UTC_TIMESTAMP(6)
+                )
+                """,
+                UUID.randomUUID().toString(),
+                groupId.toString(),
+                lateWeight,
+                warningBelowRate,
+                criticalBelowRate,
+                warningAbsentCount,
+                criticalAbsentCount,
+                actorUserId.toString(),
+                actorUserId.toString()
+        );
+    }
+
+    private void seedPendingAbsenceRequest(
+            UUID requestId,
+            UUID groupId,
+            UUID requesterUserId,
+            UUID linkedSessionId
+    ) {
+        jdbcTemplate.update("""
+                insert into absence_requests (
+                    id,
+                    group_id,
+                    requester_user_id,
+                    linked_session_id,
+                    reason,
+                    evidence_url,
+                    request_status,
+                    created_at,
+                    updated_at
+                ) values (
+                    UUID_TO_BIN(?, 1),
+                    UUID_TO_BIN(?, 1),
+                    UUID_TO_BIN(?, 1),
+                    UUID_TO_BIN(?, 1),
+                    'Pending request for policy IT',
+                    's3://bucket/policy-it.jpg',
+                    'PENDING',
+                    UTC_TIMESTAMP(6),
+                    UTC_TIMESTAMP(6)
+                )
+                """,
+                requestId.toString(),
+                groupId.toString(),
+                requesterUserId.toString(),
+                linkedSessionId.toString()
+        );
+    }
+
+    private long countPolicyNotifications(UUID recipientUserId, String type, UUID sourceSessionId) {
+        Number n = jdbcTemplate.queryForObject("""
+                select count(*)
+                from notifications
+                where recipient_user_id = UUID_TO_BIN(?, 1)
+                  and type = ?
+                  and source_type = 'ATTENDANCE_POLICY'
+                  and source_ref_id = UUID_TO_BIN(?, 1)
+                """,
+                Number.class,
+                recipientUserId.toString(),
+                type,
+                sourceSessionId.toString()
+        );
+        return n == null ? 0L : n.longValue();
+    }
+
+    private long countAnyPolicyNotifications(UUID recipientUserId) {
+        Number n = jdbcTemplate.queryForObject("""
+                select count(*)
+                from notifications
+                where recipient_user_id = UUID_TO_BIN(?, 1)
+                  and type in ('ATTENDANCE_POLICY_WARNING', 'ATTENDANCE_POLICY_CRITICAL')
+                """,
+                Number.class,
+                recipientUserId.toString()
+        );
+        return n == null ? 0L : n.longValue();
+    }
+
+    private Map<String, Object> findPolicyNotificationRow(UUID recipientUserId, String type, UUID sourceSessionId) {
+        return jdbcTemplate.queryForMap("""
+                select
+                    BIN_TO_UUID(id, 1) as id,
+                    severity,
+                    source_type,
+                    BIN_TO_UUID(source_ref_id, 1) as source_ref_id,
+                    dedup_key,
+                    cast(payload_json as char) as payload_json
+                from notifications
+                where recipient_user_id = UUID_TO_BIN(?, 1)
+                  and type = ?
+                  and source_ref_id = UUID_TO_BIN(?, 1)
+                order by created_at desc
+                limit 1
+                """,
+                recipientUserId.toString(),
+                type,
+                sourceSessionId.toString()
+        );
     }
 
     private RequestPostProcessor auth(UUID userId) {
@@ -734,6 +1105,45 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                 UTC_TIMESTAMP(6)
             )
         """, sessionId.toString(), userId.toString(), status);
+    }
+
+    private void backdateMembershipForHistory(UUID groupId, UUID userId) {
+        jdbcTemplate.update("""
+        update group_members
+        set joined_at = DATE_SUB(UTC_TIMESTAMP(6), interval 10 day),
+            created_at = DATE_SUB(UTC_TIMESTAMP(6), interval 10 day),
+            updated_at = UTC_TIMESTAMP(6)
+        where group_id = UUID_TO_BIN(?, 1)
+          and user_id = UUID_TO_BIN(?, 1)
+    """, groupId.toString(), userId.toString());
+    }
+
+    private UUID createIsolatedPolicyGroup(String codePrefix, String name) {
+        UUID groupId = UUID.randomUUID();
+
+        String normalized = codePrefix == null
+                ? "TG"
+                : codePrefix.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+
+        if (normalized.isBlank()) {
+            normalized = "TG";
+        }
+
+        String shortPrefix = normalized.length() >= 2
+                ? normalized.substring(0, 2)
+                : (normalized + "X").substring(0, 2);
+
+        String suffix = UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .substring(0, 4)
+                .toUpperCase();
+
+        String code = shortPrefix + suffix; // ví dụ: POA1B2
+
+        seedGroup(groupId, ownerId, code, name);
+        seedApprovedOwnerMembership(groupId, ownerId);
+        return groupId;
     }
 
     private void seedApprovedAbsenceRequest(
