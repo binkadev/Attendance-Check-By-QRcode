@@ -1,4 +1,0 @@
-﻿{
-    "body":  "{\"timestamp\":\"2026-02-26T06:31:11.808646900Z\",\"status\":409,\"code\":\"DB_CONSTRAINT_VIOLATION\",\"message\":\"Database constraint violated\",\"path\":\"/api/v1/sessions/270198d3-12d6-11f1-a071-9c2dcd55b490/checkin/qr\",\"requestId\":\"fe3b3cf6-3e9c-4cb2-ac13-746ab1464875\"}",
-    "status":  409
-}

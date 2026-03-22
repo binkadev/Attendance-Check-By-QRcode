@@ -18,6 +18,7 @@ tags:
   - name: Events
   - name: Admin Security
   - name: Notifications
+  - name: Fraud
 paths:
   /auth/login:
     post:
@@ -217,58 +218,58 @@ paths:
           $ref: '#/components/responses/Err401'
 
   /me/notifications/unread-count:
-      get:
-        tags:
-          - Notifications
-        summary: Get my unread notification count
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/NotificationUnreadCountResponse'
-          '401':
-            $ref: '#/components/responses/Err401'
+    get:
+      tags:
+        - Notifications
+      summary: Get my unread notification count
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationUnreadCountResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
 
   /me/notifications/{notificationId}/read:
-      post:
-        tags:
-          - Notifications
-        summary: Mark one notification as read
-        parameters:
-          - name: notificationId
-            in: path
-            required: true
-            schema:
-              type: string
-              format: uuid
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/NotificationResponse'
-          '401':
-            $ref: '#/components/responses/Err401'
-          '404':
-            $ref: '#/components/responses/Err404'
+    post:
+      tags:
+        - Notifications
+      summary: Mark one notification as read
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '404':
+          $ref: '#/components/responses/Err404'
 
   /me/notifications/read-all:
-      post:
-        tags:
-          - Notifications
-        summary: Mark all my notifications as read
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/NotificationReadAllResponse'
-          '401':
-            $ref: '#/components/responses/Err401'
+    post:
+      tags:
+        - Notifications
+      summary: Mark all my notifications as read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationReadAllResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
 
   /me/absence-requests:
     get:
@@ -478,6 +479,145 @@ paths:
           $ref: '#/components/responses/Err404'
         '409':
           $ref: '#/components/responses/Err409'
+
+  /groups/{groupId}/fraud-incidents:
+    get:
+      tags:
+        - Fraud
+      summary: List fraud incidents of a group
+      operationId: listFraudIncidents
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/FraudIncidentStatus'
+          style: form
+          explode: true
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/FraudIncidentType'
+          style: form
+          explode: true
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/FraudIncidentSeverity'
+          style: form
+          explode: true
+        - name: assignedToUserId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/FraudIncidentSortBy'
+        - name: sortDir
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+      responses:
+        '200':
+          description: Fraud incidents page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageFraudIncidentResponse'
+
+  /groups/{groupId}/fraud-incidents/{incidentId}:
+    get:
+      tags:
+        - Fraud
+      summary: Get fraud incident detail
+      operationId: getFraudIncidentDetail
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: incidentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Fraud incident detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FraudIncidentResponse'
+    patch:
+      tags:
+        - Fraud
+      summary: Update fraud incident status
+      operationId: patchFraudIncident
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: incidentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchFraudIncidentRequest'
+      responses:
+        '200':
+          description: Updated fraud incident
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FraudIncidentResponse'
 
   /groups/{groupId}/notifications:
     get:
@@ -704,28 +844,28 @@ paths:
           $ref: '#/components/responses/Err403'
 
   /admin/notification-deliveries/{deliveryId}/retry:
-      post:
-        tags:
-          - Notifications
-        summary: Retry one notification delivery
-        parameters:
-          - name: deliveryId
-            in: path
-            required: true
-            schema:
-              type: string
-              format: uuid
-        responses:
-          '200':
-            description: OK
-          '401':
-            $ref: '#/components/responses/Err401'
-          '403':
-            $ref: '#/components/responses/Err403'
-          '404':
-            $ref: '#/components/responses/Err404'
-          '409':
-            $ref: '#/components/responses/Err409'
+    post:
+      tags:
+        - Notifications
+      summary: Retry one notification delivery
+      parameters:
+        - name: deliveryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+        '409':
+          $ref: '#/components/responses/Err409'
 
   /admin/security/overview:
     get:
@@ -917,6 +1057,8 @@ paths:
           $ref: '#/components/responses/Err403'
         '404':
           $ref: '#/components/responses/Err404'
+
+
   /groups/{groupId}/members/{userId}:
     patch:
       tags:
@@ -1662,16 +1804,16 @@ components:
       type: string
 
     NotificationSeverity:
-        type: string
+      type: string
 
     NotificationSourceType:
-        type: string
+      type: string
 
     NotificationChannel:
-        type: string
+      type: string
 
     NotificationDeliveryStatus:
-        type: string
+      type: string
 
     NotificationResponse:
       type: object
@@ -1918,94 +2060,94 @@ components:
         - membershipScope
 
     UpdateAttendancePolicyRequest:
-        type: object
-        additionalProperties: false
-        properties:
-          lateWeight:
-            type: number
-            format: double
-            minimum: 0
-            maximum: 1
-          warningBelowRate:
-            type: number
-            format: double
-            minimum: 0
-            maximum: 100
-          criticalBelowRate:
-            type: number
-            format: double
-            minimum: 0
-            maximum: 100
-            nullable: true
-          warningAbsentCount:
-            type: integer
-            minimum: 1
-            nullable: true
-          criticalAbsentCount:
-            type: integer
-            minimum: 1
-            nullable: true
-        required:
-          - lateWeight
-          - warningBelowRate
+      type: object
+      additionalProperties: false
+      properties:
+        lateWeight:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        warningBelowRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        criticalBelowRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          nullable: true
+        warningAbsentCount:
+          type: integer
+          minimum: 1
+          nullable: true
+        criticalAbsentCount:
+          type: integer
+          minimum: 1
+          nullable: true
+      required:
+        - lateWeight
+        - warningBelowRate
 
     AttendancePolicyResponse:
-        type: object
-        properties:
-          groupId:
-            type: string
-            format: uuid
-          source:
-            $ref: '#/components/schemas/AttendancePolicySource'
-          lateWeight:
-            type: number
-            format: double
-          warningBelowRate:
-            type: number
-            format: double
-          criticalBelowRate:
-            type: number
-            format: double
-            nullable: true
-          warningAbsentCount:
-            type: integer
-            nullable: true
-          criticalAbsentCount:
-            type: integer
-            nullable: true
-          excusedHandling:
-            type: string
-            example: EXCLUDE_FROM_DENOMINATOR
-          sessionScope:
-            type: string
-            example: CLOSED_NON_DELETED_ONLY
-          membershipScope:
-            type: string
-            example: AFTER_MEMBERSHIP_EFFECTIVE_AT
-          createdAt:
-            type: string
-            format: date-time
-            nullable: true
-          createdByUserId:
-            type: string
-            format: uuid
-            nullable: true
-          updatedAt:
-            type: string
-            format: date-time
-            nullable: true
-          updatedByUserId:
-            type: string
-            format: uuid
-            nullable: true
-        required:
-          - groupId
-          - source
-          - lateWeight
-          - warningBelowRate
-          - excusedHandling
-          - sessionScope
-          - membershipScope
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        source:
+          $ref: '#/components/schemas/AttendancePolicySource'
+        lateWeight:
+          type: number
+          format: double
+        warningBelowRate:
+          type: number
+          format: double
+        criticalBelowRate:
+          type: number
+          format: double
+          nullable: true
+        warningAbsentCount:
+          type: integer
+          nullable: true
+        criticalAbsentCount:
+          type: integer
+          nullable: true
+        excusedHandling:
+          type: string
+          example: EXCLUDE_FROM_DENOMINATOR
+        sessionScope:
+          type: string
+          example: CLOSED_NON_DELETED_ONLY
+        membershipScope:
+          type: string
+          example: AFTER_MEMBERSHIP_EFFECTIVE_AT
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedByUserId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+        - groupId
+        - source
+        - lateWeight
+        - warningBelowRate
+        - excusedHandling
+        - sessionScope
+        - membershipScope
 
     AttendancePolicyStudentStatusResponse:
       type: object
@@ -2156,126 +2298,126 @@ components:
         - CRITICAL_20
 
     RiskLevel:
-        type: string
-        enum:
-          - LOW
-          - MEDIUM
-          - HIGH
+      type: string
+      enum:
+        - LOW
+        - MEDIUM
+        - HIGH
 
     AttendanceSummaryResponse:
-        type: object
-        properties:
-          totalSessions:
-            type: integer
-            format: int64
-          presentCount:
-            type: integer
-            format: int64
-          lateCount:
-            type: integer
-            format: int64
-          absentCount:
-            type: integer
-            format: int64
-          excusedCount:
-            type: integer
-            format: int64
-          attendancePercent:
-            type: number
-            format: double
-            example: 83.33
-          absencePercent:
-            type: number
-            format: double
-            example: 16.67
-          warningLevel:
-            $ref: '#/components/schemas/WarningLevel'
-          riskLevel:
-            $ref: '#/components/schemas/RiskLevel'
-        required:
-          - totalSessions
-          - presentCount
-          - lateCount
-          - absentCount
-          - excusedCount
-          - attendancePercent
-          - absencePercent
-          - warningLevel
-          - riskLevel
+      type: object
+      properties:
+        totalSessions:
+          type: integer
+          format: int64
+        presentCount:
+          type: integer
+          format: int64
+        lateCount:
+          type: integer
+          format: int64
+        absentCount:
+          type: integer
+          format: int64
+        excusedCount:
+          type: integer
+          format: int64
+        attendancePercent:
+          type: number
+          format: double
+          example: 83.33
+        absencePercent:
+          type: number
+          format: double
+          example: 16.67
+        warningLevel:
+          $ref: '#/components/schemas/WarningLevel'
+        riskLevel:
+          $ref: '#/components/schemas/RiskLevel'
+      required:
+        - totalSessions
+        - presentCount
+        - lateCount
+        - absentCount
+        - excusedCount
+        - attendancePercent
+        - absencePercent
+        - warningLevel
+        - riskLevel
 
     AttendanceGroupSummaryItem:
-        type: object
-        properties:
-          userId:
-            type: string
-            format: uuid
-          fullName:
-            type: string
-          email:
-            type: string
-            format: email
-          totalSessions:
-            type: integer
-            format: int64
-          presentCount:
-            type: integer
-            format: int64
-          lateCount:
-            type: integer
-            format: int64
-          absentCount:
-            type: integer
-            format: int64
-          excusedCount:
-            type: integer
-            format: int64
-          attendancePercent:
-            type: number
-            format: double
-          absencePercent:
-            type: number
-            format: double
-          warningLevel:
-            $ref: '#/components/schemas/WarningLevel'
-          riskLevel:
-            $ref: '#/components/schemas/RiskLevel'
-        required:
-          - userId
-          - fullName
-          - email
-          - totalSessions
-          - presentCount
-          - lateCount
-          - absentCount
-          - excusedCount
-          - attendancePercent
-          - absencePercent
-          - warningLevel
-          - riskLevel
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        totalSessions:
+          type: integer
+          format: int64
+        presentCount:
+          type: integer
+          format: int64
+        lateCount:
+          type: integer
+          format: int64
+        absentCount:
+          type: integer
+          format: int64
+        excusedCount:
+          type: integer
+          format: int64
+        attendancePercent:
+          type: number
+          format: double
+        absencePercent:
+          type: number
+          format: double
+        warningLevel:
+          $ref: '#/components/schemas/WarningLevel'
+        riskLevel:
+          $ref: '#/components/schemas/RiskLevel'
+      required:
+        - userId
+        - fullName
+        - email
+        - totalSessions
+        - presentCount
+        - lateCount
+        - absentCount
+        - excusedCount
+        - attendancePercent
+        - absencePercent
+        - warningLevel
+        - riskLevel
 
     PageAttendanceGroupSummaryResponse:
-        type: object
-        properties:
+      type: object
+      properties:
+        items:
+          type: array
           items:
-            type: array
-            items:
-              $ref: '#/components/schemas/AttendanceGroupSummaryItem'
-          page:
-            type: integer
-          size:
-            type: integer
-          totalElements:
-            type: integer
-            format: int64
-          totalPages:
-            type: integer
-        required:
-          - items
-          - page
-          - size
-          - totalElements
-          - totalPages
-    
+            $ref: '#/components/schemas/AttendanceGroupSummaryItem'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
+
     SecurityOverviewResponse:
       type: object
       properties:
@@ -3544,3 +3686,185 @@ components:
         - size
         - totalElements
         - totalPages
+
+    FraudIncidentStatus:
+      type: string
+      enum:
+        - OPEN
+        - ACKNOWLEDGED
+        - RESOLVED
+        - FALSE_POSITIVE
+
+    FraudIncidentSeverity:
+      type: string
+      enum:
+        - LOW
+        - MEDIUM
+        - HIGH
+        - CRITICAL
+
+    FraudIncidentType:
+      type: string
+      enum:
+        - SHARED_DEVICE_MULTI_ACCOUNT
+        - IP_BURST
+        - TOKEN_REPLAY
+        - REPEATED_QR_FAILURE
+
+    FraudIncidentSortBy:
+      type: string
+      enum:
+        - LAST_DETECTED_AT
+        - CREATED_AT
+        - SEVERITY
+
+    PatchFraudIncidentAction:
+      type: string
+      enum:
+        - ACKNOWLEDGE
+        - RESOLVE
+        - FALSE_POSITIVE
+
+    PatchFraudIncidentRequest:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          $ref: '#/components/schemas/PatchFraudIncidentAction'
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+        assignedToUserId:
+          type: string
+          format: uuid
+          nullable: true
+
+    FraudIncidentEvidenceSummaryResponse:
+      type: object
+      properties:
+        totalAttempts:
+          type: integer
+          format: int64
+        failAttempts:
+          type: integer
+          format: int64
+        distanceMeter:
+          type: integer
+          format: int32
+          nullable: true
+        distinctUserCount:
+          type: integer
+          format: int64
+        distinctIpCount:
+          type: integer
+          format: int64
+        distinctDeviceCount:
+          type: integer
+          format: int64
+        dominantFailureCode:
+          type: string
+          nullable: true
+        windowSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        relatedAttemptIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        relatedUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        ipAddresses:
+          type: array
+          items:
+            type: string
+        deviceIds:
+          type: array
+          items:
+            type: string
+        notes:
+          type: array
+          items:
+            type: string
+
+    FraudIncidentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+          nullable: true
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/FraudIncidentType'
+        severity:
+          $ref: '#/components/schemas/FraudIncidentSeverity'
+        status:
+          $ref: '#/components/schemas/FraudIncidentStatus'
+        firstDetectedAt:
+          type: string
+          format: date-time
+        lastDetectedAt:
+          type: string
+          format: date-time
+        occurrenceCount:
+          type: integer
+          format: int32
+        evidenceSummary:
+          $ref: '#/components/schemas/FraudIncidentEvidenceSummaryResponse'
+        assignedToUserId:
+          type: string
+          format: uuid
+          nullable: true
+        lastActionByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolutionNote:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PageFraudIncidentResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FraudIncidentResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32

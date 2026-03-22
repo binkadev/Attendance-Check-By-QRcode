@@ -1,0 +1,18 @@
+package com.attendance.backend.fraud.domain;
+
+public enum CheckinFailureCode {
+    TOKEN_INVALID,
+    TOKEN_MALFORMED,
+    TOKEN_NOT_FOUND,
+    TOKEN_EXPIRED,
+    TOKEN_WRONG_SESSION,
+    CHECKIN_NOT_OPEN_YET,
+    CHECKIN_CLOSED,
+    OUT_OF_RANGE,
+    DUPLICATE_CHECKIN,
+    USER_NOT_MEMBER,
+    USER_NOT_APPROVED,
+    SESSION_NOT_FOUND,
+    SESSION_NOT_OPEN,
+    UNKNOWN
+}
