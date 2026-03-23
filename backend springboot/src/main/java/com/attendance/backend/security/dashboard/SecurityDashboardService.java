@@ -200,10 +200,26 @@ public class SecurityDashboardService {
     }
 
     private long count(String sql, Instant since) {
-        Number number = (Number) entityManager.createNativeQuery(sql)
-                .setParameter("since", Timestamp.from(since))
-                .getSingleResult();
-        return number == null ? 0L : number.longValue();
+        var query = entityManager.createNativeQuery(sql);
+
+        if (since != null) {
+            Timestamp sinceTimestamp = Timestamp.from(since);
+
+            if (sql.contains(":since")) {
+                query.setParameter("since", sinceTimestamp);
+            } else if (sql.contains("?1") || sql.contains("?")) {
+                query.setParameter(1, sinceTimestamp);
+            }
+        }
+
+        Object result = query.getSingleResult();
+        if (result == null) {
+            return 0L;
+        }
+        if (result instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(result.toString());
     }
 
     private void ensureAdmin(UUID actorUserId) {
