@@ -9,7 +9,7 @@
 //import androidx.appcompat.app.AppCompatActivity;
 //
 //import com.androidapp.attendencecheckqrcode.R;
-//import com.androidapp.attendencecheckqrcode.models.Classroom;
+//import com.androidapp.attendencecheckqrcode.models.entities.Attendance.Classroom;
 //import com.google.android.material.button.MaterialButton;
 //
 //public class TeachingDetailActivity extends AppCompatActivity {
@@ -100,12 +100,11 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.Classroom;
+import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
 import com.google.android.material.button.MaterialButton;
 
 public class TeachingDetailActivity extends AppCompatActivity {
@@ -115,7 +114,7 @@ public class TeachingDetailActivity extends AppCompatActivity {
     private MaterialButton btnCreateQR;
 
     // Biến lưu trữ object lớp học hiện tại
-    private Classroom currentClassroom;
+    private Attendance.Classroom currentClassroom;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -143,7 +142,7 @@ public class TeachingDetailActivity extends AppCompatActivity {
         Intent intent = getIntent();
         if (intent != null) {
             // NHẬN DỮ LIỆU KIỂU OBJECT (Model Classroom)
-            currentClassroom = (Classroom) intent.getSerializableExtra("classData");
+            currentClassroom = (Attendance.Classroom) intent.getSerializableExtra("classData");
 
             if (currentClassroom != null) {
                 tvClassName.setText(currentClassroom.getClassName());

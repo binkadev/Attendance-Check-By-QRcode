@@ -12,11 +12,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
 import com.androidapp.attendencecheckqrcode.api.ApiClient;
-import com.androidapp.attendencecheckqrcode.models.AuthResponse;
-import com.androidapp.attendencecheckqrcode.models.LoginRequest;
+import com.androidapp.attendencecheckqrcode.models.payloads.AuthResponse;
+import com.androidapp.attendencecheckqrcode.models.payloads.LoginRequest;
 import com.androidapp.attendencecheckqrcode.ui.home.HomeActivity;
 import com.androidapp.attendencecheckqrcode.ui.signup.SignUpActivity;
 import com.androidapp.attendencecheckqrcode.utils.TokenManager;
@@ -34,6 +35,7 @@ public class LoginActivity extends AppCompatActivity {
     private CheckBox cbRemember;
     private boolean isPasswordVisible = false;
     private TokenManager tokenManager;
+    private AuthViewModel authViewModel;
 
     // Tên file lưu trữ thông tin Remember Me
     private static final String PREF_NAME = "LoginPrefs";
@@ -45,6 +47,7 @@ public class LoginActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) getSupportActionBar().hide();
 
         tokenManager = new TokenManager(this);
+        authViewModel = new ViewModelProvider(this).get(AuthViewModel.class);
 
         // Auto-login nếu đã có Token
         if (tokenManager.getToken() != null) {
@@ -55,6 +58,7 @@ public class LoginActivity extends AppCompatActivity {
         initViews();
         loadRememberedCredentials(); // Tải dữ liệu đã lưu nếu có
         setupListeners();
+        observeViewModel();
     }
 
     private void initViews() {
@@ -65,6 +69,48 @@ public class LoginActivity extends AppCompatActivity {
         tvSignUp = findViewById(R.id.tvSignUp);
         tvForgotPassword = findViewById(R.id.tvForgotPassword);
         cbRemember = findViewById(R.id.cbRemember);
+    }
+
+    private void observeViewModel() {
+        authViewModel.getLoginResult().observe(this, response -> {
+            switch (response.status) {
+                case LOADING:
+                    btnLogin.setEnabled(false);
+                    btnLogin.setText("Đang đăng nhập...");
+                    break;
+                case SUCCESS:
+                    btnLogin.setEnabled(true);
+                    btnLogin.setText("Đăng nhập");
+                    // Sua lai
+                    /*
+                    if (response.data != null && response.data.isSuccess()) {
+                        tokenManager.saveToken(response.data.getToken());
+                        saveCredentials(etEmail.getText().toString().trim(), etPassword.getText().toString().trim());
+                        Toast.makeText(this, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show();
+                        goToHome();
+                    } else {
+                        Toast.makeText(this, response.data != null ? response.data.getMessage() : "Lỗi server", Toast.LENGTH_SHORT).show();
+                    }
+                    break;
+                     */
+                    if (response.data != null && response.data.getAccessToken() != null) {
+                        // Lưu token (Dùng getAccessToken thay vì getToken)
+                        tokenManager.saveToken(response.data.getAccessToken());
+                        saveCredentials(etEmail.getText().toString().trim(), etPassword.getText().toString().trim());
+
+                        Toast.makeText(this, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show();
+                        goToHome();
+                    } else {
+                        Toast.makeText(this, "Không nhận được Token từ máy chủ!", Toast.LENGTH_SHORT).show();
+                    }
+                    break;
+                case ERROR:
+                    btnLogin.setEnabled(true);
+                    btnLogin.setText("Đăng nhập");
+                    Toast.makeText(this, response.message, Toast.LENGTH_LONG).show();
+                    break;
+            }
+        });
     }
 
     private void setupListeners() {
@@ -139,8 +185,8 @@ public class LoginActivity extends AppCompatActivity {
             Toast.makeText(this, "Đang gửi yêu cầu cho: " + resetEmail, Toast.LENGTH_SHORT).show();
 
             // [DỰ TRÙ API CHO BACKEND]
-            /*
-            ApiClient.getApiService(this).forgotPassword(resetEmail).enqueue(new Callback<ApiResponse>() {
+
+            /*ApiClient.getApiService(this).forgotPassword(resetEmail).enqueue(new Callback<ApiResponse>() {
                 @Override
                 public void onResponse(Call<ApiResponse> call, Response<ApiResponse> response) {
                     if (response.isSuccessful()) {
@@ -153,8 +199,8 @@ public class LoginActivity extends AppCompatActivity {
                 public void onFailure(Call<ApiResponse> call, Throwable t) {
                     Toast.makeText(LoginActivity.this, "Lỗi kết nối", Toast.LENGTH_SHORT).show();
                 }
-            });
-            */
+            });*/
+
         });
 
         builder.setNegativeButton("Hủy", (dialog, which) -> dialog.cancel());
@@ -174,7 +220,11 @@ public class LoginActivity extends AppCompatActivity {
         btnLogin.setEnabled(false);
         btnLogin.setText("Đang đăng nhập...");
 
-        LoginRequest request = new LoginRequest(email, password);
+        // gọi qua ViewModel
+        authViewModel.login(new LoginRequest(email, password));
+
+        //LoginRequest request = new LoginRequest(email, password);
+        /*
         ApiClient.getApiService(this).loginUser(request).enqueue(new Callback<AuthResponse>() {
             @Override
             public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
@@ -196,7 +246,17 @@ public class LoginActivity extends AppCompatActivity {
                         Toast.makeText(LoginActivity.this, response.body().getMessage(), Toast.LENGTH_SHORT).show();
                     }
                 } else {
-                    Toast.makeText(LoginActivity.this, "Sai tài khoản hoặc máy chủ lỗi!", Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(LoginActivity.this, "Sai tài khoản hoặc máy chủ lỗi!", Toast.LENGTH_SHORT).show();
+
+                    int statusCode = response.code();
+
+                    if (statusCode == 400 || statusCode == 401 || statusCode == 404) {
+                        Toast.makeText(LoginActivity.this, "Sai Email hoặc Mật khẩu!" + statusCode, Toast.LENGTH_LONG).show();
+                    } else if (statusCode >= 500) {
+                        Toast.makeText(LoginActivity.this, "Máy chủ đang bảo trì (Lỗi " + statusCode + "). Vui lòng thử lại sau!", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(LoginActivity.this, "Đăng nhập thất bại (Mã lỗi: " + statusCode + ")", Toast.LENGTH_SHORT).show();
+                    }
                 }
             }
 
@@ -207,6 +267,7 @@ public class LoginActivity extends AppCompatActivity {
                 Toast.makeText(LoginActivity.this, "Lỗi kết nối: " + t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
+        */
     }
 
     private void goToHome() {

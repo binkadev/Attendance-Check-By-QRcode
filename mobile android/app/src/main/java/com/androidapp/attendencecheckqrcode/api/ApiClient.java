@@ -1,7 +1,5 @@
 // Cau hinh network
-
 package com.androidapp.attendencecheckqrcode.api;
-
 
 import android.content.Context;
 import com.androidapp.attendencecheckqrcode.utils.TokenManager;
@@ -15,7 +13,8 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class ApiClient {
     // ip cho may ao android studioo, neu dung may that thi setup laij ip cung mang vs nhau.
-    private static final String BASE_URL = "http://10.0.2.2:8080/";
+//    private static final String BASE_URL = "http://10.251.0.93:8081/";
+    private static final String BASE_URL = "http://192.168.46.139:8081/";
     private static Retrofit retrofit;
 
     public static ApiService getApiService(Context context) {

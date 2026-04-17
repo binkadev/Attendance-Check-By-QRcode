@@ -2,11 +2,10 @@ package com.androidapp.attendencecheckqrcode.ui.clazz;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.Classroom;
+import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
 import com.androidapp.attendencecheckqrcode.ui.qr.QRScanActivity;
 
 public class ClassDetailActivity extends AppCompatActivity {
@@ -29,7 +28,7 @@ public class ClassDetailActivity extends AppCompatActivity {
         // Nhận dữ liệu
         Intent intent = getIntent();
         if (intent != null) {
-            Classroom classroom = (Classroom) intent.getSerializableExtra("classData");
+            Attendance.Classroom classroom = (Attendance.Classroom) intent.getSerializableExtra("classData");
             if (classroom != null) {
                 tvClassName.setText(classroom.getClassName());
                 tvClassCode.setText(classroom.getClassCode());

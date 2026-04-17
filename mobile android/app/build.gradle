@@ -68,4 +68,7 @@ dependencies {
 
     // 3. Thư viện load ảnh từ URL (Dùng cho Avatar sau này) - Khuyên dùng Glide hoặc Picasso
     implementation 'com.github.bumptech.glide:glide:4.16.0'
+
+    // Thêm thư viện Google ML Kit
+    implementation 'com.google.mlkit:barcode-scanning:17.2.0'
 }

@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.models;
+package com.androidapp.attendencecheckqrcode.models.entities;
 
 //package com.androidapp.attendencecheckqrcode.models;
 

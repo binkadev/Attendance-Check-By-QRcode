@@ -13,15 +13,34 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.Classroom;
-import com.androidapp.attendencecheckqrcode.models.User;
+import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
+import com.androidapp.attendencecheckqrcode.models.entities.User;
 import com.androidapp.attendencecheckqrcode.utils.MockData;
 
-import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+
+import android.app.AlertDialog;
+import android.app.TimePickerDialog;
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
+
+import com.androidapp.attendencecheckqrcode.R;
+import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
+import com.androidapp.attendencecheckqrcode.models.entities.User;
+
+import java.util.Calendar;
+import java.util.Locale;
+import androidx.lifecycle.ViewModelProvider;
 
 public class CreateClassActivity extends AppCompatActivity {
 
@@ -44,6 +63,8 @@ public class CreateClassActivity extends AppCompatActivity {
     // Data User
     private User currentUser;
 
+    private ClassViewModel classViewModel;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -51,14 +72,41 @@ public class CreateClassActivity extends AppCompatActivity {
 
         if (getSupportActionBar() != null) getSupportActionBar().hide();
 
-        // 1. Lấy User từ Intent (Được truyền từ Home)
         if (getIntent().hasExtra("currentUser")) {
             currentUser = (User) getIntent().getSerializableExtra("currentUser");
         }
 
+        // 2. BỔ SUNG DÒNG KHỞI TẠO NÀY TRƯỚC KHI GỌI observeViewModel()
+        classViewModel = new ViewModelProvider(this).get(ClassViewModel.class);
+
         initViews();
         setupListeners();
         setDefaultSemester();
+
+        // Khi classViewModel đã được khởi tạo ở trên, hàm bên dưới sẽ không bị lỗi nữa
+        observeViewModel();
+    }
+
+    private void observeViewModel() {
+        classViewModel.getCreateClassResult().observe(this, response -> {
+            switch (response.status) {
+                case LOADING:
+                    btnCreate.setEnabled(false);
+                    btnCreate.setText("Đang tạo...");
+                    break;
+                case SUCCESS:
+                    btnCreate.setEnabled(true);
+                    btnCreate.setText("Tạo lớp");
+                    Toast.makeText(this, "Tạo lớp thành công!", Toast.LENGTH_SHORT).show();
+                    finish(); // Trở về danh sách
+                    break;
+                case ERROR:
+                    btnCreate.setEnabled(true);
+                    btnCreate.setText("Tạo lớp");
+                    Toast.makeText(this, response.message, Toast.LENGTH_LONG).show();
+                    break;
+            }
+        });
     }
 
     private void initViews() {
@@ -157,7 +205,6 @@ public class CreateClassActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. Lấy chuỗi các thứ đã chọn (VD: "T2, T4")
         StringBuilder daysBuilder = new StringBuilder();
         for (TextView day : dayViews) {
             if (day.isSelected()) {
@@ -166,28 +213,25 @@ public class CreateClassActivity extends AppCompatActivity {
             }
         }
 
-        // 2. Tạo đối tượng Classroom
-        Classroom newClass = new Classroom(
-                UUID.randomUUID().toString(), // ID lớp ngẫu nhiên
+        // Tạo đối tượng gửi lên Backend (Backend sẽ tự sinh ID, nên truyền rỗng hoặc null cho ID)
+        Attendance.Classroom newClass = new Attendance.Classroom(
+                "", // Backend tự lo class_id
                 etClassName.getText().toString().trim(),
                 etSubjectCode.getText().toString().trim(),
                 etClassCode.getText().toString().trim(),
                 etRoom.getText().toString().trim(),
-                daysBuilder.toString(), // Thứ học
-                tvStartTime.getText() + " - " + tvEndTime.getText(), // Ca học
+                daysBuilder.toString(),
+                tvStartTime.getText() + " - " + tvEndTime.getText(),
                 totalSessions,
                 maxAbsence,
                 tvSemester.getText().toString(),
                 etDescription.getText().toString(),
-                currentUser.getId(), // QUAN TRỌNG: ID người tạo lớp
+                currentUser.getId(),
                 currentUser.getFullName()
         );
 
-        // 3. Lưu xuống file
-        MockData.saveClassToFile(this, newClass);
-
-        Toast.makeText(this, "Tạo lớp thành công!", Toast.LENGTH_SHORT).show();
-        finish();
+        // Gọi ViewModel thay vì MockData
+        classViewModel.createClass(newClass);
     }
 
     private boolean validateInputs() {

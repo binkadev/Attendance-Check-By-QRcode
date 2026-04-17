@@ -1,4 +1,4 @@
-# version: '3.8'
+# version: '3.8' (Đã deprecate ở các bản Docker mới, bạn có thể bỏ dòng này)
 
 services:
   # Container cho Database MySQL
@@ -12,34 +12,43 @@ services:
       - "3306:3306"
     volumes:
       - db_data:/var/lib/mysql
-
-    # Thêm đoạn healthcheck này
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # KHẮC PHỤC 1: Thêm Container cho Redis
+  redis-cache:
+    image: redis:7-alpine
+    container_name: qr_attendance_redis
+    ports:
+      - "6379:6379"
+
   # Container cho Spring Boot Backend
   backend-app:
-    build: 
-      context: "./backend springboot"    
+    build:
+      context: "./backend springboot"
       dockerfile: Dockerfile
     container_name: qr_attendance_backend
     ports:
-      # Map port 8081 của máy Fedora vào port 8081 của container
-      - "8081:8081"
+      - "0.0.0.0:8081:8081"
     depends_on:
-      - mysql-db
+      mysql-db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started # KHẮC PHỤC 2: Backend phải chờ Redis khởi động
     environment:
-      # Ép Spring Boot chạy ở port 8081
       - SERVER_PORT=8081
-      
-      # Thay 'localhost' thành 'mysql-db' (tên service ở trên)
+      - SERVER_ADDRESS=0.0.0.0
+
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-db:3306/qr_attendance_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=123456
 
+      # KHẮC PHỤC 3: Ghi đè biến môi trường, trỏ host của redis về tên container 'redis-cache'
+      - SPRING_DATA_REDIS_HOST=redis-cache
+      - SPRING_DATA_REDIS_PORT=6379
+
 volumes:
-  # Lưu trữ dữ liệu MySQL thật trên máy để không bị mất khi tắt Docker
   db_data:

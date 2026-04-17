@@ -1,9 +1,8 @@
 package com.androidapp.attendencecheckqrcode.utils;
 
 import android.content.Context;
-import com.androidapp.attendencecheckqrcode.models.Attendance;
-import com.androidapp.attendencecheckqrcode.models.Classroom;
-import com.androidapp.attendencecheckqrcode.models.User;
+import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
+import com.androidapp.attendencecheckqrcode.models.entities.User;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -97,7 +96,7 @@ public class MockData {
 
         // Admin fallback
         if (email.equals("admin") && password.equals("1"))
-            return new User("admin", "1", "Admin", "User", "01/01/2000", "000");
+            return new User("admin", "1", "Admin", "User");
 
         return null;
     }
@@ -115,15 +114,15 @@ public class MockData {
     }
 
     // --- 3. CLASSROOM ---
-    public static void saveClassToFile(Context context, Classroom classroom) {
+    public static void saveClassToFile(Context context, Attendance.Classroom classroom) {
         appendToFile(context, FILE_CLASSES, classroom.toFileString());
     }
 
     // Lấy danh sách lớp DẠY (Giảng viên)
-    public static List<Classroom> getTeachingClasses(Context context, int lecturerId) {
-        List<Classroom> all = getAllClasses(context);
-        List<Classroom> result = new ArrayList<>();
-        for (Classroom c : all) {
+    public static List<Attendance.Classroom> getTeachingClasses(Context context, int lecturerId) {
+        List<Attendance.Classroom> all = getAllClasses(context);
+        List<Attendance.Classroom> result = new ArrayList<>();
+        for (Attendance.Classroom c : all) {
             if (c.getLecturerId() == lecturerId) result.add(c);
         }
         return result;
@@ -131,12 +130,12 @@ public class MockData {
 
     // Lấy danh sách lớp HỌC (Sinh viên)
     // CẬP NHẬT LOGIC: Chỉ lấy lớp đã tham gia (có trong enrollments.txt) HOẶC lớp không phải mình tạo
-    public static List<Classroom> getEnrolledClasses(Context context, int userId) {
-        List<Classroom> all = getAllClasses(context);
+    public static List<Attendance.Classroom> getEnrolledClasses(Context context, int userId) {
+        List<Attendance.Classroom> all = getAllClasses(context);
         List<String> joinedIds = getJoinedClassIds(context, userId); // Lấy list ID lớp đã join
 
-        List<Classroom> result = new ArrayList<>();
-        for (Classroom c : all) {
+        List<Attendance.Classroom> result = new ArrayList<>();
+        for (Attendance.Classroom c : all) {
             // Điều kiện: (Đã Join OR Không phải mình dạy) AND (Tránh trùng lặp logic)
             // Logic đơn giản cho demo: Lớp nào có trong file enrollment của mình thì hiện ra
             if (joinedIds.contains(c.getClassId())) {
@@ -150,13 +149,13 @@ public class MockData {
         return result;
     }
 
-    private static List<Classroom> getAllClasses(Context context) {
-        List<Classroom> list = new ArrayList<>();
+    private static List<Attendance.Classroom> getAllClasses(Context context) {
+        List<Attendance.Classroom> list = new ArrayList<>();
         try (FileInputStream fis = context.openFileInput(FILE_CLASSES);
              BufferedReader br = new BufferedReader(new InputStreamReader(fis))) {
             String line;
             while ((line = br.readLine()) != null) {
-                if (!line.trim().isEmpty()) list.add(new Classroom(line));
+                if (!line.trim().isEmpty()) list.add(new Attendance.Classroom(line));
             }
         } catch (Exception e) {}
         return list;

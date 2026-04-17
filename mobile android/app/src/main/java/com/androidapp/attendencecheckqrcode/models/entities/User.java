@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.models;
+package com.androidapp.attendencecheckqrcode.models.entities;
 
 import java.io.Serializable;
 
@@ -8,17 +8,12 @@ public class User implements Serializable {
     private String password;
     private String firstName;
     private String lastName;
-    private String dob;
-    private String phone;
 
-    // Constructor đăng ký mới
-    public User(String email, String password, String firstName, String lastName, String dob, String phone) {
+    public User(String email, String password, String firstName, String lastName) {
         this.email = email;
         this.password = password;
         this.firstName = firstName;
         this.lastName = lastName;
-        this.dob = dob;
-        this.phone = phone;
         this.id = email.hashCode(); // Tạo ID cố định dựa trên email
     }
 
@@ -30,14 +25,12 @@ public class User implements Serializable {
             this.password = p[1];
             this.firstName = p[2];
             this.lastName = p[3];
-            this.dob = p[4];
-            this.phone = p[5];
             this.id = this.email.hashCode();
         }
     }
 
     public String toFileString() {
-        return email + "|" + password + "|" + firstName + "|" + lastName + "|" + dob + "|" + phone;
+        return email + "|" + password + "|" + firstName + "|" + lastName;
     }
 
     // Getters

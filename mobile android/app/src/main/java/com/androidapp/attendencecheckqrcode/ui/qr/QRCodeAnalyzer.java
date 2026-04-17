@@ -1,8 +1,9 @@
 package com.androidapp.attendencecheckqrcode.ui.qr;
 
-//package com.androidapp.attendencecheckqrcode.ui.qr;
-
 import android.annotation.SuppressLint;
+import android.graphics.Rect;
+import android.media.Image;
+
 import androidx.annotation.NonNull;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
@@ -15,46 +16,43 @@ import com.google.mlkit.vision.common.InputImage;
 
 public class QRCodeAnalyzer implements ImageAnalysis.Analyzer {
 
-    // Interface để gửi kết quả về cho Activity
-    public interface OnQRCodeScannedListener {
-        void onScanned(String qrCode);
+    private final QRCodeListener listener;
+    private final BarcodeScanner scanner;
+
+    // Cập nhật interface để truyền thêm Rect và Kích thước ảnh
+    public interface QRCodeListener {
+        void onQRCodeFound(String qrCode, Rect boundingBox, int imageWidth, int imageHeight);
     }
 
-    private final OnQRCodeScannedListener listener;
-
-    public QRCodeAnalyzer(OnQRCodeScannedListener listener) {
+    public QRCodeAnalyzer(QRCodeListener listener) {
         this.listener = listener;
+        BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build();
+        scanner = BarcodeScanning.getClient(options);
     }
 
-    @Override
     @SuppressLint("UnsafeOptInUsageError")
+    @Override
     public void analyze(@NonNull ImageProxy imageProxy) {
-        android.media.Image mediaImage = imageProxy.getImage();
+        Image mediaImage = imageProxy.getImage();
         if (mediaImage != null) {
-            // Chuyển đổi ảnh Camera sang InputImage của ML Kit
             InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
-
-            // Cấu hình chỉ quét QR Code (để tối ưu tốc độ)
-            BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
-                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                    .build();
-
-            BarcodeScanner scanner = BarcodeScanning.getClient(options);
 
             scanner.process(image)
                     .addOnSuccessListener(barcodes -> {
-                        // Nếu tìm thấy mã
                         for (Barcode barcode : barcodes) {
                             String rawValue = barcode.getRawValue();
-                            if (rawValue != null) {
-                                listener.onScanned(rawValue);
+                            Rect boundingBox = barcode.getBoundingBox();
+
+                            if (rawValue != null && boundingBox != null) {
+                                // Truyền thêm chiều rộng và chiều cao của ảnh (đã xoay chiều)
+                                listener.onQRCodeFound(rawValue, boundingBox, image.getWidth(), image.getHeight());
+                                break;
                             }
                         }
                     })
-                    .addOnCompleteListener(task -> {
-                        // QUAN TRỌNG: Phải đóng imageProxy để nhận frame tiếp theo
-                        imageProxy.close();
-                    });
+                    .addOnCompleteListener(task -> imageProxy.close());
         } else {
             imageProxy.close();
         }

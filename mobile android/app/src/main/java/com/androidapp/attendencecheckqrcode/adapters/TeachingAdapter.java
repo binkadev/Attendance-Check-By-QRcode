@@ -8,16 +8,16 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.Classroom;
+import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
 import com.androidapp.attendencecheckqrcode.ui.teaching.TeachingDetailActivity;
 import java.util.List;
 
 public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.TeachingViewHolder> {
-    private List<Classroom> mListClass;
+    private List<Attendance.Classroom> mListClass;
 
-    public TeachingAdapter(List<Classroom> mListClass) { this.mListClass = mListClass; }
+    public TeachingAdapter(List<Attendance.Classroom> mListClass) { this.mListClass = mListClass; }
 
-    public void setData(List<Classroom> list) {
+    public void setData(List<Attendance.Classroom> list) {
         this.mListClass = list;
         notifyDataSetChanged();
     }
@@ -31,7 +31,7 @@ public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.Teachi
 
     @Override
     public void onBindViewHolder(@NonNull TeachingViewHolder holder, int position) {
-        Classroom item = mListClass.get(position);
+        Attendance.Classroom item = mListClass.get(position);
         if (item == null) return;
 
         holder.tvClassName.setText(item.getClassName());

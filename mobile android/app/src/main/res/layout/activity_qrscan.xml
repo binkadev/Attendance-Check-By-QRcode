@@ -13,25 +13,30 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <View
-        android:id="@+id/viewScanFrame"
-        android:layout_width="280dp"
-        android:layout_height="280dp"
-        android:background="@drawable/bg_scan_frame"
+    <com.androidapp.attendencecheckqrcode.ui.qr.ScannerOverlayView
+        android:id="@+id/scannerOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <ImageView
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:src="@drawable/ic_qr_watermark" android:alpha="0.3" app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintVertical_bias="0.45" />
+
     <View
         android:id="@+id/viewLaser"
         android:layout_width="260dp"
         android:layout_height="2dp"
         android:background="#FF0000"
-        app:layout_constraintTop_toTopOf="@id/viewScanFrame"
-        app:layout_constraintBottom_toBottomOf="@id/viewScanFrame"
-        app:layout_constraintStart_toStartOf="@id/viewScanFrame"
-        app:layout_constraintEnd_toEndOf="@id/viewScanFrame"/>
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.45" />
 
     <ImageView
         android:id="@+id/btnClose"
@@ -42,6 +47,15 @@
         app:tint="#FFFFFF"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"/>
+
+    <ImageView
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:src="@android:drawable/ic_dialog_dialer" app:tint="#50FFFFFF" app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.45" />
 
     <ImageView
         android:id="@+id/btnSwitchCamera"
@@ -58,9 +72,9 @@
         android:layout_height="wrap_content"
         android:text="Đặt mã QR vào trong khung"
         android:textColor="#FFFFFF"
-        android:layout_marginTop="20dp"
+        android:layout_marginBottom="60dp"
         android:textSize="14sp"
-        app:layout_constraintTop_toBottomOf="@id/viewScanFrame"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
