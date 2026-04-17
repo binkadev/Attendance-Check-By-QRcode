@@ -1,10 +1,10 @@
-# version: '3.8' (Đã deprecate ở các bản Docker mới, bạn có thể bỏ dòng này)
-
 services:
   # Container cho Database MySQL
   mysql-db:
     image: mysql:8.0
     container_name: qr_attendance_db
+    # THÊM DÒNG NÀY: Ép server dùng chuẩn unicode_ci để khớp với script seed
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_DATABASE: qr_attendance_dev
       MYSQL_ROOT_PASSWORD: 123456
@@ -18,7 +18,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # KHẮC PHỤC 1: Thêm Container cho Redis
+  # Container cho Redis
   redis-cache:
     image: redis:7-alpine
     container_name: qr_attendance_redis
@@ -37,18 +37,24 @@ services:
       mysql-db:
         condition: service_healthy
       redis-cache:
-        condition: service_started # KHẮC PHỤC 2: Backend phải chờ Redis khởi động
+        condition: service_started
     environment:
       - SERVER_PORT=8081
       - SERVER_ADDRESS=0.0.0.0
-
+      # KHÔI PHỤC LẠI: Thêm connectionCollation vào cuối để đồng bộ 100% với DB
       - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-db:3306/qr_attendance_dev?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=123456
-
-      # KHẮC PHỤC 3: Ghi đè biến môi trường, trỏ host của redis về tên container 'redis-cache'
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
+
+      # --- THÊM CÁC DÒNG NÀY ĐỂ FIX LỖI EMAIL ---
+      - SPRING_MAIL_HOST=smtp.gmail.com
+      - SPRING_MAIL_PORT=587
+      - SPRING_MAIL_USERNAME=your-email@gmail.com
+      - SPRING_MAIL_PASSWORD=your-app-password
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
 
 volumes:
   db_data:

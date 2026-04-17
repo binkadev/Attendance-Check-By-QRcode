@@ -148,6 +148,20 @@ public class SignUpActivity extends AppCompatActivity {
             return;
         }
 
+        // 1. Kiểm tra độ dài (ít nhất 10 ký tự)
+        if (password.length() < 10) {
+            Toast.makeText(this, "Mật khẩu phải có ít nhất 10 ký tự!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 2. Kiểm tra độ mạnh (phải có cả chữ và số)
+        // Regex này kiểm tra: có ít nhất 1 chữ cái và 1 chữ số
+        String passwordPattern = "^(?=.*[A-Za-z])(?=.*\\d).+$";
+        if (!password.matches(passwordPattern)) {
+            Toast.makeText(this, "Mật khẩu phải bao gồm cả chữ và số!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         // 1. Ghép Họ và Tên thành fullName theo yêu cầu Backend
         String fullName = firstName + " " + lastName;
 

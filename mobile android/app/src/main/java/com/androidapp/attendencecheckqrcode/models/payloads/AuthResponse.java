@@ -9,26 +9,52 @@ public class AuthResponse {
     @SerializedName("accessToken")
     private String accessToken;
 
+    @SerializedName("accessTokenExpiresAt")
+    private String accessTokenExpiresAt;
+
+    @SerializedName("refreshToken")
+    private String refreshToken;
+
+    @SerializedName("refreshTokenExpiresAt")
+    private String refreshTokenExpiresAt;
+
+    @SerializedName("sessionId")
+    private String sessionId;
+
     @SerializedName("firstLogin")
     private boolean firstLogin;
 
     @SerializedName("user")
     private UserDto user;
 
-    // Getters
+    // --- GETTERS ---
     public String getAccessToken() { return accessToken; }
     public String getTokenType() { return tokenType; }
+    public String getRefreshToken() { return refreshToken; }
+    public String getAccessTokenExpiresAt() { return accessTokenExpiresAt; }
+    public String getRefreshTokenExpiresAt() { return refreshTokenExpiresAt; }
+    public String getSessionId() { return sessionId; }
     public boolean isFirstLogin() { return firstLogin; }
     public UserDto getUser() { return user; }
 
-    // Class con để hứng object "user" bên trong JSON
+    // --- INNER CLASS ---
     public static class UserDto {
+        @SerializedName("id")
         private String id;
+
+        @SerializedName("email")
         private String email;
+
+        @SerializedName("fullName")
         private String fullName;
+
+        @SerializedName("platformRole")
         private String platformRole;
 
+        // Bổ sung đầy đủ Getter để hiển thị thông tin User
         public String getId() { return id; }
+        public String getEmail() { return email; }
         public String getFullName() { return fullName; }
+        public String getPlatformRole() { return platformRole; }
     }
 }

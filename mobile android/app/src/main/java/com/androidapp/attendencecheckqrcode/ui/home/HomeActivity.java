@@ -13,6 +13,7 @@ import androidx.cardview.widget.CardView;
 
 import com.androidapp.attendencecheckqrcode.R;
 import com.androidapp.attendencecheckqrcode.models.entities.User;
+import com.androidapp.attendencecheckqrcode.utils.TokenManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
@@ -88,17 +89,26 @@ public class HomeActivity extends AppCompatActivity {
 
     // Hàm nhận dữ liệu User từ màn hình Login gửi sang
     private void getUserDataFromIntent() {
+        // 1. Khởi tạo TokenManager
+        TokenManager tokenManager = new TokenManager(this);
+
+        // 2. Lấy tên đã lưu trong máy (mặc định là "Khách" nếu chưa có)
+        String displayName = tokenManager.getUserName();
+
+        // 3. Kiểm tra Intent (phòng trường hợp vừa đăng nhập xong có dữ liệu mới)
         Intent intent = getIntent();
         if (intent != null && intent.hasExtra("currentUser")) {
             currentUser = (User) intent.getSerializableExtra("currentUser");
-
-            // Hiển thị tên lên giao diện
-            if (currentUser != null && tvName != null) {
-                tvName.setText(currentUser.getFullName());
+            if (currentUser != null) {
+                displayName = currentUser.getFullName();
+                // Lưu lại vào máy cho chắc chắn
+                tokenManager.saveUserData(currentUser.getFullName(), currentUser.getEmail());
             }
-        } else {
-            // Nếu không có dữ liệu (chạy thẳng Home), đặt tên mặc định
-            if (tvName != null) tvName.setText("Khách");
+        }
+
+        // 4. Hiển thị lên TextView
+        if (tvName != null) {
+            tvName.setText(displayName);
         }
     }
 

@@ -94,13 +94,32 @@ public class LoginActivity extends AppCompatActivity {
                     break;
                      */
                     if (response.data != null && response.data.getAccessToken() != null) {
-                        // Lưu token (Dùng getAccessToken thay vì getToken)
+                        // 1. Log Token nhận được
+                        android.util.Log.d("DEBUG_LOGIN", "===> AccessToken: " + response.data.getAccessToken());
+
+                        // Lưu token
                         tokenManager.saveToken(response.data.getAccessToken());
                         saveCredentials(etEmail.getText().toString().trim(), etPassword.getText().toString().trim());
+
+                        // 2. Kiểm tra và Log object User
+                        if (response.data.getUser() != null) {
+                            String name = response.data.getUser().getFullName();
+                            String email = response.data.getUser().getEmail();
+
+                            // Log cực chi tiết để xem tại sao Home bị hiện "Khách"
+                            android.util.Log.d("DEBUG_LOGIN", "===> User Profile: Name = [" + name + "], Email = [" + email + "]");
+
+                            tokenManager.saveUserData(name, email);
+                        } else {
+                            // Nếu Server trả về thành công nhưng thiếu object user, Log này sẽ báo động
+                            android.util.Log.e("DEBUG_LOGIN", "===> LỖI: Server trả về SUCCESS nhưng object USER bị NULL!");
+                        }
 
                         Toast.makeText(this, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show();
                         goToHome();
                     } else {
+                        // Log trường hợp thất bại
+                        android.util.Log.e("DEBUG_LOGIN", "===> THẤT BẠI: response.data null hoặc không có Token");
                         Toast.makeText(this, "Không nhận được Token từ máy chủ!", Toast.LENGTH_SHORT).show();
                     }
                     break;
@@ -212,62 +231,19 @@ public class LoginActivity extends AppCompatActivity {
         String email = etEmail.getText().toString().trim();
         String password = etPassword.getText().toString().trim();
 
+        // Lấy Device ID
+        String deviceId = android.provider.Settings.Secure.getString(
+                getContentResolver(),
+                android.provider.Settings.Secure.ANDROID_ID
+        );
+
         if (email.isEmpty() || password.isEmpty()) {
             Toast.makeText(this, "Vui lòng nhập Email và Mật khẩu", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        btnLogin.setEnabled(false);
-        btnLogin.setText("Đang đăng nhập...");
-
-        // gọi qua ViewModel
-        authViewModel.login(new LoginRequest(email, password));
-
-        //LoginRequest request = new LoginRequest(email, password);
-        /*
-        ApiClient.getApiService(this).loginUser(request).enqueue(new Callback<AuthResponse>() {
-            @Override
-            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
-                btnLogin.setEnabled(true);
-                btnLogin.setText("Đăng nhập");
-
-                if (response.isSuccessful() && response.body() != null) {
-                    if (response.body().isSuccess()) {
-
-                        // 1. Lưu Token
-                        tokenManager.saveToken(response.body().getToken());
-
-                        // 2. Kiểm tra và lưu trạng thái Remember Me
-                        saveCredentials(email, password);
-
-                        Toast.makeText(LoginActivity.this, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show();
-                        goToHome();
-                    } else {
-                        Toast.makeText(LoginActivity.this, response.body().getMessage(), Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    //Toast.makeText(LoginActivity.this, "Sai tài khoản hoặc máy chủ lỗi!", Toast.LENGTH_SHORT).show();
-
-                    int statusCode = response.code();
-
-                    if (statusCode == 400 || statusCode == 401 || statusCode == 404) {
-                        Toast.makeText(LoginActivity.this, "Sai Email hoặc Mật khẩu!" + statusCode, Toast.LENGTH_LONG).show();
-                    } else if (statusCode >= 500) {
-                        Toast.makeText(LoginActivity.this, "Máy chủ đang bảo trì (Lỗi " + statusCode + "). Vui lòng thử lại sau!", Toast.LENGTH_LONG).show();
-                    } else {
-                        Toast.makeText(LoginActivity.this, "Đăng nhập thất bại (Mã lỗi: " + statusCode + ")", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            }
-
-            @Override
-            public void onFailure(Call<AuthResponse> call, Throwable t) {
-                btnLogin.setEnabled(true);
-                btnLogin.setText("Đăng nhập");
-                Toast.makeText(LoginActivity.this, "Lỗi kết nối: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        });
-        */
+        // Truyền thêm deviceId vào constructor
+        authViewModel.login(new LoginRequest(email, password, deviceId));
     }
 
     private void goToHome() {

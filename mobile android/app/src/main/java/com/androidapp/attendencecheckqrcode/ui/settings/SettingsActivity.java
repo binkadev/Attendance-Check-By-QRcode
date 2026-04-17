@@ -23,6 +23,7 @@ import androidx.appcompat.widget.SwitchCompat;
 
 import com.androidapp.attendencecheckqrcode.R;
 import com.androidapp.attendencecheckqrcode.ui.login.LoginActivity;
+import com.androidapp.attendencecheckqrcode.utils.TokenManager;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -48,10 +49,16 @@ public class SettingsActivity extends AppCompatActivity {
     // Launcher để mở thư viện ảnh và nhận kết quả
     private ActivityResultLauncher<Intent> imagePickerLauncher;
 
+    // Khai báo ở trên cùng class
+    private TokenManager tokenManager;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+
+        // Khởi tạo trong onCreate
+        tokenManager = new TokenManager(this);
 
         if (getSupportActionBar() != null) getSupportActionBar().hide();
 
@@ -273,14 +280,22 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // --- HÀM ĐĂNG XUẤT ---
+    // Tìm đến hàm showLogoutDialog trong SettingsActivity.java
     private void showLogoutDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("Đăng xuất")
                 .setMessage("Bạn có chắc chắn muốn đăng xuất không?")
                 .setPositiveButton("Đăng xuất", (dialog, which) -> {
+
+                    // 1. PHẢI CÓ DÒNG NÀY: Xóa sạch chìa khóa trong máy
+                    TokenManager tokenManager = new TokenManager(this);
+                    tokenManager.clearAll();
+
+                    // 2. Chuyển về Login và xóa sạch lịch sử các màn hình trước
                     Intent intent = new Intent(SettingsActivity.this, LoginActivity.class);
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                     startActivity(intent);
+                    finish(); // Đóng luôn màn hình Settings
                 })
                 .setNegativeButton("Hủy", null)
                 .show();
