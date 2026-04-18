@@ -181,6 +181,114 @@ paths:
         '404':
           $ref: '#/components/responses/Err404'
 
+  /me/classes:
+    get:
+      tags:
+        - Me
+      summary: List my classes for mobile class screen
+      description: >
+        Mobile self-read endpoint for class cards.
+        Supports quick search by group name, legacy code, course code, class code, lecturer name.
+        Supports filter by semester and academicYear.
+        Representative session time selection rule:
+        prefer OPEN non-deleted session;
+        if none, nearest upcoming non-deleted non-cancelled session;
+        if none, latest past non-deleted non-cancelled session.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Quick search by group name, legacy code, course code, class code, lecturer name
+          schema:
+            type: string
+            maxLength: 150
+        - name: scope
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MyClassScope'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/GroupStatus'
+        - name: memberStatus
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MemberStatus'
+        - name: semester
+          in: query
+          required: false
+          description: Semester filter from class_groups.semester
+          schema:
+            type: string
+            maxLength: 30
+        - name: academicYear
+          in: query
+          required: false
+          description: Academic year filter from class_groups.academic_year
+          schema:
+            type: string
+            maxLength: 30
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MyClassSortBy'
+        - name: sortDir
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/LowercaseSortDirection'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageMyClassResponse'
+        '400':
+          $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+
+  /me/classes/semesters:
+    get:
+      tags:
+        - Me
+      summary: List distinct semester options for my class dropdown
+      description: >
+        Returns distinct semester + academicYear options from classes visible to current user
+        using the same access visibility as /me/classes with scope ALL.
+        Items with both semester and academicYear blank are excluded.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyClassSemesterOptionResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+
   /me/notifications:
     get:
       tags:
@@ -1799,6 +1907,141 @@ components:
                 message: Too many requests
 
   schemas:
+
+    MyClassScope:
+      type: string
+      enum:
+        - ALL
+        - TEACHING
+        - STUDYING
+      default: ALL
+
+    MyClassSortBy:
+        type: string
+        enum:
+          - updatedAt
+          - createdAt
+          - name
+        default: updatedAt
+
+    LowercaseSortDirection:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+
+    MyClassResponse:
+        type: object
+        properties:
+          groupId:
+            type: string
+            format: uuid
+          groupName:
+            type: string
+          roleLabel:
+            type: string
+          courseCode:
+            type: string
+            nullable: true
+          classCode:
+            type: string
+            nullable: true
+          startTime:
+            type: string
+            format: date-time
+            nullable: true
+          endTime:
+            type: string
+            format: date-time
+            nullable: true
+          room:
+            type: string
+            nullable: true
+          campus:
+            type: string
+            nullable: true
+          locationDisplay:
+            type: string
+            nullable: true
+          lecturerName:
+            type: string
+            nullable: true
+          approvedStudentCount:
+            type: integer
+            format: int64
+          semester:
+            type: string
+            nullable: true
+          academicYear:
+            type: string
+            nullable: true
+          thumbnail:
+            type: string
+            nullable: true
+          avatarUrl:
+            type: string
+            nullable: true
+          myRole:
+            $ref: '#/components/schemas/MemberRole'
+          myMemberStatus:
+            $ref: '#/components/schemas/MemberStatus'
+          joinedAt:
+            type: string
+            format: date-time
+            nullable: true
+          createdAt:
+            type: string
+            format: date-time
+          updatedAt:
+            type: string
+            format: date-time
+        required:
+          - groupId
+          - groupName
+          - roleLabel
+          - approvedStudentCount
+          - myRole
+          - myMemberStatus
+          - createdAt
+          - updatedAt
+
+    PageMyClassResponse:
+        type: object
+        properties:
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/MyClassResponse'
+          page:
+            type: integer
+          size:
+            type: integer
+          totalElements:
+            type: integer
+            format: int64
+          totalPages:
+            type: integer
+        required:
+          - items
+          - page
+          - size
+          - totalElements
+          - totalPages
+
+    MyClassSemesterOptionResponse:
+        type: object
+        properties:
+          semester:
+            type: string
+            nullable: true
+          academicYear:
+            type: string
+            nullable: true
+          label:
+            type: string
+        required:
+          - label
 
     NotificationType:
       type: string
