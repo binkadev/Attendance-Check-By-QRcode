@@ -275,8 +275,8 @@ paths:
       summary: List my teaching classes (convenience endpoint)
       description: >
         Convenience endpoint equivalent to /me/classes?scope=TEACHING.
-        Reuses the same search, status filter, paging, sorting and response schema
-        as /me/classes, but fixes scope to TEACHING for the mobile "Lớp dạy" screen.
+        Reuses the same search, status, semester, academicYear, paging, sorting
+        and response schema as /me/classes, but fixes scope to TEACHING.
       parameters:
         - name: q
           in: query
@@ -290,6 +290,20 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/GroupStatus'
+        - name: semester
+          in: query
+          required: false
+          description: Semester filter from class_groups.semester
+          schema:
+            type: string
+            maxLength: 30
+        - name: academicYear
+          in: query
+          required: false
+          description: Academic year filter from class_groups.academic_year
+          schema:
+            type: string
+            maxLength: 30
         - name: page
           in: query
           required: false

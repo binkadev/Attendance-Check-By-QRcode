@@ -43,6 +43,8 @@ class MyClassControllerTest {
                 principal,
                 "java",
                 "ACTIVE",
+                "HK2",
+                "2025-2026",
                 1,
                 10,
                 "createdAt",
@@ -58,11 +60,13 @@ class MyClassControllerTest {
         assertEquals(MyClassQueryCriteria.Scope.TEACHING, criteria.getScope());
         assertEquals("ACTIVE", criteria.getStatus());
         assertNull(criteria.getMemberStatus());
-        assertNull(criteria.getSemester());
-        assertNull(criteria.getAcademicYear());
+        assertEquals("HK2", criteria.getSemester());
+        assertEquals("2025-2026", criteria.getAcademicYear());
         assertEquals(1, criteria.getPage());
         assertEquals(10, criteria.getSize());
         assertEquals(MyClassQueryCriteria.SortBy.CREATED_AT, criteria.getSortBy());
         assertEquals(MyClassQueryCriteria.SortDir.ASC, criteria.getSortDir());
     }
+
+
 }

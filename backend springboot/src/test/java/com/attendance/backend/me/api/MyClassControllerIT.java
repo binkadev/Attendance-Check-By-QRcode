@@ -313,6 +313,31 @@ class MyClassControllerIT {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void teaching_convenience_filter_semester_success() throws Exception {
+        TestData data = seedBaseDataset();
+
+        mockMvc.perform(get("/api/v1/me/classes/teaching")
+                        .queryParam("semester", "HK2")
+                        .with(auth(data.actorUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].groupName", is("Trí tuệ nhân tạo")));
+    }
+
+    @Test
+    void teaching_convenience_filter_semester_and_academic_year_success() throws Exception {
+        TestData data = seedBaseDataset();
+
+        mockMvc.perform(get("/api/v1/me/classes/teaching")
+                        .queryParam("semester", "HK2")
+                        .queryParam("academicYear", "2025-2026")
+                        .with(auth(data.actorUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].groupName", is("Trí tuệ nhân tạo")));
+    }
+
     private TestData seedBaseDataset() {
         LocalDateTime now = LocalDateTime.now().withNano(0);
 
