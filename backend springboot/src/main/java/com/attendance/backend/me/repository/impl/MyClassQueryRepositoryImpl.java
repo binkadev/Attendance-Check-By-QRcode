@@ -1,5 +1,6 @@
 package com.attendance.backend.me.repository.impl;
 
+import com.attendance.backend.common.persistence.UuidBinary16SwapConverter;
 import com.attendance.backend.me.api.response.MyClassResponse;
 import com.attendance.backend.me.api.response.MyClassSemesterOptionResponse;
 import com.attendance.backend.me.api.response.PageMyClassResponse;
@@ -9,7 +10,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.nio.ByteBuffer;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,6 +17,8 @@ import java.util.UUID;
 
 @Repository
 public class MyClassQueryRepositoryImpl implements MyClassQueryRepository {
+
+    private static final UuidBinary16SwapConverter UUID_CONVERTER = new UuidBinary16SwapConverter();
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -225,7 +227,6 @@ public class MyClassQueryRepositoryImpl implements MyClassQueryRepository {
             case TEACHING -> sql.append(" AND gm.role IN ('OWNER', 'CO_HOST') ");
             case STUDYING -> sql.append(" AND gm.role = 'MEMBER' ");
             case ALL -> {
-                // no-op
             }
         }
 
@@ -301,19 +302,16 @@ public class MyClassQueryRepositoryImpl implements MyClassQueryRepository {
     }
 
     private byte[] uuidToBytes(UUID uuid) {
-        ByteBuffer buffer = ByteBuffer.allocate(16);
-        buffer.putLong(uuid.getMostSignificantBits());
-        buffer.putLong(uuid.getLeastSignificantBits());
-        return buffer.array();
+        if (uuid == null) {
+            return null;
+        }
+        return UUID_CONVERTER.convertToDatabaseColumn(uuid);
     }
 
     private UUID bytesToUuid(byte[] bytes) {
         if (bytes == null || bytes.length != 16) {
             return null;
         }
-        ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        long high = buffer.getLong();
-        long low = buffer.getLong();
-        return new UUID(high, low);
+        return UUID_CONVERTER.convertToEntityAttribute(bytes);
     }
 }

@@ -67,6 +67,4 @@ class MyClassControllerTest {
         assertEquals(MyClassQueryCriteria.SortBy.CREATED_AT, criteria.getSortBy());
         assertEquals(MyClassQueryCriteria.SortDir.ASC, criteria.getSortDir());
     }
-
-
 }

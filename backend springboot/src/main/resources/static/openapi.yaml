@@ -293,14 +293,12 @@ paths:
         - name: semester
           in: query
           required: false
-          description: Semester filter from class_groups.semester
           schema:
             type: string
             maxLength: 30
         - name: academicYear
           in: query
           required: false
-          description: Academic year filter from class_groups.academic_year
           schema:
             type: string
             maxLength: 30
@@ -340,7 +338,6 @@ paths:
           $ref: '#/components/responses/Err400'
         '401':
           $ref: '#/components/responses/Err401'
-
   /me/classes/semesters:
     get:
       tags:

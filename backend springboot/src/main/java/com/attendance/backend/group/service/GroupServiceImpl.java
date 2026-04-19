@@ -50,14 +50,26 @@ public class GroupServiceImpl implements GroupService {
 
         classGroupRepository.saveAndFlush(group);
 
-        GroupMember ownerMember = new GroupMember();
-        ownerMember.setGroupId(group.getId());
-        ownerMember.setUserId(callerUserId);
+        Instant now = Instant.now();
+
+        GroupMember ownerMember = GroupMember.newMember(
+                group.getId(),
+                callerUserId,
+                MemberStatus.APPROVED,
+                now
+        );
         ownerMember.setRole(MemberRole.OWNER);
         ownerMember.setMemberStatus(MemberStatus.APPROVED);
-        ownerMember.setJoinedAt(Instant.now());
+        ownerMember.setJoinedAt(now);
+        ownerMember.setRemovedAt(null);
 
         groupMemberRepository.saveAndFlush(ownerMember);
+
+        groupMemberRepository.findByGroupIdAndUserId(group.getId(), callerUserId)
+                .orElseThrow(() -> ApiException.conflict(
+                        "OWNER_MEMBERSHIP_NOT_PERSISTED",
+                        "Owner membership was not persisted after group creation"
+                ));
 
         ClassGroup saved = classGroupRepository.findById(group.getId())
                 .orElseThrow(() -> ApiException.notFound("GROUP_NOT_FOUND", "Group not found after save"));
@@ -84,12 +96,10 @@ public class GroupServiceImpl implements GroupService {
             return joinCode.trim().toUpperCase(Locale.ROOT);
         }
 
-        String generated = UUID.randomUUID()
+        return UUID.randomUUID()
                 .toString()
                 .replace("-", "")
                 .substring(0, 8)
                 .toUpperCase(Locale.ROOT);
-
-        return generated;
     }
 }
