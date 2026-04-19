@@ -1,14 +1,12 @@
 package com.androidapp.attendencecheckqrcode.ui.settings;
 
 import android.app.Activity;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.text.InputType;
 import android.text.TextUtils;
-import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -22,7 +20,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.ui.login.LoginActivity;
+import com.androidapp.attendencecheckqrcode.ui.auth.LoginActivity;
 import com.androidapp.attendencecheckqrcode.utils.TokenManager;
 
 import de.hdodenhof.circleimageview.CircleImageView;
@@ -214,26 +212,23 @@ public class SettingsActivity extends AppCompatActivity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Chọn ngôn ngữ");
         builder.setSingleChoiceItems(languages, checkedItem, (dialog, which) -> {
-            // Sự kiện khi chọn item
             String selectedLang = languages[which];
             if (tvLanguageValue != null) {
                 tvLanguageValue.setText(selectedLang);
             }
             Toast.makeText(this, "Đã đổi sang: " + selectedLang, Toast.LENGTH_SHORT).show();
 
-            // LƯU Ý: Để đổi ngôn ngữ toàn app thực sự, bạn cần code phức tạp hơn về Locale/ContextWrapper
             // Ở đây chỉ thay đổi giao diện hiển thị text.
             dialog.dismiss();
         });
         builder.show();
     }
 
-    // --- HÀM 3: DIALOG ĐỔI MẬT KHẨU ---
+    // ---  DIALOG ĐỔI MẬT KHẨU ---
     private void showChangePasswordDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Đổi mật khẩu");
 
-        // Tạo Layout chứa 3 ô nhập
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 40, 50, 10);
@@ -255,7 +250,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         builder.setView(layout);
 
-        builder.setPositiveButton("Xác nhận", null); // Set null ở đây để override logic sau (tránh auto đóng dialog)
+        builder.setPositiveButton("Xác nhận", null);
         builder.setNegativeButton("Hủy", (dialog, which) -> dialog.cancel());
 
         AlertDialog dialog = builder.create();
@@ -280,14 +275,13 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // --- HÀM ĐĂNG XUẤT ---
-    // Tìm đến hàm showLogoutDialog trong SettingsActivity.java
     private void showLogoutDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("Đăng xuất")
                 .setMessage("Bạn có chắc chắn muốn đăng xuất không?")
                 .setPositiveButton("Đăng xuất", (dialog, which) -> {
 
-                    // 1. PHẢI CÓ DÒNG NÀY: Xóa sạch chìa khóa trong máy
+                    // 1.  Xóa sạch chìa khóa trong máy
                     TokenManager tokenManager = new TokenManager(this);
                     tokenManager.clearAll();
 
@@ -295,7 +289,7 @@ public class SettingsActivity extends AppCompatActivity {
                     Intent intent = new Intent(SettingsActivity.this, LoginActivity.class);
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                     startActivity(intent);
-                    finish(); // Đóng luôn màn hình Settings
+                    finish();
                 })
                 .setNegativeButton("Hủy", null)
                 .show();

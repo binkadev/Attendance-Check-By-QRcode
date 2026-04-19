@@ -59,7 +59,7 @@ app:
   auth:
     password-reset:
       token-minutes: 30
-      frontend-reset-url: "http://localhost:3000/reset-password"
+      frontend-reset-url: "http://localhost:5173/reset-password"
       rate-limit:
         redis-key-prefix: "auth:password-reset:rl:dev"
         window-minutes: 60

@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.ui.login;
+package com.androidapp.attendencecheckqrcode.ui.auth;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,16 +15,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.api.ApiClient;
-import com.androidapp.attendencecheckqrcode.models.payloads.AuthResponse;
-import com.androidapp.attendencecheckqrcode.models.payloads.LoginRequest;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.LoginRequest;
 import com.androidapp.attendencecheckqrcode.ui.home.HomeActivity;
-import com.androidapp.attendencecheckqrcode.ui.signup.SignUpActivity;
 import com.androidapp.attendencecheckqrcode.utils.TokenManager;
-
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class LoginActivity extends AppCompatActivity {
 

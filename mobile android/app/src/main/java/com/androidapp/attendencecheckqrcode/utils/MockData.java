@@ -1,8 +1,8 @@
 package com.androidapp.attendencecheckqrcode.utils;
 
 import android.content.Context;
-import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
-import com.androidapp.attendencecheckqrcode.models.entities.User;
+import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
+import com.androidapp.attendencecheckqrcode.domain.models.User;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;

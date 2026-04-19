@@ -1,45 +1,27 @@
 package com.androidapp.attendencecheckqrcode.ui.clazz;
 
 import android.os.Bundle;
-import android.widget.ImageView;
-import android.widget.Toast;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.adapters.ClassAdapter;
-import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
-import com.androidapp.attendencecheckqrcode.models.entities.User;
-import com.androidapp.attendencecheckqrcode.utils.MockData;
-
-import java.util.ArrayList;
-import java.util.List;
-
-
-import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.adapters.ClassAdapter;
-import com.androidapp.attendencecheckqrcode.models.entities.User;
 
 import java.util.ArrayList;
 
 public class ClassListActivity extends AppCompatActivity {
 
-    private RecyclerView rcvClassList;
-    private ClassAdapter classAdapter;
     private ImageView btnBack;
-    private ProgressBar progressBar; // Bạn nên thêm một ProgressBar vào file XML nhé
+    private RecyclerView rcvClassList;
+    private ProgressBar progressBar;
 
+    private ClassAdapter adapter;
     private ClassViewModel classViewModel;
 
     @Override
@@ -48,47 +30,48 @@ public class ClassListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_class_list);
         if (getSupportActionBar() != null) getSupportActionBar().hide();
 
-        classViewModel = new ViewModelProvider(this).get(ClassViewModel.class);
-
         initViews();
         setupRecyclerView();
 
-        btnBack.setOnClickListener(v -> finish());
+        classViewModel = new ViewModelProvider(this).get(ClassViewModel.class);
+        observeViewModel();
+        classViewModel.fetchEnrolledClasses();
 
-        loadData();
+        btnBack.setOnClickListener(v -> finish());
     }
 
     private void initViews() {
-        rcvClassList = findViewById(R.id.rcvClassList);
         btnBack = findViewById(R.id.btnBack);
-        // Nhớ thêm <ProgressBar android:id="@+id/progressBar" ... /> vào activity_class_list.xml
-        // progressBar = findViewById(R.id.progressBar);
+        rcvClassList = findViewById(R.id.rcvClassList);
+        progressBar = findViewById(R.id.progressBar);
     }
 
     private void setupRecyclerView() {
-        classAdapter = new ClassAdapter(new ArrayList<>());
+        adapter = new ClassAdapter(new ArrayList<>());
         rcvClassList.setLayoutManager(new LinearLayoutManager(this));
-        rcvClassList.setAdapter(classAdapter);
+        rcvClassList.setAdapter(adapter);
     }
 
-    private void loadData() {
-        classViewModel.getEnrolledClasses().observe(this, response -> {
+    private void observeViewModel() {
+        classViewModel.getEnrolledClassesResult().observe(this, response -> {
             switch (response.status) {
                 case LOADING:
-                    // if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
+                    progressBar.setVisibility(View.VISIBLE);
+                    rcvClassList.setVisibility(View.GONE);
                     break;
                 case SUCCESS:
-                    // if (progressBar != null) progressBar.setVisibility(View.GONE);
-                    if (response.data != null) {
-                        classAdapter.setData(response.data);
-                        if (response.data.isEmpty()) {
-                            Toast.makeText(this, "Bạn chưa tham gia lớp nào.", Toast.LENGTH_SHORT).show();
-                        }
+                    progressBar.setVisibility(View.GONE);
+                    rcvClassList.setVisibility(View.VISIBLE);
+                    if (response.data != null && !response.data.isEmpty()) {
+                        adapter.updateData(response.data);
+                    } else {
+                        Toast.makeText(this, "Bạn chưa tham gia môn học nào!", Toast.LENGTH_SHORT).show();
                     }
                     break;
                 case ERROR:
-                    // if (progressBar != null) progressBar.setVisibility(View.GONE);
-                    Toast.makeText(this, response.message, Toast.LENGTH_SHORT).show();
+                    progressBar.setVisibility(View.GONE);
+                    rcvClassList.setVisibility(View.VISIBLE);
+                    Toast.makeText(this, response.message, Toast.LENGTH_LONG).show();
                     break;
             }
         });

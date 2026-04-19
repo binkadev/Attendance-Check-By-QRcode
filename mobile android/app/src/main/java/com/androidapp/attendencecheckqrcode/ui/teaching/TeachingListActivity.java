@@ -1,39 +1,28 @@
 package com.androidapp.attendencecheckqrcode.ui.teaching;
 
 import android.os.Bundle;
+import android.view.View;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.Toast;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.adapters.TeachingAdapter;
-//import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
-//import com.androidapp.attendencecheckqrcode.models.entities.User;
-//import com.androidapp.attendencecheckqrcode.utils.MockData;
-import java.util.ArrayList;
-import java.util.List;
 
-import android.os.Bundle;
-import android.widget.ImageView;
-import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.adapters.TeachingAdapter;
-import com.androidapp.attendencecheckqrcode.ui.clazz.ClassViewModel;
 
 import java.util.ArrayList;
 
 public class TeachingListActivity extends AppCompatActivity {
-    private RecyclerView rcvTeachingList;
-    private TeachingAdapter teachingAdapter;
-    private ImageView btnBack;
 
-    private ClassViewModel classViewModel;
+    private ImageView btnBack;
+    private RecyclerView rcvTeachingList;
+    private ProgressBar progressBar;
+
+    private TeachingAdapter adapter;
+    private TeachingViewModel teachingViewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,47 +30,48 @@ public class TeachingListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_teaching_list);
         if (getSupportActionBar() != null) getSupportActionBar().hide();
 
-        classViewModel = new ViewModelProvider(this).get(ClassViewModel.class);
-
         initViews();
         setupRecyclerView();
+
+        teachingViewModel = new ViewModelProvider(this).get(TeachingViewModel.class);
+        observeViewModel();
+        teachingViewModel.fetchTeachingClasses();
 
         btnBack.setOnClickListener(v -> finish());
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        loadData();
-    }
-
     private void initViews() {
-        rcvTeachingList = findViewById(R.id.rcvTeachingList);
         btnBack = findViewById(R.id.btnBack);
+        rcvTeachingList = findViewById(R.id.rcvTeachingList); // Nhớ đổi ID trong XML cho khớp
+        progressBar = findViewById(R.id.progressBar);
     }
 
     private void setupRecyclerView() {
-        teachingAdapter = new TeachingAdapter(new ArrayList<>());
+        adapter = new TeachingAdapter(new ArrayList<>());
         rcvTeachingList.setLayoutManager(new LinearLayoutManager(this));
-        rcvTeachingList.setAdapter(teachingAdapter);
+        rcvTeachingList.setAdapter(adapter);
     }
 
-    private void loadData() {
-        classViewModel.getTeachingClasses().observe(this, response -> {
+    private void observeViewModel() {
+        teachingViewModel.getTeachingClassesResult().observe(this, response -> {
             switch (response.status) {
                 case LOADING:
-                    // Hiện loading UI
+                    if(progressBar != null) progressBar.setVisibility(View.VISIBLE);
+                    rcvTeachingList.setVisibility(View.GONE);
                     break;
                 case SUCCESS:
-                    if (response.data != null) {
-                        teachingAdapter.setData(response.data);
-                        if (response.data.isEmpty()) {
-                            Toast.makeText(this, "Bạn chưa tạo lớp nào", Toast.LENGTH_SHORT).show();
-                        }
+                    if(progressBar != null) progressBar.setVisibility(View.GONE);
+                    rcvTeachingList.setVisibility(View.VISIBLE);
+                    if (response.data != null && !response.data.isEmpty()) {
+                        adapter.updateData(response.data);
+                    } else {
+                        Toast.makeText(this, "Bạn chưa có lớp giảng nào!", Toast.LENGTH_SHORT).show();
                     }
                     break;
                 case ERROR:
-                    Toast.makeText(this, response.message, Toast.LENGTH_SHORT).show();
+                    if(progressBar != null) progressBar.setVisibility(View.GONE);
+                    rcvTeachingList.setVisibility(View.VISIBLE);
+                    Toast.makeText(this, response.message, Toast.LENGTH_LONG).show();
                     break;
             }
         });

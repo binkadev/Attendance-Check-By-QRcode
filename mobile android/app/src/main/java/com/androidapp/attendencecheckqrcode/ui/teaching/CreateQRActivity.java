@@ -12,6 +12,9 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.androidapp.attendencecheckqrcode.R;
+// --- THÊM IMPORT DOMAIN CHUẨN ---
+import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
+
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.WriterException;
@@ -24,8 +27,8 @@ public class CreateQRActivity extends AppCompatActivity {
     private ImageView imgQRCode;
     private CountDownTimer countDownTimer;
 
-    // Biến lưu thông tin lớp để tạo QR
-    private String classInfo = "Lop_Android_K1";
+    // Biến lưu thông tin lớp để tạo QR (Nên dùng ClassID để bảo mật hơn)
+    private String classInfo = "Default_Class";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,10 +55,17 @@ public class CreateQRActivity extends AppCompatActivity {
 
     private void setupData() {
         Intent intent = getIntent();
-        String className = intent.getStringExtra("className");
-        if (className != null) {
-            tvSubTitle.setText(className);
-            classInfo = className; // Lưu lại để dùng tạo QR
+        // Bắt đối tượng ClassData từ TeachingDetailActivity gửi sang
+        if (intent != null && intent.hasExtra("classData")) {
+            Attendance.Classroom currentClass = (Attendance.Classroom) intent.getSerializableExtra("classData");
+
+            if (currentClass != null) {
+                // Hiển thị tên lớp lên SubTitle
+                tvSubTitle.setText(currentClass.getClassName());
+
+                // Dùng ClassID hoặc ClassCode để làm nội dung mã QR (tránh sinh viên giả mạo lớp khác)
+                classInfo = currentClass.getClassId() != null ? currentClass.getClassId() : currentClass.getClassCode();
+            }
         }
     }
 

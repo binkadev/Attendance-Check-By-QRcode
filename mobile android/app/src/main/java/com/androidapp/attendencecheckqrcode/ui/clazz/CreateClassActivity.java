@@ -11,58 +11,34 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
-import com.androidapp.attendencecheckqrcode.models.entities.User;
-import com.androidapp.attendencecheckqrcode.utils.MockData;
+import com.androidapp.attendencecheckqrcode.data.dto.group.CreateGroupRequest;
+import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
+import com.androidapp.attendencecheckqrcode.domain.models.User;
 
 import java.util.Calendar;
 import java.util.Locale;
 import java.util.UUID;
 
-import android.app.AlertDialog;
-import android.app.TimePickerDialog;
-import android.os.Bundle;
-import android.text.TextUtils;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.TextView;
-import android.widget.Toast;
-
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.lifecycle.ViewModelProvider;
-
-import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.entities.Attendance;
-import com.androidapp.attendencecheckqrcode.models.entities.User;
-
-import java.util.Calendar;
-import java.util.Locale;
-import androidx.lifecycle.ViewModelProvider;
-
 public class CreateClassActivity extends AppCompatActivity {
 
-    // Views
     private ImageView btnBack;
     private TextView tvStartTime, tvEndTime, tvSemester;
     private EditText etClassName, etSubjectCode, etClassCode, etRoom, etDescription;
     private Button btnCreate;
 
-    // Counter Variables (Logic cũ)
     private TextView tvTotalSessions, tvMaxAbsence;
     private ImageView btnMinusSession, btnPlusSession, btnMinusAbsent, btnPlusAbsent;
-    private int totalSessions = 15; // Mặc định
+    private int totalSessions = 15;
     private int maxAbsence = 3;
 
-    // Day Selection (Logic cũ)
     private TextView[] dayViews;
-    private int[] dayIds = {R.id.tvDay2, R.id.tvDay3, R.id.tvDay4, R.id.tvDay5, R.id.tvDay6, R.id.tvDay7, R.id.tvDay8};
+    private final int[] dayIds = {R.id.tvDay2, R.id.tvDay3, R.id.tvDay4, R.id.tvDay5, R.id.tvDay6, R.id.tvDay7, R.id.tvDay8};
 
-    // Data User
     private User currentUser;
-
     private ClassViewModel classViewModel;
 
     @Override
@@ -76,37 +52,12 @@ public class CreateClassActivity extends AppCompatActivity {
             currentUser = (User) getIntent().getSerializableExtra("currentUser");
         }
 
-        // 2. BỔ SUNG DÒNG KHỞI TẠO NÀY TRƯỚC KHI GỌI observeViewModel()
         classViewModel = new ViewModelProvider(this).get(ClassViewModel.class);
 
         initViews();
         setupListeners();
         setDefaultSemester();
-
-        // Khi classViewModel đã được khởi tạo ở trên, hàm bên dưới sẽ không bị lỗi nữa
         observeViewModel();
-    }
-
-    private void observeViewModel() {
-        classViewModel.getCreateClassResult().observe(this, response -> {
-            switch (response.status) {
-                case LOADING:
-                    btnCreate.setEnabled(false);
-                    btnCreate.setText("Đang tạo...");
-                    break;
-                case SUCCESS:
-                    btnCreate.setEnabled(true);
-                    btnCreate.setText("Tạo lớp");
-                    Toast.makeText(this, "Tạo lớp thành công!", Toast.LENGTH_SHORT).show();
-                    finish(); // Trở về danh sách
-                    break;
-                case ERROR:
-                    btnCreate.setEnabled(true);
-                    btnCreate.setText("Tạo lớp");
-                    Toast.makeText(this, response.message, Toast.LENGTH_LONG).show();
-                    break;
-            }
-        });
     }
 
     private void initViews() {
@@ -135,22 +86,39 @@ public class CreateClassActivity extends AppCompatActivity {
             dayViews[i] = findViewById(dayIds[i]);
         }
 
-        // Set giá trị mặc định lên UI
         tvTotalSessions.setText(String.valueOf(totalSessions));
         tvMaxAbsence.setText(String.valueOf(maxAbsence));
+    }
+
+    private void observeViewModel() {
+        classViewModel.getCreateClassResult().observe(this, response -> {
+            switch (response.status) {
+                case LOADING:
+                    btnCreate.setEnabled(false);
+                    btnCreate.setText("Đang tạo...");
+                    break;
+                case SUCCESS:
+                    btnCreate.setEnabled(true);
+                    btnCreate.setText("Tạo lớp");
+                    Toast.makeText(this, "Tạo lớp thành công!", Toast.LENGTH_SHORT).show();
+                    finish();
+                    break;
+                case ERROR:
+                    btnCreate.setEnabled(true);
+                    btnCreate.setText("Tạo lớp");
+                    Toast.makeText(this, response.message, Toast.LENGTH_LONG).show();
+                    break;
+            }
+        });
     }
 
     private void setupListeners() {
         btnBack.setOnClickListener(v -> finish());
 
-        // Chọn giờ
         tvStartTime.setOnClickListener(v -> showTimePicker(tvStartTime));
         tvEndTime.setOnClickListener(v -> showTimePicker(tvEndTime));
-
-        // Chọn học kỳ
         tvSemester.setOnClickListener(v -> showSemesterPicker());
 
-        // --- LOGIC TĂNG GIẢM CŨ GIỮ NGUYÊN ---
         btnMinusSession.setOnClickListener(v -> {
             if (totalSessions > 1) {
                 totalSessions--;
@@ -173,24 +141,20 @@ public class CreateClassActivity extends AppCompatActivity {
             tvMaxAbsence.setText(String.valueOf(maxAbsence));
         });
 
-        // --- LOGIC CHỌN THỨ ---
         for (TextView dayView : dayViews) {
             dayView.setOnClickListener(v -> {
-                v.setSelected(!v.isSelected());
-
-                // Ép kiểu v thành TextView
+                boolean isCurrentlySelected = v.isSelected();
+                v.setSelected(!isCurrentlySelected);
                 TextView tv = (TextView) v;
 
-                if (v.isSelected()) {
-                    // Dùng biến tv đã ép kiểu để gọi setTextColor
-                    tv.setTextColor(getResources().getColor(android.R.color.white));
+                if (!isCurrentlySelected) {
+                    tv.setTextColor(ContextCompat.getColor(this, android.R.color.white));
                 } else {
-                    tv.setTextColor(getResources().getColor(android.R.color.black));
+                    tv.setTextColor(ContextCompat.getColor(this, android.R.color.black));
                 }
             });
         }
 
-        // --- NÚT TẠO LỚP (GOM DỮ LIỆU) ---
         btnCreate.setOnClickListener(v -> {
             if (validateInputs()) {
                 createNewClassData();
@@ -198,40 +162,59 @@ public class CreateClassActivity extends AppCompatActivity {
         });
     }
 
-    // Hàm logic gom dữ liệu để lưu
+    // --- HÀM 1: SINH MÃ BẢO MẬT TUYỆT ĐỐI (Đã Rút Gọn) ---
+    private String generateSecureJoinCode(String subjectCode) {
+        // 1. Lấy 2 ký tự đầu của mã môn (nếu mã môn ngắn hơn 2 thì lấy hết)
+        String prefix = subjectCode.trim().toUpperCase().replaceAll("\\s+", "");
+        if (prefix.length() > 2) {
+            prefix = prefix.substring(0, 2);
+        }
+
+        // 2. Lấy 4 ký tự ngẫu nhiên từ UUID
+        String randomPart = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+
+        // 3. Lấy 5 số cuối của mili-giây
+        long timeSalt = System.currentTimeMillis() % 100000;
+        String salt = String.format("%05d", timeSalt);
+
+        // 4. Ghép lại. Ví dụ: IN_A7B2_48291 (Độ dài: 2 + 1 + 4 + 1 + 5 = 13 ký tự)
+        // Chắc chắn vượt qua được Validation "between 6 and 16"
+        return String.format("%s_%s_%s", prefix, randomPart, salt);
+    }
+
+    // --- HÀM 2: GOM DỮ LIỆU TẠO LỚP ---
     private void createNewClassData() {
-        if (currentUser == null) {
-            Toast.makeText(this, "Lỗi User! Vui lòng đăng nhập lại.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // 1. Lấy dữ liệu thô từ Giao diện (UI)
+        String className = etClassName.getText().toString().trim();
+        String subjectCode = etSubjectCode.getText().toString().trim();
+        String classCode = etClassCode.getText().toString().trim();
 
-        StringBuilder daysBuilder = new StringBuilder();
-        for (TextView day : dayViews) {
-            if (day.isSelected()) {
-                if (daysBuilder.length() > 0) daysBuilder.append(", ");
-                daysBuilder.append(day.getText().toString());
-            }
-        }
+        String description = etDescription.getText().toString().trim();
+        String semester = tvSemester.getText().toString();
+        String room = etRoom.getText().toString().trim();
 
-        // Tạo đối tượng gửi lên Backend (Backend sẽ tự sinh ID, nên truyền rỗng hoặc null cho ID)
-        Attendance.Classroom newClass = new Attendance.Classroom(
-                "", // Backend tự lo class_id
-                etClassName.getText().toString().trim(),
-                etSubjectCode.getText().toString().trim(),
-                etClassCode.getText().toString().trim(),
-                etRoom.getText().toString().trim(),
-                daysBuilder.toString(),
-                tvStartTime.getText() + " - " + tvEndTime.getText(),
-                totalSessions,
-                maxAbsence,
-                tvSemester.getText().toString(),
-                etDescription.getText().toString(),
-                currentUser.getId(),
-                currentUser.getFullName()
+        // 2. XỬ LÝ LOGIC: Gộp Mã Môn và Mã Lớp thành trường "code"
+        // Phục vụ cho việc hiển thị danh sách của Backend
+        // Kết quả ví dụ: "INT1340-D22CQAT01-N"
+        String systemCode = subjectCode + "-" + classCode;
+
+        // 3. XỬ LÝ LOGIC: Tự sinh "joinCode" duy nhất bằng hàm bên trên
+        String uniqueJoinCode = generateSecureJoinCode(subjectCode);
+
+        // 4. Đóng gói vào Request chuẩn của Backend
+        CreateGroupRequest request = new CreateGroupRequest(
+                className,          // name: Tên môn học
+                systemCode,         // code: Mã môn - Mã lớp
+                uniqueJoinCode,     // joinCode: Mã định danh kỹ thuật (Duy nhất 100%)
+                description,        // description
+                semester,           // semester
+                room,               // room
+                "AUTO",             // approvalMode: Mặc định Auto duyệt vào lớp
+                true                // allowAutoJoinOnCheckin: Cho phép tự join khi quét QR
         );
 
-        // Gọi ViewModel thay vì MockData
-        classViewModel.createClass(newClass);
+        // 5. Gửi gọi API (maxAbsence được lấy từ UI của bạn)
+        classViewModel.createClass(request, maxAbsence);
     }
 
     private boolean validateInputs() {
@@ -240,26 +223,25 @@ public class CreateClassActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(etClassCode.getText())) { etClassCode.setError("Nhập mã lớp"); return false; }
 
         boolean hasDay = false;
-        for(TextView tv : dayViews) if(tv.isSelected()) hasDay = true;
-        if(!hasDay) { Toast.makeText(this, "Chọn ít nhất 1 ngày", Toast.LENGTH_SHORT).show(); return false; }
+        for (TextView tv : dayViews) if (tv.isSelected()) hasDay = true;
+        if (!hasDay) { Toast.makeText(this, "Chọn ít nhất 1 ngày", Toast.LENGTH_SHORT).show(); return false; }
 
         return true;
     }
 
-    // --- CÁC HÀM UI CŨ (Giữ nguyên) ---
     private void setDefaultSemester() {
         Calendar c = Calendar.getInstance();
         int m = c.get(Calendar.MONTH) + 1;
         int y = c.get(Calendar.YEAR);
         String sem = (m >= 8) ? "Học kỳ 1" : (m <= 5 ? "Học kỳ 2" : "Học kỳ Hè");
-        String yStr = (m >= 8) ? y + "-" + (y+1) : (y-1) + "-" + y;
+        String yStr = (m >= 8) ? y + "-" + (y + 1) : (y - 1) + "-" + y;
         tvSemester.setText(sem + ", năm học " + yStr);
     }
 
     private void showSemesterPicker() {
         Calendar c = Calendar.getInstance();
         int y = c.get(Calendar.YEAR);
-        String[] sems = {"Học kỳ 1, năm học " + (y-1) + "-" + y, "Học kỳ 2, năm học " + (y-1) + "-" + y, "Học kỳ 1, năm học " + y + "-" + (y+1)};
+        String[] sems = {"Học kỳ 1, năm học " + (y - 1) + "-" + y, "Học kỳ 2, năm học " + (y - 1) + "-" + y, "Học kỳ 1, năm học " + y + "-" + (y + 1)};
         new AlertDialog.Builder(this).setTitle("Chọn học kỳ").setItems(sems, (d, i) -> tvSemester.setText(sems[i])).show();
     }
 

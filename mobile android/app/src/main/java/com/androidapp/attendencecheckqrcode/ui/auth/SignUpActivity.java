@@ -1,6 +1,5 @@
-package com.androidapp.attendencecheckqrcode.ui.signup;
+package com.androidapp.attendencecheckqrcode.ui.auth;
 
-import android.app.DatePickerDialog;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
@@ -14,9 +13,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.payloads.RegisterRequest;
-import com.androidapp.attendencecheckqrcode.ui.login.AuthViewModel;
-import com.androidapp.attendencecheckqrcode.ui.login.LoginActivity;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.RegisterRequest;
 
 import java.util.Calendar;
 
@@ -155,14 +152,12 @@ public class SignUpActivity extends AppCompatActivity {
         }
 
         // 2. Kiểm tra độ mạnh (phải có cả chữ và số)
-        // Regex này kiểm tra: có ít nhất 1 chữ cái và 1 chữ số
         String passwordPattern = "^(?=.*[A-Za-z])(?=.*\\d).+$";
         if (!password.matches(passwordPattern)) {
             Toast.makeText(this, "Mật khẩu phải bao gồm cả chữ và số!", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 1. Ghép Họ và Tên thành fullName theo yêu cầu Backend
         String fullName = firstName + " " + lastName;
 
         // 2. Lấy Device ID thực tế của điện thoại Android
@@ -176,7 +171,6 @@ public class SignUpActivity extends AppCompatActivity {
         RegisterRequest request = new RegisterRequest(safeEmail, password, fullName, safeUserCode, deviceId);
 
         // --- THÊM 2 DÒNG NÀY VÀO ---
-        // (Nhớ import com.google.gson.Gson; ở đầu file nhé)
         String jsonToSend = new com.google.gson.Gson().toJson(request);
         android.util.Log.e("KIEM_TRA_JSON", "CỤC JSON ANDROID GỬI LÊN: " + jsonToSend);
 

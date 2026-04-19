@@ -3,13 +3,13 @@ services:
   mysql-db:
     image: mysql:8.0
     container_name: qr_attendance_db
-    # THÊM DÒNG NÀY: Ép server dùng chuẩn unicode_ci để khớp với script seed
+    # Ép server dùng chuẩn unicode_ci để khớp với script seed
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_DATABASE: qr_attendance_dev
       MYSQL_ROOT_PASSWORD: 123456
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -24,6 +24,13 @@ services:
     container_name: qr_attendance_redis
     ports:
       - "6379:6379"
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: qr_attendance_mailpit
+    ports:
+      - "1025:1025" # Cổng SMTP để Backend gửi mail vào
+      - "8025:8025" # Cổng Web UI để vào xem mail (như Gmail)
 
   # Container cho Spring Boot Backend
   backend-app:
@@ -48,13 +55,21 @@ services:
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_DATA_REDIS_PORT=6379
 
-      # --- THÊM CÁC DÒNG NÀY ĐỂ FIX LỖI EMAIL ---
-      - SPRING_MAIL_HOST=smtp.gmail.com
-      - SPRING_MAIL_PORT=587
-      - SPRING_MAIL_USERNAME=your-email@gmail.com
-      - SPRING_MAIL_PASSWORD=your-app-password
-      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
-      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+      # --- FIX LỖI EMAIL ---
+#      - SPRING_MAIL_HOST=smtp.gmail.com
+#      - SPRING_MAIL_PORT=587
+#      - SPRING_MAIL_USERNAME=your-email@gmail.com
+#      - SPRING_MAIL_PASSWORD=your-app-password
+#      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+#      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+
+      # cấu hình Mail để trỏ vào Mailpit
+      - SPRING_MAIL_HOST=mailpit
+      - SPRING_MAIL_PORT=1025
+      - SPRING_MAIL_USERNAME=
+      - SPRING_MAIL_PASSWORD=
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=false
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
 
 volumes:
   db_data:
