@@ -268,6 +268,65 @@ paths:
         '401':
           $ref: '#/components/responses/Err401'
 
+  /me/classes/teaching:
+    get:
+      tags:
+        - Me
+      summary: List my teaching classes (convenience endpoint)
+      description: >
+        Convenience endpoint equivalent to /me/classes?scope=TEACHING.
+        Reuses the same search, status filter, paging, sorting and response schema
+        as /me/classes, but fixes scope to TEACHING for the mobile "Lớp dạy" screen.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Quick search by group name, legacy code, course code, class code, lecturer name
+          schema:
+            type: string
+            maxLength: 150
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/GroupStatus'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MyClassSortBy'
+        - name: sortDir
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/LowercaseSortDirection'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageMyClassResponse'
+        '400':
+          $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+
   /me/classes/semesters:
     get:
       tags:

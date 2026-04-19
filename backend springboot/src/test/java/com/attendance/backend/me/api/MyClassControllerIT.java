@@ -190,6 +190,46 @@ class MyClassControllerIT {
     }
 
     @Test
+    void teaching_convenience_success() throws Exception {
+        TestData data = seedBaseDataset();
+
+        mockMvc.perform(get("/api/v1/me/classes/teaching")
+                        .with(auth(data.actorUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page", is(0)))
+                .andExpect(jsonPath("$.size", is(20)))
+                .andExpect(jsonPath("$.items", hasSize(2)));
+    }
+
+    @Test
+    void teaching_convenience_search_success() throws Exception {
+        TestData data = seedBaseDataset();
+
+        mockMvc.perform(get("/api/v1/me/classes/teaching")
+                        .queryParam("q", "trí tuệ nhân tạo")
+                        .with(auth(data.actorUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].groupName", is("Trí tuệ nhân tạo")));
+    }
+
+    @Test
+    void teaching_convenience_paging_success() throws Exception {
+        TestData data = seedBaseDataset();
+
+        mockMvc.perform(get("/api/v1/me/classes/teaching")
+                        .queryParam("page", "0")
+                        .queryParam("size", "1")
+                        .with(auth(data.actorUserId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.page", is(0)))
+                .andExpect(jsonPath("$.size", is(1)))
+                .andExpect(jsonPath("$.totalElements", is(2)))
+                .andExpect(jsonPath("$.totalPages", is(2)));
+    }
+
+    @Test
     void paging_success() throws Exception {
         TestData data = seedBaseDataset();
 
@@ -262,6 +302,14 @@ class MyClassControllerIT {
         seedBaseDataset();
 
         mockMvc.perform(get("/api/v1/me/classes"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void teaching_convenience_unauthorized() throws Exception {
+        seedBaseDataset();
+
+        mockMvc.perform(get("/api/v1/me/classes/teaching"))
                 .andExpect(status().isUnauthorized());
     }
 

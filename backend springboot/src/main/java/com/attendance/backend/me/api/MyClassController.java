@@ -1,10 +1,10 @@
 package com.attendance.backend.me.api;
 
-import com.attendance.backend.security.UserPrincipal;
 import com.attendance.backend.me.api.response.MyClassSemesterOptionResponse;
 import com.attendance.backend.me.api.response.PageMyClassResponse;
 import com.attendance.backend.me.model.MyClassQueryCriteria;
 import com.attendance.backend.me.service.MyClassQueryService;
+import com.attendance.backend.security.UserPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -44,6 +44,32 @@ public class MyClassController {
                 memberStatus,
                 semester,
                 academicYear,
+                page,
+                size,
+                sortBy,
+                sortDir
+        );
+
+        return myClassQueryService.listMyClasses(principal.getUserId(), criteria);
+    }
+
+    @GetMapping("/classes/teaching")
+    public PageMyClassResponse listMyTeachingClasses(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDir
+    ) {
+        MyClassQueryCriteria criteria = MyClassQueryCriteria.fromRequest(
+                q,
+                "TEACHING",
+                status,
+                null,
+                null,
+                null,
                 page,
                 size,
                 sortBy,
