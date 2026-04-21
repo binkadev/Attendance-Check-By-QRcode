@@ -192,17 +192,29 @@ public class QRScanActivity extends AppCompatActivity {
 
     // Xử lý logic gọi API
     private void processApiCheckIn(String qrCodeText) {
+        // Trong hệ thống mới, qrCodeText chính là "sessionId_timestamp" hoặc tương tự
+        // Tùy thuộc vào cách bạn sinh mã QR ở CreateQRActivity
+
         try {
-            String[] parts = qrCodeText.split("\\|");
-            if (parts.length >= 2) {
-                int sessionId = Integer.parseInt(parts[0]);
+            // Giả sử mã QR của bạn có dạng: "3fa85f64-5717..._1678889990" (được phân cách bởi dấu _)
+            // Hoặc dạng: "3fa85f64-5717...|1678889990" (phân cách bởi dấu |)
+
+            // Ở đây mình dùng chung ký tự phân cách là dấu | hoặc _
+            String[] parts = qrCodeText.split("[|_]");
+
+            if (parts.length >= 1) {
+                // sessionId là chuỗi (String), không ép kiểu sang int nữa
+                String sessionId = parts[0];
+
+                // Gọi ViewModel với 2 tham số đều là String
+                // Truyền toàn bộ qrCodeText lên làm token để Backend xác thực
                 qrViewModel.processQRCode(sessionId, qrCodeText);
             } else {
-                Toast.makeText(this, "Mã QR không đúng định dạng của trường!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Mã QR rỗng hoặc không hợp lệ!", Toast.LENGTH_SHORT).show();
                 isProcessing = false;
             }
-        } catch (NumberFormatException e) {
-            Toast.makeText(this, "Mã QR không hợp lệ!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Mã QR không đúng định dạng của trường!", Toast.LENGTH_SHORT).show();
             isProcessing = false;
         }
     }

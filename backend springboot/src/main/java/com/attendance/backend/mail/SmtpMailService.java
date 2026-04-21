@@ -41,7 +41,7 @@ public class SmtpMailService implements MailService {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(
                     mimeMessage,
-                    false,
+                    true, // fixed
                     StandardCharsets.UTF_8.name()
             );
 
@@ -71,7 +71,7 @@ public class SmtpMailService implements MailService {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(
                     mimeMessage,
-                    false,
+                    true, // fixed
                     StandardCharsets.UTF_8.name()
             );
 

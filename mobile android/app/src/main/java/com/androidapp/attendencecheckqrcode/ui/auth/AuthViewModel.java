@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.ui.login;
+package com.androidapp.attendencecheckqrcode.ui.auth;
 
 import android.app.Application;
 import androidx.annotation.NonNull;
@@ -6,10 +6,10 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
-import com.androidapp.attendencecheckqrcode.models.payloads.AuthResponse;
-import com.androidapp.attendencecheckqrcode.models.payloads.LoginRequest;
-import com.androidapp.attendencecheckqrcode.models.payloads.RegisterRequest;
-import com.androidapp.attendencecheckqrcode.repository.AuthRepository;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.AuthResponse;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.LoginRequest;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.RegisterRequest;
+import com.androidapp.attendencecheckqrcode.data.repository.AuthRepository;
 import com.androidapp.attendencecheckqrcode.utils.Resource;
 
 public class AuthViewModel extends AndroidViewModel {

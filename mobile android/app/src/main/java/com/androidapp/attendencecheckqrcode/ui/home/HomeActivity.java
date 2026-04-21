@@ -2,7 +2,6 @@ package com.androidapp.attendencecheckqrcode.ui.home;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
 import android.text.Html;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -10,10 +9,9 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.models.entities.User;
-import com.androidapp.attendencecheckqrcode.utils.TokenManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
@@ -25,30 +23,17 @@ import com.androidapp.attendencecheckqrcode.ui.stats.StatsActivity;
 import com.androidapp.attendencecheckqrcode.ui.qr.QRScanActivity;
 import com.androidapp.attendencecheckqrcode.ui.teaching.TeachingListActivity;
 
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.Locale;
-
 public class HomeActivity extends AppCompatActivity {
 
     private FloatingActionButton fabQR;
     private BottomNavigationView bottomNavigationView;
 
     private CardView btnJoin, btnCreate, btnClass, btnTeaching;
-    private CardView itemClass1, itemClass2;
-
-    private TextView tvSummary;
-    private TextView tvDate;
-    private TextView tvGreeting;
-    private TextView tvName; // <--- THÊM BIẾN NÀY ĐỂ HIỂN THỊ TÊN
+    private TextView tvSummary, tvDate, tvGreeting, tvName;
     private ImageView btnNotification;
 
-    private Handler handler = new Handler();
-    private Runnable timeUpdater;
-
-    // Biến lưu thông tin User hiện tại
-    private User currentUser;
+    // Khai báo ViewModel
+    private HomeViewModel homeViewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,11 +45,13 @@ public class HomeActivity extends AppCompatActivity {
         }
 
         initViews();
-        getUserDataFromIntent(); // <--- LẤY DỮ LIỆU USER
         setupUI();
-        setupListeners();
 
-        startUpdatingTime();
+        // Khởi tạo ViewModel và Lắng nghe dữ liệu
+        homeViewModel = new ViewModelProvider(this).get(HomeViewModel.class);
+        observeViewModel();
+
+        setupListeners();
     }
 
     private void initViews() {
@@ -76,40 +63,11 @@ public class HomeActivity extends AppCompatActivity {
         btnClass = findViewById(R.id.btnClass);
         btnTeaching = findViewById(R.id.btnTeaching);
 
-        itemClass1 = findViewById(R.id.itemClass1);
-        itemClass2 = findViewById(R.id.itemClass2);
-
         tvSummary = findViewById(R.id.tvSummary);
         btnNotification = findViewById(R.id.btnNotification);
         tvDate = findViewById(R.id.tvDate);
         tvGreeting = findViewById(R.id.tvGreeting);
-
         tvName = findViewById(R.id.tvName);
-    }
-
-    // Hàm nhận dữ liệu User từ màn hình Login gửi sang
-    private void getUserDataFromIntent() {
-        // 1. Khởi tạo TokenManager
-        TokenManager tokenManager = new TokenManager(this);
-
-        // 2. Lấy tên đã lưu trong máy (mặc định là "Khách" nếu chưa có)
-        String displayName = tokenManager.getUserName();
-
-        // 3. Kiểm tra Intent (phòng trường hợp vừa đăng nhập xong có dữ liệu mới)
-        Intent intent = getIntent();
-        if (intent != null && intent.hasExtra("currentUser")) {
-            currentUser = (User) intent.getSerializableExtra("currentUser");
-            if (currentUser != null) {
-                displayName = currentUser.getFullName();
-                // Lưu lại vào máy cho chắc chắn
-                tokenManager.saveUserData(currentUser.getFullName(), currentUser.getEmail());
-            }
-        }
-
-        // 4. Hiển thị lên TextView
-        if (tvName != null) {
-            tvName.setText(displayName);
-        }
     }
 
     private void setupUI() {
@@ -122,60 +80,27 @@ public class HomeActivity extends AppCompatActivity {
         }
     }
 
-    private void updateCurrentDate() {
-        Date currentDate = new Date();
-        // Định dạng: "Thứ Hai 15/01 - 12:34"
-        SimpleDateFormat sdf = new SimpleDateFormat("EEEE dd/MM - HH:mm", new Locale("vi", "VN"));
-        String dateString = sdf.format(currentDate);
-        String finalString = "📅 HÔM NAY, " + dateString.toUpperCase();
+    // --- MVVM: LẮNG NGHE SỰ THAY ĐỔI TỪ VIEWMODEL ---
+    private void observeViewModel() {
+        // Cập nhật Lời chào
+        homeViewModel.getGreetingText().observe(this, greeting -> {
+            if (tvGreeting != null) tvGreeting.setText(greeting);
+        });
 
-        if (tvDate != null) tvDate.setText(finalString);
-    }
+        // Cập nhật Ngày giờ
+        homeViewModel.getCurrentDateText().observe(this, date -> {
+            if (tvDate != null) tvDate.setText(date);
+        });
 
-    private void setupGreeting() {
-        Calendar calendar = Calendar.getInstance();
-        int hour = calendar.get(Calendar.HOUR_OF_DAY);
-        String greetingText;
-
-        if (hour >= 6 && hour < 12) {
-            greetingText = "Chào buổi sáng 🌤️";
-        } else if (hour >= 12 && hour < 18) {
-            greetingText = "Chào buổi chiều ☀️";
-        } else {
-            greetingText = "Chào buổi tối 🌙";
-        }
-
-        if (tvGreeting != null) {
-            tvGreeting.setText(greetingText);
-        }
-    }
-
-    private void startUpdatingTime() {
-        timeUpdater = new Runnable() {
-            @Override
-            public void run() {
-                updateCurrentDate();
-                setupGreeting();
-                handler.postDelayed(this, 60000); // Cập nhật mỗi 1 phút
-            }
-        };
-        handler.post(timeUpdater);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (handler != null && timeUpdater != null) {
-            handler.removeCallbacks(timeUpdater);
-        }
+        // Cập nhật Tên User
+        homeViewModel.getUserName().observe(this, name -> {
+            if (tvName != null) tvName.setText(name);
+        });
     }
 
     private void setupListeners() {
         fabQR.setOnClickListener(v -> {
-            Intent intent = new Intent(HomeActivity.this, QRScanActivity.class);
-            // QUAN TRỌNG: Truyền User sang
-            intent.putExtra("currentUser", currentUser);
-            startActivity(intent);
+            startActivity(new Intent(HomeActivity.this, QRScanActivity.class));
         });
 
         btnJoin.setOnClickListener(v ->
@@ -183,29 +108,17 @@ public class HomeActivity extends AppCompatActivity {
         );
 
         btnCreate.setOnClickListener(v -> {
-            Intent intent = new Intent(HomeActivity.this, CreateClassActivity.class);
-            // --- QUAN TRỌNG: Phải truyền User hiện tại sang ---
-            intent.putExtra("currentUser", currentUser);
-            startActivity(intent);
+            startActivity(new Intent(HomeActivity.this, CreateClassActivity.class));
         });
 
-        // Đi tới danh sách lớp học (tư cách sinh viên)
         btnClass.setOnClickListener(v -> {
-            Intent intent = new Intent(HomeActivity.this, ClassListActivity.class);
-            // --- THÊM DÒNG NÀY ---
-            intent.putExtra("currentUser", currentUser);
-            startActivity(intent);
+            startActivity(new Intent(HomeActivity.this, ClassListActivity.class));
         });
 
-        // Đi tới danh sách lớp dạy (tư cách giảng viên - người tạo lớp)
         btnTeaching.setOnClickListener(v -> {
-            Intent intent = new Intent(HomeActivity.this, TeachingListActivity.class);
-            // --- THÊM DÒNG NÀY ---
-            intent.putExtra("currentUser", currentUser);
-            startActivity(intent);
+            startActivity(new Intent(HomeActivity.this, TeachingListActivity.class));
         });
 
-        // ... các listener khác giữ nguyên
         btnNotification.setOnClickListener(v ->
                 Toast.makeText(HomeActivity.this, "Bạn không có thông báo mới", Toast.LENGTH_SHORT).show()
         );
@@ -221,7 +134,6 @@ public class HomeActivity extends AppCompatActivity {
                 startActivity(new Intent(HomeActivity.this, SettingsActivity.class));
                 return true;
             }
-            // ...
             return false;
         });
     }

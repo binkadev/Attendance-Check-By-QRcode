@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.models.payloads;
+package com.androidapp.attendencecheckqrcode.data.dto.auth;
 
 import com.google.gson.annotations.SerializedName;
 

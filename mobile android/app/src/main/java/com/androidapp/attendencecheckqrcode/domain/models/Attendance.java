@@ -1,9 +1,11 @@
-package com.androidapp.attendencecheckqrcode.models.entities;
+package com.androidapp.attendencecheckqrcode.domain.models;
 
 import com.google.gson.annotations.SerializedName;
 import java.io.Serializable;
 
 public class Attendance implements Serializable {
+
+    // --- LỚP ĐIỂM DANH (CÁ NHÂN) ---
     @SerializedName("class_id")
     private String classId;
     @SerializedName("student_id")
@@ -11,9 +13,9 @@ public class Attendance implements Serializable {
     @SerializedName("student_name")
     private String studentName;
     @SerializedName("date")
-    private String date; // VD: 12/02/2026
+    private String date;
     @SerializedName("time")
-    private String time; // VD: 08:30:00
+    private String time;
 
     public Attendance(String classId, int studentId, String studentName, String date, String time) {
         this.classId = classId;
@@ -23,7 +25,6 @@ public class Attendance implements Serializable {
         this.time = time;
     }
 
-    // Constructor đọc từ file
     public Attendance(String line) {
         String[] p = line.split("\\|");
         if (p.length >= 5) {
@@ -39,22 +40,26 @@ public class Attendance implements Serializable {
         return classId + "|" + studentId + "|" + studentName + "|" + date + "|" + time;
     }
 
-    // Getters...
     public String getDate() { return date; }
     public String getTime() { return time; }
 
+    // --- LỚP HỌC (CLASSROOM) ---
     public static class Classroom implements Serializable {
 
-        @SerializedName("class_id")
+        // 1. Map 'id' của Backend vào 'classId' của Android
+        @SerializedName(value = "id", alternate = {"class_id", "classId"})
         private String classId;
 
-        @SerializedName("class_name")
+        // 2. Map 'name' của Backend vào 'className'
+        @SerializedName(value = "name", alternate = {"class_name", "className"})
         private String className;
 
-        @SerializedName("subject_code")
+        // 3. Map 'joinCode' (Mã tự sinh) vào 'subjectCode' để lát nữa hiện ra UI cho giảng viên thấy
+        @SerializedName(value = "joinCode", alternate = {"subject_code", "subjectCode"})
         private String subjectCode;
 
-        @SerializedName("class_code")
+        // 4. Map 'code' (Mã môn-Mã lớp) vào 'classCode'
+        @SerializedName(value = "code", alternate = {"class_code", "classCode"})
         private String classCode;
 
         @SerializedName("room")
@@ -69,7 +74,6 @@ public class Attendance implements Serializable {
         @SerializedName("total_sessions")
         private int totalSessions;
 
-        // --- CÁC TRƯỜNG MỚI THÊM VÀO ---
         @SerializedName("max_absences")
         private int maxAbsences;
 
@@ -78,7 +82,6 @@ public class Attendance implements Serializable {
 
         @SerializedName("description")
         private String description;
-        // -------------------------------
 
         @SerializedName("lecturer_id")
         private int lecturerId;
@@ -89,10 +92,9 @@ public class Attendance implements Serializable {
         @SerializedName("total_students")
         private int totalStudents;
 
-        // --- CONSTRUCTOR 1: Dùng cho CreateClassActivity (13 tham số) ---
         public Classroom(String classId, String className, String subjectCode, String classCode, String room,
                          String dayOfWeek, String timeSlot, int totalSessions,
-                         int maxAbsences, String semester, String description, // Thêm 3 tham số này
+                         int maxAbsences, String semester, String description,
                          int lecturerId, String lecturerName) {
             this.classId = classId;
             this.className = className;
@@ -107,13 +109,11 @@ public class Attendance implements Serializable {
             this.description = description;
             this.lecturerId = lecturerId;
             this.lecturerName = lecturerName;
-            this.totalStudents = 0; // Mặc định 0 sinh viên
+            this.totalStudents = 0;
         }
 
-        // --- CONSTRUCTOR 2: Đọc từ file txt (Cập nhật logic tách chuỗi) ---
         public Classroom(String line) {
             String[] p = line.split("\\|");
-            // Bây giờ chuỗi có 14 phần tử (tính cả totalStudents)
             if (p.length >= 14) {
                 this.classId = p[0];
                 this.className = p[1];
@@ -132,7 +132,6 @@ public class Attendance implements Serializable {
             }
         }
 
-        // --- HÀM GHI FILE (Cập nhật thêm trường mới vào chuỗi) ---
         public String toFileString() {
             return classId + "|" + className + "|" + subjectCode + "|" + classCode + "|" +
                     room + "|" + dayOfWeek + "|" + timeSlot + "|" + totalSessions + "|" +
@@ -140,11 +139,15 @@ public class Attendance implements Serializable {
                     lecturerId + "|" + lecturerName + "|" + totalStudents;
         }
 
-        // --- GETTERS ---
         public String getClassId() { return classId; }
         public String getClassName() { return className; }
+
+        // Getter này giờ sẽ trả về mã JoinCode (Ví dụ: INT_A7B2_48291)
         public String getSubjectCode() { return subjectCode; }
+
+        // Getter này trả về mã môn-lớp (Ví dụ: INT1340-D22CQAT01)
         public String getClassCode() { return classCode; }
+
         public String getRoom() { return room; }
         public String getDayOfWeek() { return dayOfWeek; }
         public String getTimeSlot() { return timeSlot; }

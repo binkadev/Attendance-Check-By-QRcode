@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.models.entities;
+package com.androidapp.attendencecheckqrcode.domain.models;
 
 import java.io.Serializable;
 

@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.models.payloads;
+package com.androidapp.attendencecheckqrcode.data.dto.auth;
 
 public class LoginRequest {
     private String email;
