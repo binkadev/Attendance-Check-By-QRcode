@@ -3,21 +3,14 @@ package com.attendance.backend.group.dto;
 import com.attendance.backend.domain.enums.ApprovalMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
-public class CreateGroupRequest {
+public class UpdateGroupRequest {
 
-    @NotBlank(message = "name is required")
     @Size(min = 3, max = 150, message = "name length must be between 3 and 150")
     private String name;
-
-    @NotBlank(message = "code is required")
-    @Size(max = 20, message = "code length must be <= 20")
-    private String code;
 
     @Size(max = 50, message = "courseCode length must be <= 50")
     private String courseCode;
@@ -43,25 +36,21 @@ public class CreateGroupRequest {
     @Size(max = 80, message = "room length must be <= 80")
     private String room;
 
-    @NotNull(message = "approvalMode is required")
     private ApprovalMode approvalMode;
 
-    private boolean allowAutoJoinOnCheckin;
+    private Boolean allowAutoJoinOnCheckin;
 
-    @NotNull(message = "weeklySchedules is required")
-    @Size(min = 1, message = "weeklySchedules must not be empty")
     @Valid
+    @Size(min = 1, message = "weeklySchedules must not be empty")
     private List<GroupWeeklyScheduleRequest> weeklySchedules;
 
-    @NotNull(message = "totalSessions is required")
     @Min(value = 1, message = "totalSessions must be greater than 0")
     private Integer totalSessions;
 
-    @NotNull(message = "maxAllowedAbsences is required")
     @Min(value = 0, message = "maxAllowedAbsences must be greater than or equal to 0")
     private Integer maxAllowedAbsences;
 
-    public CreateGroupRequest() {
+    public UpdateGroupRequest() {
     }
 
     public String getName() {
@@ -70,14 +59,6 @@ public class CreateGroupRequest {
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public String getCode() {
-        return code;
-    }
-
-    public void setCode(String code) {
-        this.code = code;
     }
 
     public String getCourseCode() {
@@ -152,15 +133,11 @@ public class CreateGroupRequest {
         this.approvalMode = approvalMode;
     }
 
-    public boolean getAllowAutoJoinOnCheckin() {
+    public Boolean getAllowAutoJoinOnCheckin() {
         return allowAutoJoinOnCheckin;
     }
 
-    public boolean isAllowAutoJoinOnCheckin() {
-        return allowAutoJoinOnCheckin;
-    }
-
-    public void setAllowAutoJoinOnCheckin(boolean allowAutoJoinOnCheckin) {
+    public void setAllowAutoJoinOnCheckin(Boolean allowAutoJoinOnCheckin) {
         this.allowAutoJoinOnCheckin = allowAutoJoinOnCheckin;
     }
 

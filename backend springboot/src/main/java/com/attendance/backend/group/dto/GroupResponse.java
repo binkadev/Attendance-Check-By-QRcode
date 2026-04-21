@@ -4,6 +4,7 @@ import com.attendance.backend.domain.enums.ApprovalMode;
 import com.attendance.backend.domain.enums.GroupStatus;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record GroupResponse(
@@ -11,10 +12,17 @@ public record GroupResponse(
         UUID ownerUserId,
         String name,
         String code,
+        String courseCode,
+        String classCode,
         String joinCode,
         String description,
         String semester,
+        String academicYear,
+        String campus,
         String room,
+        Integer totalSessions,
+        Integer maxAllowedAbsences,
+        List<GroupWeeklyScheduleResponse> weeklySchedules,
         ApprovalMode approvalMode,
         boolean allowAutoJoinOnCheckin,
         GroupStatus status,

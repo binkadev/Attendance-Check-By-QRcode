@@ -268,76 +268,6 @@ paths:
         '401':
           $ref: '#/components/responses/Err401'
 
-  /me/classes/teaching:
-    get:
-      tags:
-        - Me
-      summary: List my teaching classes (convenience endpoint)
-      description: >
-        Convenience endpoint equivalent to /me/classes?scope=TEACHING.
-        Reuses the same search, status, semester, academicYear, paging, sorting
-        and response schema as /me/classes, but fixes scope to TEACHING.
-      parameters:
-        - name: q
-          in: query
-          required: false
-          description: Quick search by group name, legacy code, course code, class code, lecturer name
-          schema:
-            type: string
-            maxLength: 150
-        - name: status
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/GroupStatus'
-        - name: semester
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 30
-        - name: academicYear
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 30
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
-        - name: size
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 20
-        - name: sortBy
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/MyClassSortBy'
-        - name: sortDir
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/LowercaseSortDirection'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PageMyClassResponse'
-        '400':
-          $ref: '#/components/responses/Err400'
-        '401':
-          $ref: '#/components/responses/Err401'
   /me/classes/semesters:
     get:
       tags:
@@ -580,6 +510,9 @@ paths:
       tags:
         - Groups
       summary: Create group (caller becomes OWNER)
+      description: >
+        Create a new class/group owned by current authenticated user.
+        Caller is automatically created as APPROVED OWNER member.
       requestBody:
         required: true
         content:
@@ -593,10 +526,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GroupResponse'
-        '409':
-          $ref: '#/components/responses/Err409'
         '400':
           $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '409':
+          $ref: '#/components/responses/Err409'
     get:
       tags:
         - Groups
@@ -612,11 +547,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PageGroupResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+
   /groups/{groupId}:
     get:
       tags:
         - Groups
       summary: Get group details
+      description: >
+        Return full class/group detail for group form/detail screen.
+        Only APPROVED OWNER or CO_HOST can access this endpoint.
       parameters:
         - $ref: '#/components/parameters/GroupId'
       responses:
@@ -626,6 +567,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GroupResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
         '403':
           $ref: '#/components/responses/Err403'
         '404':
@@ -633,7 +576,11 @@ paths:
     patch:
       tags:
         - Groups
-      summary: Update group (OWNER)
+      summary: Update group (OWNER/CO_HOST)
+      description: >
+        Partial update for class/group form.
+        If weeklySchedules is provided, existing schedules are fully replaced.
+        Only APPROVED OWNER or CO_HOST can update this endpoint.
       parameters:
         - $ref: '#/components/parameters/GroupId'
       requestBody:
@@ -651,12 +598,72 @@ paths:
                 $ref: '#/components/schemas/GroupResponse'
         '400':
           $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
         '403':
           $ref: '#/components/responses/Err403'
         '404':
           $ref: '#/components/responses/Err404'
         '409':
           $ref: '#/components/responses/Err409'
+
+  /groups/{groupId}/status:
+    patch:
+      tags:
+        - Groups
+      summary: Update group status (OWNER)
+      description: >
+        Update group status using production-like status flow.
+        Supported statuses are ACTIVE and ARCHIVED.
+        Only APPROVED OWNER can change status.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+        '400':
+          $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+
+  /groups/{groupId}/archive:
+    post:
+      tags:
+        - Groups
+      summary: Archive group (OWNER)
+      description: >
+        Compatibility endpoint that archives a group by setting status to ARCHIVED.
+        Only APPROVED OWNER can archive.
+      deprecated: true
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
 
   /groups/{groupId}/fraud-incidents:
     get:
@@ -961,25 +968,6 @@ paths:
                 $ref: '#/components/schemas/PageAttendanceGroupSummaryResponse'
         '401':
           $ref: '#/components/responses/Err401'
-        '403':
-          $ref: '#/components/responses/Err403'
-        '404':
-          $ref: '#/components/responses/Err404'
-
-  /groups/{groupId}/archive:
-    post:
-      tags:
-        - Groups
-      summary: Archive group (OWNER)
-      parameters:
-        - $ref: '#/components/parameters/GroupId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GroupResponse'
         '403':
           $ref: '#/components/responses/Err403'
         '404':
@@ -1987,131 +1975,131 @@ components:
       default: ALL
 
     MyClassSortBy:
-        type: string
-        enum:
-          - updatedAt
-          - createdAt
-          - name
-        default: updatedAt
+      type: string
+      enum:
+        - updatedAt
+        - createdAt
+        - name
+      default: updatedAt
 
     LowercaseSortDirection:
-        type: string
-        enum:
-          - asc
-          - desc
-        default: desc
+      type: string
+      enum:
+        - asc
+        - desc
+      default: desc
 
     MyClassResponse:
-        type: object
-        properties:
-          groupId:
-            type: string
-            format: uuid
-          groupName:
-            type: string
-          roleLabel:
-            type: string
-          courseCode:
-            type: string
-            nullable: true
-          classCode:
-            type: string
-            nullable: true
-          startTime:
-            type: string
-            format: date-time
-            nullable: true
-          endTime:
-            type: string
-            format: date-time
-            nullable: true
-          room:
-            type: string
-            nullable: true
-          campus:
-            type: string
-            nullable: true
-          locationDisplay:
-            type: string
-            nullable: true
-          lecturerName:
-            type: string
-            nullable: true
-          approvedStudentCount:
-            type: integer
-            format: int64
-          semester:
-            type: string
-            nullable: true
-          academicYear:
-            type: string
-            nullable: true
-          thumbnail:
-            type: string
-            nullable: true
-          avatarUrl:
-            type: string
-            nullable: true
-          myRole:
-            $ref: '#/components/schemas/MemberRole'
-          myMemberStatus:
-            $ref: '#/components/schemas/MemberStatus'
-          joinedAt:
-            type: string
-            format: date-time
-            nullable: true
-          createdAt:
-            type: string
-            format: date-time
-          updatedAt:
-            type: string
-            format: date-time
-        required:
-          - groupId
-          - groupName
-          - roleLabel
-          - approvedStudentCount
-          - myRole
-          - myMemberStatus
-          - createdAt
-          - updatedAt
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        groupName:
+          type: string
+        roleLabel:
+          type: string
+        courseCode:
+          type: string
+          nullable: true
+        classCode:
+          type: string
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        room:
+          type: string
+          nullable: true
+        campus:
+          type: string
+          nullable: true
+        locationDisplay:
+          type: string
+          nullable: true
+        lecturerName:
+          type: string
+          nullable: true
+        approvedStudentCount:
+          type: integer
+          format: int64
+        semester:
+          type: string
+          nullable: true
+        academicYear:
+          type: string
+          nullable: true
+        thumbnail:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        myRole:
+          $ref: '#/components/schemas/MemberRole'
+        myMemberStatus:
+          $ref: '#/components/schemas/MemberStatus'
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - groupId
+        - groupName
+        - roleLabel
+        - approvedStudentCount
+        - myRole
+        - myMemberStatus
+        - createdAt
+        - updatedAt
 
     PageMyClassResponse:
-        type: object
-        properties:
+      type: object
+      properties:
+        items:
+          type: array
           items:
-            type: array
-            items:
-              $ref: '#/components/schemas/MyClassResponse'
-          page:
-            type: integer
-          size:
-            type: integer
-          totalElements:
-            type: integer
-            format: int64
-          totalPages:
-            type: integer
-        required:
-          - items
-          - page
-          - size
-          - totalElements
-          - totalPages
+            $ref: '#/components/schemas/MyClassResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
 
     MyClassSemesterOptionResponse:
-        type: object
-        properties:
-          semester:
-            type: string
-            nullable: true
-          academicYear:
-            type: string
-            nullable: true
-          label:
-            type: string
-        required:
-          - label
+      type: object
+      properties:
+        semester:
+          type: string
+          nullable: true
+        academicYear:
+          type: string
+          nullable: true
+        label:
+          type: string
+      required:
+        - label
 
     NotificationType:
       type: string
@@ -3161,8 +3149,66 @@ components:
         - email
         - fullName
         - platformRole
+    GroupWeeklyScheduleDayOfWeek:
+      type: string
+      enum:
+        - MONDAY
+        - TUESDAY
+        - WEDNESDAY
+        - THURSDAY
+        - FRIDAY
+        - SATURDAY
+        - SUNDAY
+      example: TUESDAY
+
+    GroupWeeklyScheduleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - dayOfWeek
+        - startTime
+        - endTime
+      properties:
+        dayOfWeek:
+          $ref: '#/components/schemas/GroupWeeklyScheduleDayOfWeek'
+        startTime:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+          description: Start time in HH:mm
+          example: "08:00"
+        endTime:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+          description: End time in HH:mm
+          example: "10:00"
+
+    GroupWeeklyScheduleResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - dayOfWeek
+        - startTime
+        - endTime
+      properties:
+        dayOfWeek:
+          $ref: '#/components/schemas/GroupWeeklyScheduleDayOfWeek'
+        startTime:
+          type: string
+          example: "08:00"
+        endTime:
+          type: string
+          example: "10:00"
+
     CreateGroupRequest:
       type: object
+      additionalProperties: false
+      required:
+        - name
+        - code
+        - approvalMode
+        - weeklySchedules
+        - totalSessions
+        - maxAllowedAbsences
       properties:
         name:
           type: string
@@ -3171,56 +3217,131 @@ components:
         code:
           type: string
           maxLength: 20
+        courseCode:
+          type: string
+          maxLength: 50
+          nullable: true
+        classCode:
+          type: string
+          maxLength: 50
+          nullable: true
         joinCode:
           type: string
           minLength: 6
           maxLength: 16
+          nullable: true
         description:
           type: string
           maxLength: 1000
+          nullable: true
         semester:
           type: string
           maxLength: 30
+          nullable: true
+        academicYear:
+          type: string
+          maxLength: 30
+          nullable: true
+        campus:
+          type: string
+          maxLength: 120
+          nullable: true
         room:
           type: string
           maxLength: 80
+          nullable: true
         approvalMode:
           $ref: '#/components/schemas/ApprovalMode'
         allowAutoJoinOnCheckin:
           type: boolean
           default: false
-      required:
-        - name
-        - code
-        - approvalMode
+        weeklySchedules:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GroupWeeklyScheduleRequest'
+        totalSessions:
+          type: integer
+          minimum: 1
+        maxAllowedAbsences:
+          type: integer
+          minimum: 0
+
     UpdateGroupRequest:
       type: object
+      additionalProperties: false
+      description: >
+        Partial update request for class/group.
+        If weeklySchedules is present, existing schedules are replaced entirely.
       properties:
         name:
           type: string
           minLength: 3
           maxLength: 150
+        courseCode:
+          type: string
+          maxLength: 50
+          nullable: true
+        classCode:
+          type: string
+          maxLength: 50
+          nullable: true
         joinCode:
           type: string
           minLength: 6
           maxLength: 16
+          nullable: true
         description:
           type: string
           maxLength: 1000
+          nullable: true
         semester:
           type: string
           maxLength: 30
+          nullable: true
+        academicYear:
+          type: string
+          maxLength: 30
+          nullable: true
+        campus:
+          type: string
+          maxLength: 120
+          nullable: true
         room:
           type: string
           maxLength: 80
+          nullable: true
         approvalMode:
           $ref: '#/components/schemas/ApprovalMode'
         allowAutoJoinOnCheckin:
           type: boolean
+        weeklySchedules:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/GroupWeeklyScheduleRequest'
+        totalSessions:
+          type: integer
+          minimum: 1
+        maxAllowedAbsences:
+          type: integer
+          minimum: 0
+
+    UpdateGroupStatusRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
         status:
-          $ref: '#/components/schemas/GroupStatus'
+          type: string
+          enum:
+            - ACTIVE
+            - ARCHIVED
+
     GroupResponse:
       type: object
+      additionalProperties: false
       properties:
         id:
           type: string
@@ -3234,18 +3355,43 @@ components:
         code:
           type: string
           maxLength: 20
+        courseCode:
+          type: string
+          nullable: true
+        classCode:
+          type: string
+          nullable: true
         joinCode:
           type: string
           maxLength: 16
         description:
           type: string
           maxLength: 1000
+          nullable: true
         semester:
           type: string
           maxLength: 30
+          nullable: true
+        academicYear:
+          type: string
+          nullable: true
+        campus:
+          type: string
+          nullable: true
         room:
           type: string
           maxLength: 80
+          nullable: true
+        totalSessions:
+          type: integer
+          nullable: true
+        maxAllowedAbsences:
+          type: integer
+          nullable: true
+        weeklySchedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupWeeklyScheduleResponse'
         approvalMode:
           $ref: '#/components/schemas/ApprovalMode'
         allowAutoJoinOnCheckin:
@@ -3255,9 +3401,11 @@ components:
         createdAt:
           type: string
           format: date-time
+          nullable: true
         updatedAt:
           type: string
           format: date-time
+          nullable: true
       required:
         - id
         - ownerUserId
@@ -3265,9 +3413,9 @@ components:
         - code
         - joinCode
         - approvalMode
+        - allowAutoJoinOnCheckin
         - status
-        - createdAt
-        - updatedAt
+        - weeklySchedules
     JoinGroupRequest:
       type: object
       properties:

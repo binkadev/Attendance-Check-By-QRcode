@@ -47,17 +47,38 @@ public class ClassGroup {
     @Column(name = "code", length = 20, nullable = false)
     private String code;
 
+    @Column(name = "course_code", length = 50)
+    private String courseCode;
+
+    @Column(name = "class_code", length = 50)
+    private String classCode;
+
     @Column(name = "join_code", length = 16, nullable = false)
     private String joinCode;
 
     @Column(name = "description", length = 1000)
     private String description;
 
+    @Column(name = "thumbnail_url", length = 500)
+    private String thumbnailUrl;
+
     @Column(name = "semester", length = 30)
     private String semester;
 
+    @Column(name = "academic_year", length = 30)
+    private String academicYear;
+
     @Column(name = "room", length = 80)
     private String room;
+
+    @Column(name = "campus", length = 120)
+    private String campus;
+
+    @Column(name = "total_sessions")
+    private Integer totalSessions;
+
+    @Column(name = "max_allowed_absences")
+    private Integer maxAllowedAbsences;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_mode", nullable = false, length = 20)
@@ -114,6 +135,22 @@ public class ClassGroup {
         this.code = code;
     }
 
+    public String getCourseCode() {
+        return courseCode;
+    }
+
+    public void setCourseCode(String courseCode) {
+        this.courseCode = courseCode;
+    }
+
+    public String getClassCode() {
+        return classCode;
+    }
+
+    public void setClassCode(String classCode) {
+        this.classCode = classCode;
+    }
+
     public String getJoinCode() {
         return joinCode;
     }
@@ -130,6 +167,14 @@ public class ClassGroup {
         this.description = description;
     }
 
+    public String getThumbnailUrl() {
+        return thumbnailUrl;
+    }
+
+    public void setThumbnailUrl(String thumbnailUrl) {
+        this.thumbnailUrl = thumbnailUrl;
+    }
+
     public String getSemester() {
         return semester;
     }
@@ -138,12 +183,44 @@ public class ClassGroup {
         this.semester = semester;
     }
 
+    public String getAcademicYear() {
+        return academicYear;
+    }
+
+    public void setAcademicYear(String academicYear) {
+        this.academicYear = academicYear;
+    }
+
     public String getRoom() {
         return room;
     }
 
     public void setRoom(String room) {
         this.room = room;
+    }
+
+    public String getCampus() {
+        return campus;
+    }
+
+    public void setCampus(String campus) {
+        this.campus = campus;
+    }
+
+    public Integer getTotalSessions() {
+        return totalSessions;
+    }
+
+    public void setTotalSessions(Integer totalSessions) {
+        this.totalSessions = totalSessions;
+    }
+
+    public Integer getMaxAllowedAbsences() {
+        return maxAllowedAbsences;
+    }
+
+    public void setMaxAllowedAbsences(Integer maxAllowedAbsences) {
+        this.maxAllowedAbsences = maxAllowedAbsences;
     }
 
     public ApprovalMode getApprovalMode() {

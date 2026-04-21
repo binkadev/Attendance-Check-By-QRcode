@@ -45,4 +45,21 @@ public interface ClassGroupRepository extends JpaRepository<ClassGroup, UUID> {
           and g.deletedAt is null
     """)
     Optional<ClassGroup> findActiveByIdForUpdate(@Param("groupId") UUID groupId);
+
+    @Query("""
+        select g
+        from ClassGroup g
+        where g.id = :groupId
+          and g.deletedAt is null
+    """)
+    Optional<ClassGroup> findByIdAndDeletedAtIsNull(@Param("groupId") UUID groupId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select g
+        from ClassGroup g
+        where g.id = :groupId
+          and g.deletedAt is null
+    """)
+    Optional<ClassGroup> findByIdAndDeletedAtIsNullForUpdate(@Param("groupId") UUID groupId);
 }
