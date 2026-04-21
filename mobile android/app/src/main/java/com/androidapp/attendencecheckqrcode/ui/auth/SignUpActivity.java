@@ -26,7 +26,6 @@ public class SignUpActivity extends AppCompatActivity {
 
     private boolean isPasswordVisible = false;
 
-    // Thêm etConfirmPassword và btnShowConfirmPass
     private EditText etConfirmPassword;
     private ImageView btnShowConfirmPass;
     private boolean isConfirmPasswordVisible = false;
@@ -145,13 +144,11 @@ public class SignUpActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. Kiểm tra độ dài (ít nhất 10 ký tự)
         if (password.length() < 10) {
             Toast.makeText(this, "Mật khẩu phải có ít nhất 10 ký tự!", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 2. Kiểm tra độ mạnh (phải có cả chữ và số)
         String passwordPattern = "^(?=.*[A-Za-z])(?=.*\\d).+$";
         if (!password.matches(passwordPattern)) {
             Toast.makeText(this, "Mật khẩu phải bao gồm cả chữ và số!", Toast.LENGTH_SHORT).show();
@@ -160,21 +157,17 @@ public class SignUpActivity extends AppCompatActivity {
 
         String fullName = firstName + " " + lastName;
 
-        // 2. Lấy Device ID thực tế của điện thoại Android
         String deviceId = android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
 
         String safeUserCode = email.split("@")[0];
         String safeEmail = email.toLowerCase();
 
 
-        // Khởi tạo Request
         RegisterRequest request = new RegisterRequest(safeEmail, password, fullName, safeUserCode, deviceId);
 
-        // --- THÊM 2 DÒNG NÀY VÀO ---
         String jsonToSend = new com.google.gson.Gson().toJson(request);
         android.util.Log.e("KIEM_TRA_JSON", "CỤC JSON ANDROID GỬI LÊN: " + jsonToSend);
 
-        // Gửi qua ViewModel
         authViewModel.register(request);
     }
 

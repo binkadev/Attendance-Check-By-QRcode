@@ -2,7 +2,6 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F8F9FA">
@@ -20,7 +19,7 @@
             <View
                 android:id="@+id/viewHeaderBg"
                 android:layout_width="match_parent"
-                android:layout_height="250dp"
+                android:layout_height="260dp"
                 android:background="@drawable/bg_header_home"
                 app:layout_constraintTop_toTopOf="parent"/>
 
@@ -30,6 +29,7 @@
                 android:layout_height="40dp"
                 android:layout_marginStart="16dp"
                 android:layout_marginTop="16dp"
+                android:padding="8dp"
                 android:src="@android:drawable/ic_menu_revert"
                 app:tint="@color/white"
                 app:layout_constraintStart_toStartOf="parent"
@@ -39,7 +39,7 @@
                 android:id="@+id/tvSubjectCode"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="INT1348"
+                android:text="MÃ MÔN"
                 android:background="@drawable/bg_badge_gray"
                 android:backgroundTint="#80FFFFFF"
                 android:textColor="@color/white"
@@ -54,7 +54,7 @@
                 android:id="@+id/tvStudentCount"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="● 45 Sinh viên"
+                android:text="● 0 Sinh viên"
                 android:textColor="@color/white"
                 android:textSize="12sp"
                 android:layout_marginStart="15dp"
@@ -64,13 +64,15 @@
 
             <TextView
                 android:id="@+id/tvClassName"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Lập trình Android"
+                android:text="Tên môn học"
                 android:textColor="@color/white"
-                android:textSize="24sp"
+                android:textSize="22sp"
                 android:textStyle="bold"
                 android:layout_marginTop="10dp"
+                android:layout_marginEnd="16dp"
+                app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="@id/tvSubjectCode"
                 app:layout_constraintTop_toBottomOf="@id/tvSubjectCode"/>
 
@@ -81,54 +83,71 @@
                 android:text="Tôi (Giáo viên)"
                 android:textColor="@color/white"
                 android:textSize="14sp"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="8dp"
                 app:drawableStartCompat="@android:drawable/ic_menu_my_calendar"
                 app:drawableTint="@color/white"
                 android:drawablePadding="8dp"
                 app:layout_constraintStart_toStartOf="@id/tvClassName"
                 app:layout_constraintTop_toBottomOf="@id/tvClassName"/>
 
-            <TextView
-                android:id="@+id/tvClassCode"
+            <androidx.constraintlayout.widget.Guideline
+                android:id="@+id/guidelineHeader"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="D22CQCNPM02-N"
+                android:orientation="vertical"
+                app:layout_constraintGuide_percent="0.45" />
+
+            <TextView
+                android:id="@+id/tvClassCode"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Mã lớp"
                 android:textColor="#E0E0E0"
                 android:textSize="13sp"
-                android:layout_marginTop="10dp"
-                android:layout_marginStart="30dp"
-                app:layout_constraintStart_toStartOf="parent"
+                android:maxLines="1"
+                android:ellipsize="end"
+                app:layout_constraintStart_toStartOf="@id/tvLecturer"
+                app:layout_constraintEnd_toStartOf="@id/guidelineHeader"
                 app:layout_constraintTop_toBottomOf="@id/tvLecturer"/>
 
             <TextView
                 android:id="@+id/tvTime"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="07:00 - 10:30"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:text="Giờ học"
                 android:textColor="#E0E0E0"
                 android:textSize="13sp"
-                android:layout_marginStart="40dp"
-                app:layout_constraintStart_toEndOf="@id/tvClassCode"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/guidelineHeader"
                 app:layout_constraintTop_toTopOf="@id/tvClassCode"/>
 
             <TextView
                 android:id="@+id/tvSemester"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="HK2, 2025 - 2026"
+                android:layout_marginTop="6dp"
+                android:text="Học kỳ"
                 android:textColor="#E0E0E0"
                 android:textSize="13sp"
-                android:layout_marginTop="5dp"
+                android:maxLines="1"
+                android:ellipsize="end"
                 app:layout_constraintStart_toStartOf="@id/tvClassCode"
+                app:layout_constraintEnd_toStartOf="@id/guidelineHeader"
                 app:layout_constraintTop_toBottomOf="@id/tvClassCode"/>
 
             <TextView
                 android:id="@+id/tvRoom"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="2A27 - Thủ Đức"
+                android:text="Phòng học"
                 android:textColor="#E0E0E0"
                 android:textSize="13sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="@id/tvTime"
                 app:layout_constraintTop_toTopOf="@id/tvSemester"/>
 
@@ -137,10 +156,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="20dp"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="15dp"
                 app:cardCornerRadius="15dp"
                 app:cardElevation="4dp"
-                app:cardBackgroundColor="@color/white"
                 app:layout_constraintTop_toBottomOf="@id/viewHeaderBg">
 
                 <LinearLayout
@@ -166,9 +184,6 @@
                         android:text="Tạo mã điểm danh"
                         android:textSize="16sp"
                         android:textStyle="bold"
-                        app:icon="@drawable/ic_qr"
-                        app:iconSize="30dp"
-                        app:iconGravity="textStart"
                         app:cornerRadius="30dp"
                         app:backgroundTint="#D32F2F"/>
 
@@ -305,7 +320,6 @@
                     app:layout_constraintStart_toEndOf="@id/dotYesterday"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toBottomOf="@id/itemToday">
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -313,41 +327,15 @@
                         android:padding="12dp"
                         android:gravity="center_vertical">
                         <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Hôm qua"
-                                android:textSize="10sp"
-                                android:textColor="#9E9E9E"/>
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="T2"
-                                android:textStyle="bold"
-                                android:textSize="16sp"
-                                android:textColor="#333"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hôm qua" android:textSize="10sp" android:textColor="#9E9E9E"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="T2" android:textStyle="bold" android:textSize="16sp" android:textColor="#333"/>
                         </LinearLayout>
                         <View android:layout_width="1dp" android:layout_height="30dp" android:background="#EEEEEE" android:layout_marginHorizontal="15dp"/>
                         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="03/02/2026"
-                                android:textStyle="bold"
-                                android:textColor="#333"/>
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="10:00"
-                                android:textSize="12sp"
-                                android:textColor="#757575"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="03/02/2026" android:textStyle="bold" android:textColor="#333"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="10:00" android:textSize="12sp" android:textColor="#757575"/>
                         </LinearLayout>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="👥 5 Vắng"
-                            android:textSize="12sp"
-                            android:textColor="#555"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="👥 5 Vắng" android:textSize="12sp" android:textColor="#555"/>
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
 

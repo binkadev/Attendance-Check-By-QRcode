@@ -7,21 +7,24 @@ public class TokenManager {
     private SharedPreferences prefs;
 
     public TokenManager(Context context) {
-        // Khởi tạo SharedPreferences với tên file là "AppPrefs"
         prefs = context.getSharedPreferences("AppPrefs", Context.MODE_PRIVATE);
     }
 
-    // 1. Lưu JWT Token
-    public void saveToken(String token) {
-        prefs.edit().putString("JWT_TOKEN", token).apply();
+    public void saveTokens(String accessToken, String refreshToken) {
+        prefs.edit()
+                .putString("ACCESS_TOKEN", accessToken)
+                .putString("REFRESH_TOKEN", refreshToken)
+                .apply();
     }
 
-    // 2. Lấy JWT Token
-    public String getToken() {
-        return prefs.getString("JWT_TOKEN", null);
+    public String getAccessToken() {
+        return prefs.getString("ACCESS_TOKEN", null);
     }
 
-    // 3. Lưu thông tin User (Tên và Email)
+    public String getRefreshToken() {
+        return prefs.getString("REFRESH_TOKEN", null);
+    }
+
     public void saveUserData(String name, String email) {
         android.util.Log.d("DEBUG_LOGIN", "Đang ghi vào SharedPreferences: " + name);
         prefs.edit()
@@ -30,16 +33,14 @@ public class TokenManager {
                 .apply();
     }
 
-    // 4. Lấy Tên User
     public String getUserName() {
         return prefs.getString("USER_NAME", "Khách");
     }
 
-    // 5. Hàm Xóa sạch dữ liệu (Dùng khi Logout)
     public void clearAll() {
-        // Xóa cả Token và thông tin User để App quay về trạng thái chưa đăng nhập
         prefs.edit()
-                .remove("JWT_TOKEN")
+                .remove("ACCESS_TOKEN")
+                .remove("REFRESH_TOKEN")
                 .remove("USER_NAME")
                 .remove("USER_EMAIL")
                 .apply();

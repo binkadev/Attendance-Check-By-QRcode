@@ -1,13 +1,15 @@
 package com.androidapp.attendencecheckqrcode.data.repository;
 
 import android.content.Context;
-import androidx.lifecycle.LiveData;
+import android.util.Log;
+
 import androidx.lifecycle.MutableLiveData;
 
 import com.androidapp.attendencecheckqrcode.data.api.ApiClient;
 import com.androidapp.attendencecheckqrcode.data.api.ApiService;
+import com.androidapp.attendencecheckqrcode.data.dto.PageResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.teaching.GroupStudentPolicyResponse;
-import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
+import com.androidapp.attendencecheckqrcode.domain.models.Classroom;
 import com.androidapp.attendencecheckqrcode.utils.Resource;
 
 import java.util.List;
@@ -22,41 +24,52 @@ public class TeachingRepository {
         apiService = ApiClient.getApiService(context);
     }
 
-    // 1. Lấy danh sách lớp giảng
-    public LiveData<Resource<List<Attendance.Classroom>>> getTeachingClasses() {
-        MutableLiveData<Resource<List<Attendance.Classroom>>> data = new MutableLiveData<>();
-        data.setValue(Resource.loading(null));
-
-        // LECTURER để Backend phân biệt quyền
-        apiService.getTeachingClasses("LECTURER").enqueue(new Callback<List<Attendance.Classroom>>() {
+    public void getTeachingClasses(MutableLiveData<Resource<List<Classroom>>> result) {
+        apiService.getTeachingClasses(0, 100, null).enqueue(new Callback<PageResponse<Classroom>>() {
             @Override
-            public void onResponse(Call<List<Attendance.Classroom>> call, Response<List<Attendance.Classroom>> response) {
+            public void onResponse(Call<PageResponse<Classroom>> call, Response<PageResponse<Classroom>> response) {
                 if (response.isSuccessful() && response.body() != null) {
-                    data.setValue(Resource.success(response.body()));
-                } else {
-                    data.setValue(Resource.error("Lỗi lấy dữ liệu: " + response.code(), null));
+                    result.setValue(Resource.success(response.body().getItems()));
                 }
             }
             @Override
-            public void onFailure(Call<List<Attendance.Classroom>> call, Throwable t) {
-                data.setValue(Resource.error("Lỗi mạng: " + t.getMessage(), null));
+            public void onFailure(Call<PageResponse<Classroom>> call, Throwable t) {
+                result.setValue(Resource.error("Lỗi tải lớp giảng", null));
             }
         });
-        return data;
     }
+//    public void getTeachingClasses(MutableLiveData<Resource<List<Classroom>>> resultLiveData) {
+//
+//        apiService.getTeachingClasses(0, 100, null).enqueue(new Callback<PageResponse<Classroom>>() {
+//            @Override
+//            public void onResponse(Call<PageResponse<Classroom>> call, Response<PageResponse<Classroom>> response) {
+//                if (response.isSuccessful() && response.body() != null) {
+//                    List<Classroom> classrooms = response.body().getItems();
+//                    resultLiveData.setValue(Resource.success(classrooms));
+//                    Log.d("REPO_TEACHING", "Lấy danh sách lớp thành công: " + classrooms.size() + " lớp");
+//                } else {
+//                    int code = response.code();
+//                    resultLiveData.setValue(Resource.error("Lỗi lấy dữ liệu: " + code, null));
+//                    Log.e("REPO_TEACHING", "Lỗi API: " + code);
+//                }
+//            }
+//
+//            // SỬA LỖI TẠI ĐÂY: Phải đổi thành Classroom (bỏ Attendance.)
+//            @Override
+//            public void onFailure(Call<PageResponse<Classroom>> call, Throwable t) {
+//                resultLiveData.setValue(Resource.error("Lỗi mạng: " + t.getMessage(), null));
+//                Log.e("REPO_TEACHING", "Thất bại hoàn toàn: " + t.getMessage());
+//            }
+//        });
+//    }
 
-    // 2. Lấy chi tiết lớp (Policy + Students)
-    public LiveData<Resource<GroupStudentPolicyResponse>> getTeachingClassDetails(String groupId) {
-        MutableLiveData<Resource<GroupStudentPolicyResponse>> data = new MutableLiveData<>();
-        data.setValue(Resource.loading(null));
-
+    public void getTeachingClassDetails(String groupId, MutableLiveData<Resource<GroupStudentPolicyResponse>> resultLiveData) {
         apiService.getTeachingClassDetails(groupId).enqueue(new Callback<GroupStudentPolicyResponse>() {
             @Override
             public void onResponse(Call<GroupStudentPolicyResponse> call, Response<GroupStudentPolicyResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
-                    data.setValue(Resource.success(response.body()));
+                    resultLiveData.setValue(Resource.success(response.body()));
                 } else {
-                    // Cố gắng đọc nội dung lỗi 500 từ server
                     String errorBody = "Không rõ lỗi";
                     try {
                         if (response.errorBody() != null) {
@@ -64,17 +77,16 @@ public class TeachingRepository {
                         }
                     } catch (Exception ignored) {}
 
-                    // logcat debug
-                    android.util.Log.e("API_ERROR", "Lỗi 500: " + errorBody);
-
-                    data.setValue(Resource.error("Lỗi server: " + response.code() + " - Đảm bảo bạn là Giảng viên lớp này!", null));
+                    Log.e("REPO_TEACHING", "Lỗi 500/400: " + errorBody);
+                    resultLiveData.setValue(Resource.error("Lỗi server: " + response.code(), null));
                 }
             }
+
             @Override
             public void onFailure(Call<GroupStudentPolicyResponse> call, Throwable t) {
-                data.setValue(Resource.error("Lỗi mạng: " + t.getMessage(), null));
+                resultLiveData.setValue(Resource.error("Lỗi mạng: " + t.getMessage(), null));
+                Log.e("REPO_TEACHING", "Lỗi kết nối chi tiết: " + t.getMessage());
             }
         });
-        return data;
     }
 }

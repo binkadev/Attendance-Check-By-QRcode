@@ -10,19 +10,20 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.androidapp.attendencecheckqrcode.R;
-import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
+import com.androidapp.attendencecheckqrcode.domain.models.Classroom;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.TeachingViewHolder> {
 
-    private final List<Attendance.Classroom> mListClass;
+    private List<Classroom> mListClass;
 
-    public TeachingAdapter(List<Attendance.Classroom> mListClass) {
-        this.mListClass = mListClass;
+    public TeachingAdapter(List<Classroom> mListClass) {
+        this.mListClass = mListClass != null ? mListClass : new ArrayList<>();
     }
 
-    public void updateData(List<Attendance.Classroom> list) {
+    public void updateData(List<Classroom> list) {
         this.mListClass.clear();
         if (list != null) {
             this.mListClass.addAll(list);
@@ -39,15 +40,46 @@ public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.Teachi
 
     @Override
     public void onBindViewHolder(@NonNull TeachingViewHolder holder, int position) {
-        Attendance.Classroom item = mListClass.get(position);
+        Classroom item = mListClass.get(position);
         if (item == null) return;
 
-        holder.tvClassName.setText(item.getClassName());
-        holder.tvSubjectCode.setText(item.getSubjectCode());
-        holder.tvClassCode.setText(item.getClassCode());
-        holder.tvTime.setText(item.getDayOfWeek() + " | " + item.getTimeSlot());
-        holder.tvRoom.setText(item.getRoom());
-        holder.tvStudentCount.setText(item.getTotalStudents() + " SV >");
+        holder.tvClassName.setText(item.getGroupName() != null ? item.getGroupName() : "N/A");
+        holder.tvSubjectCode.setText(item.getCourseCode() != null ? item.getCourseCode() : "N/A");
+        holder.tvClassCode.setText(item.getClassCode() != null ? item.getClassCode() : "N/A");
+        holder.tvLecturer.setText(item.getLecturerName() != null ? item.getLecturerName() : "Giảng viên");
+        holder.tvStudentCount.setText(item.getApprovedStudentCount() + " SV >");
+
+        holder.tvBadge.setText("Giáo viên");
+
+        if (item.getWeeklySchedules() != null && !item.getWeeklySchedules().isEmpty()) {
+            Classroom.WeeklySchedule firstSchedule = item.getWeeklySchedules().get(0);
+
+            if (firstSchedule.getStartTime() != null && firstSchedule.getEndTime() != null) {
+                try {
+                    String start = firstSchedule.getStartTime();
+                    String end = firstSchedule.getEndTime();
+
+                    if (start.length() >= 5) start = start.substring(0, 5);
+                    if (end.length() >= 5) end = end.substring(0, 5);
+
+                    holder.tvTime.setText(start + " - " + end);
+                } catch (Exception e) {
+                    holder.tvTime.setText("--:-- - --:--");
+                }
+            } else {
+                holder.tvTime.setText("Chưa xếp lịch");
+            }
+        } else {
+            holder.tvTime.setText("Chưa xếp lịch");
+        }
+
+        String room = item.getRoom() != null ? item.getRoom() : "";
+        String campus = item.getLocationDisplay() != null ? item.getLocationDisplay() : "";
+        if (!room.isEmpty() && !campus.isEmpty()) {
+            holder.tvRoom.setText(room + " - " + campus);
+        } else {
+            holder.tvRoom.setText(room.isEmpty() ? "Trực tuyến" : room);
+        }
 
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(v.getContext(), TeachingDetailActivity.class);
@@ -62,12 +94,15 @@ public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.Teachi
     }
 
     public static class TeachingViewHolder extends RecyclerView.ViewHolder {
-        TextView tvClassName, tvSubjectCode, tvClassCode, tvTime, tvRoom, tvStudentCount;
+        TextView tvClassName, tvBadge, tvSubjectCode, tvClassCode, tvLecturer, tvTime, tvRoom, tvStudentCount;
+
         public TeachingViewHolder(@NonNull View itemView) {
             super(itemView);
             tvClassName = itemView.findViewById(R.id.tvClassName);
+            tvBadge = itemView.findViewById(R.id.tvBadge);
             tvSubjectCode = itemView.findViewById(R.id.tvSubjectCode);
             tvClassCode = itemView.findViewById(R.id.tvClassCode);
+            tvLecturer = itemView.findViewById(R.id.tvLecturer);
             tvTime = itemView.findViewById(R.id.tvTime);
             tvRoom = itemView.findViewById(R.id.tvRoom);
             tvStudentCount = itemView.findViewById(R.id.tvStudentCount);

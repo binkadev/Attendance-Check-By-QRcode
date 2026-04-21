@@ -27,16 +27,16 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintVertical_bias="0.45" />
 
-<!--    <View-->
-<!--        android:id="@+id/viewLaser"-->
-<!--        android:layout_width="260dp"-->
-<!--        android:layout_height="2dp"-->
-<!--        android:background="#FF0000"-->
-<!--        app:layout_constraintTop_toTopOf="parent"-->
-<!--        app:layout_constraintBottom_toBottomOf="parent"-->
-<!--        app:layout_constraintStart_toStartOf="parent"-->
-<!--        app:layout_constraintEnd_toEndOf="parent"-->
-<!--        app:layout_constraintVertical_bias="0.45" />-->
+    <View
+        android:id="@+id/viewLaser"
+        android:layout_width="260dp"
+        android:layout_height="2dp"
+        android:background="#FF0000"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.45" />
 
     <ImageView
         android:id="@+id/btnClose"

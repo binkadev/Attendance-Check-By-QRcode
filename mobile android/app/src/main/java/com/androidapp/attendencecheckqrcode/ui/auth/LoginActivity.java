@@ -19,6 +19,13 @@ import com.androidapp.attendencecheckqrcode.data.dto.auth.LoginRequest;
 import com.androidapp.attendencecheckqrcode.ui.home.HomeActivity;
 import com.androidapp.attendencecheckqrcode.utils.TokenManager;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.ForgotPasswordRequest;
+import com.androidapp.attendencecheckqrcode.data.api.ApiClient;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.AuthResponse;
+
 public class LoginActivity extends AppCompatActivity {
 
     private EditText etEmail, etPassword;
@@ -43,7 +50,7 @@ public class LoginActivity extends AppCompatActivity {
         authViewModel = new ViewModelProvider(this).get(AuthViewModel.class);
 
         // Auto-login nếu đã có Token
-        if (tokenManager.getToken() != null) {
+        if (tokenManager.getAccessToken() != null) {
             goToHome();
             return;
         }
@@ -74,44 +81,31 @@ public class LoginActivity extends AppCompatActivity {
                 case SUCCESS:
                     btnLogin.setEnabled(true);
                     btnLogin.setText("Đăng nhập");
-                    // Sua lai
-                    /*
-                    if (response.data != null && response.data.isSuccess()) {
-                        tokenManager.saveToken(response.data.getToken());
-                        saveCredentials(etEmail.getText().toString().trim(), etPassword.getText().toString().trim());
-                        Toast.makeText(this, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show();
-                        goToHome();
-                    } else {
-                        Toast.makeText(this, response.data != null ? response.data.getMessage() : "Lỗi server", Toast.LENGTH_SHORT).show();
-                    }
-                    break;
-                     */
+
                     if (response.data != null && response.data.getAccessToken() != null) {
-                        // 1. Log Token nhận được
                         android.util.Log.d("DEBUG_LOGIN", "===> AccessToken: " + response.data.getAccessToken());
 
-                        // Lưu token
-                        tokenManager.saveToken(response.data.getAccessToken());
+                        String accessToken = response.data.getAccessToken();
+                        String refreshToken = response.data.getRefreshToken();
+
+                        tokenManager.saveTokens(accessToken, refreshToken);
+
                         saveCredentials(etEmail.getText().toString().trim(), etPassword.getText().toString().trim());
 
-                        // 2. Kiểm tra và Log object User
                         if (response.data.getUser() != null) {
                             String name = response.data.getUser().getFullName();
                             String email = response.data.getUser().getEmail();
 
-                            // Log cực chi tiết để xem tại sao Home bị hiện "Khách"
                             android.util.Log.d("DEBUG_LOGIN", "===> User Profile: Name = [" + name + "], Email = [" + email + "]");
 
                             tokenManager.saveUserData(name, email);
                         } else {
-                            // Nếu Server trả về thành công nhưng thiếu object user, Log này sẽ báo động
                             android.util.Log.e("DEBUG_LOGIN", "===> LỖI: Server trả về SUCCESS nhưng object USER bị NULL!");
                         }
 
                         Toast.makeText(this, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show();
                         goToHome();
                     } else {
-                        // Log trường hợp thất bại
                         android.util.Log.e("DEBUG_LOGIN", "===> THẤT BẠI: response.data null hoặc không có Token");
                         Toast.makeText(this, "Không nhận được Token từ máy chủ!", Toast.LENGTH_SHORT).show();
                     }
@@ -138,13 +132,11 @@ public class LoginActivity extends AppCompatActivity {
 
         tvSignUp.setOnClickListener(v -> startActivity(new Intent(LoginActivity.this, SignUpActivity.class)));
 
-        // Gọi hàm xử lý quên mật khẩu
         tvForgotPassword.setOnClickListener(v -> handleForgotPassword());
 
         btnLogin.setOnClickListener(v -> handleLogin());
     }
 
-    // --- TÍNH NĂNG 1: REMEMBER ME ---
     private void loadRememberedCredentials() {
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE);
         boolean isRemembered = prefs.getBoolean("isRemembered", false);
@@ -165,24 +157,20 @@ public class LoginActivity extends AppCompatActivity {
             editor.putString("password", password);
             editor.putBoolean("isRemembered", true);
         } else {
-            editor.clear(); // Xóa nếu người dùng bỏ tích
+            editor.clear();
         }
         editor.apply();
     }
 
-    // --- TÍNH NĂNG 2: FORGOT PASSWORD ---
     private void handleForgotPassword() {
-        // Tạo một Dialog để người dùng nhập Email
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Khôi phục mật khẩu");
         builder.setMessage("Vui lòng nhập Email của bạn. Chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu.");
 
-        // Khởi tạo một EditText lập trình bằng code để đưa vào Dialog
         final EditText inputEmail = new EditText(this);
         inputEmail.setInputType(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         inputEmail.setHint("Email đăng ký");
 
-        // Lấy email hiện tại trên màn hình (nếu có) điền sẵn cho tiện
         inputEmail.setText(etEmail.getText().toString().trim());
 
         builder.setView(inputEmail);
@@ -196,22 +184,23 @@ public class LoginActivity extends AppCompatActivity {
 
             Toast.makeText(this, "Đang gửi yêu cầu cho: " + resetEmail, Toast.LENGTH_SHORT).show();
 
-            // [DỰ TRÙ API CHO BACKEND]
+            // Gọi API
+            ForgotPasswordRequest request = new ForgotPasswordRequest(resetEmail);
 
-            /*ApiClient.getApiService(this).forgotPassword(resetEmail).enqueue(new Callback<ApiResponse>() {
+            ApiClient.getApiService(this).forgotPassword(request).enqueue(new Callback<AuthResponse>() {
                 @Override
-                public void onResponse(Call<ApiResponse> call, Response<ApiResponse> response) {
+                public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
                     if (response.isSuccessful()) {
-                        Toast.makeText(LoginActivity.this, "Đã gửi mã xác nhận qua Email!", Toast.LENGTH_LONG).show();
+                        Toast.makeText(LoginActivity.this, "Đã gửi link khôi phục qua Email!", Toast.LENGTH_LONG).show();
                     } else {
-                        Toast.makeText(LoginActivity.this, "Email không tồn tại trên hệ thống", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(LoginActivity.this, "Email không tồn tại hoặc không hợp lệ", Toast.LENGTH_SHORT).show();
                     }
                 }
                 @Override
-                public void onFailure(Call<ApiResponse> call, Throwable t) {
-                    Toast.makeText(LoginActivity.this, "Lỗi kết nối", Toast.LENGTH_SHORT).show();
+                public void onFailure(Call<AuthResponse> call, Throwable t) {
+                    Toast.makeText(LoginActivity.this, "Lỗi kết nối mạng, vui lòng thử lại!", Toast.LENGTH_SHORT).show();
                 }
-            });*/
+            });
 
         });
 
@@ -224,7 +213,6 @@ public class LoginActivity extends AppCompatActivity {
         String email = etEmail.getText().toString().trim();
         String password = etPassword.getText().toString().trim();
 
-        // Lấy Device ID
         String deviceId = android.provider.Settings.Secure.getString(
                 getContentResolver(),
                 android.provider.Settings.Secure.ANDROID_ID
@@ -235,7 +223,6 @@ public class LoginActivity extends AppCompatActivity {
             return;
         }
 
-        // Truyền thêm deviceId vào constructor
         authViewModel.login(new LoginRequest(email, password, deviceId));
     }
 

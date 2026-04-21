@@ -23,7 +23,6 @@ public class AuthRepository {
         apiService = ApiClient.getApiService(context);
     }
 
-    // 1. ĐĂNG NHẬP
     public LiveData<Resource<AuthResponse>> login(LoginRequest request) {
         MutableLiveData<Resource<AuthResponse>> data = new MutableLiveData<>();
         data.setValue(Resource.loading(null));
@@ -48,7 +47,6 @@ public class AuthRepository {
         return data;
     }
 
-    // 2. ĐĂNG KÝ
     public LiveData<Resource<AuthResponse>> register(RegisterRequest request) {
         MutableLiveData<Resource<AuthResponse>> data = new MutableLiveData<>();
         data.setValue(Resource.loading(null));

@@ -22,10 +22,8 @@ public class QRViewModel extends AndroidViewModel {
         return checkinResult;
     }
 
-    // ĐÃ SỬA: Đổi 'int sessionId' thành 'String sessionId'
     public void processQRCode(String sessionId, String qrData) {
-        // Lúc gọi hàm này, nó sẽ hiển thị Loading, sau đó gọi xuống Repository
         checkinResult.setValue(Resource.loading(null));
-        repository.checkinQr(sessionId, qrData).observeForever(checkinResult::setValue);
+        repository.checkinQr(sessionId, qrData, checkinResult);
     }
 }

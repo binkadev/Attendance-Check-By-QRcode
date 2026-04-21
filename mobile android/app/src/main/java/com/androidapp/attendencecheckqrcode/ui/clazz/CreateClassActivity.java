@@ -16,10 +16,11 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
 import com.androidapp.attendencecheckqrcode.data.dto.group.CreateGroupRequest;
-import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
 import com.androidapp.attendencecheckqrcode.domain.models.User;
 
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -37,6 +38,9 @@ public class CreateClassActivity extends AppCompatActivity {
 
     private TextView[] dayViews;
     private final int[] dayIds = {R.id.tvDay2, R.id.tvDay3, R.id.tvDay4, R.id.tvDay5, R.id.tvDay6, R.id.tvDay7, R.id.tvDay8};
+
+    // Ánh xạ thứ tự ID với chuẩn Tiếng Anh của Backend
+    private final String[] daysOfWeek = {"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"};
 
     private User currentUser;
     private ClassViewModel classViewModel;
@@ -162,58 +166,64 @@ public class CreateClassActivity extends AppCompatActivity {
         });
     }
 
-    // --- HÀM 1: SINH MÃ BẢO MẬT TUYỆT ĐỐI (Đã Rút Gọn) ---
     private String generateSecureJoinCode(String subjectCode) {
-        // 1. Lấy 2 ký tự đầu của mã môn (nếu mã môn ngắn hơn 2 thì lấy hết)
         String prefix = subjectCode.trim().toUpperCase().replaceAll("\\s+", "");
-        if (prefix.length() > 2) {
-            prefix = prefix.substring(0, 2);
-        }
-
-        // 2. Lấy 4 ký tự ngẫu nhiên từ UUID
+        if (prefix.length() > 2) prefix = prefix.substring(0, 2);
         String randomPart = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-
-        // 3. Lấy 5 số cuối của mili-giây
         long timeSalt = System.currentTimeMillis() % 100000;
-        String salt = String.format("%05d", timeSalt);
-
-        // 4. Ghép lại. Ví dụ: IN_A7B2_48291 (Độ dài: 2 + 1 + 4 + 1 + 5 = 13 ký tự)
-        // Chắc chắn vượt qua được Validation "between 6 and 16"
-        return String.format("%s_%s_%s", prefix, randomPart, salt);
+        return String.format("%s_%s_%05d", prefix, randomPart, timeSalt);
     }
 
-    // --- HÀM 2: GOM DỮ LIỆU TẠO LỚP ---
     private void createNewClassData() {
-        // 1. Lấy dữ liệu thô từ Giao diện (UI)
         String className = etClassName.getText().toString().trim();
         String subjectCode = etSubjectCode.getText().toString().trim();
         String classCode = etClassCode.getText().toString().trim();
-
         String description = etDescription.getText().toString().trim();
-        String semester = tvSemester.getText().toString();
         String room = etRoom.getText().toString().trim();
 
-        // 2. XỬ LÝ LOGIC: Gộp Mã Môn và Mã Lớp thành trường "code"
-        // Phục vụ cho việc hiển thị danh sách của Backend
-        // Kết quả ví dụ: "INT1340-D22CQAT01-N"
+        String fullSemester = tvSemester.getText().toString();
+        String semester = "HK1";
+        String academicYear = "2025-2026";
+        if (fullSemester.contains(", ")) {
+            String[] parts = fullSemester.split(", ");
+            semester = parts[0].toUpperCase();
+            academicYear = parts[1];
+        }
+
         String systemCode = subjectCode + "-" + classCode;
 
-        // 3. XỬ LÝ LOGIC: Tự sinh "joinCode" duy nhất bằng hàm bên trên
+        List<CreateGroupRequest.WeeklySchedule> schedules = new ArrayList<>();
+
+        // CẬP NHẬT: Cắt sạch khoảng trắng ở hai đầu chuỗi giờ
+        String startTime = tvStartTime.getText().toString().trim();
+        String endTime = tvEndTime.getText().toString().trim();
+
+        for (int i = 0; i < 7; i++) {
+            if (dayViews[i].isSelected()) {
+                schedules.add(new CreateGroupRequest.WeeklySchedule(daysOfWeek[i], startTime, endTime));
+            }
+        }
+
         String uniqueJoinCode = generateSecureJoinCode(subjectCode);
 
-        // 4. Đóng gói vào Request chuẩn của Backend
         CreateGroupRequest request = new CreateGroupRequest(
-                className,          // name: Tên môn học
-                systemCode,         // code: Mã môn - Mã lớp
-                uniqueJoinCode,     // joinCode: Mã định danh kỹ thuật (Duy nhất 100%)
-                description,        // description
-                semester,           // semester
-                room,               // room
-                "AUTO",             // approvalMode: Mặc định Auto duyệt vào lớp
-                true                // allowAutoJoinOnCheckin: Cho phép tự join khi quét QR
+                className,
+                systemCode,
+                subjectCode,
+                classCode,
+                uniqueJoinCode,
+                description,
+                semester,
+                academicYear,
+                "Cơ sở Q9",
+                room,
+                "AUTO",
+                true,
+                schedules,
+                totalSessions,
+                maxAbsence
         );
 
-        // 5. Gửi gọi API (maxAbsence được lấy từ UI của bạn)
         classViewModel.createClass(request, maxAbsence);
     }
 
@@ -222,9 +232,19 @@ public class CreateClassActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(etSubjectCode.getText())) { etSubjectCode.setError("Nhập mã môn"); return false; }
         if (TextUtils.isEmpty(etClassCode.getText())) { etClassCode.setError("Nhập mã lớp"); return false; }
 
+        // CẬP NHẬT: Dùng Regex kiểm tra chuẩn giờ HH:mm (VD: 07:30, 14:05)
+        String startTime = tvStartTime.getText().toString().trim();
+        String endTime = tvEndTime.getText().toString().trim();
+        String timeRegex = "^([01]\\d|2[0-3]):([0-5]\\d)$";
+
+        if (!startTime.matches(timeRegex) || !endTime.matches(timeRegex)) {
+            Toast.makeText(this, "Vui lòng chọn thời gian bắt đầu và kết thúc hợp lệ (VD: 07:30)", Toast.LENGTH_LONG).show();
+            return false;
+        }
+
         boolean hasDay = false;
         for (TextView tv : dayViews) if (tv.isSelected()) hasDay = true;
-        if (!hasDay) { Toast.makeText(this, "Chọn ít nhất 1 ngày", Toast.LENGTH_SHORT).show(); return false; }
+        if (!hasDay) { Toast.makeText(this, "Chọn ít nhất 1 ngày học trong tuần!", Toast.LENGTH_SHORT).show(); return false; }
 
         return true;
     }
@@ -233,15 +253,15 @@ public class CreateClassActivity extends AppCompatActivity {
         Calendar c = Calendar.getInstance();
         int m = c.get(Calendar.MONTH) + 1;
         int y = c.get(Calendar.YEAR);
-        String sem = (m >= 8) ? "Học kỳ 1" : (m <= 5 ? "Học kỳ 2" : "Học kỳ Hè");
+        String sem = (m >= 8) ? "HK1" : (m <= 5 ? "Hk2" : "Hk Hè");
         String yStr = (m >= 8) ? y + "-" + (y + 1) : (y - 1) + "-" + y;
-        tvSemester.setText(sem + ", năm học " + yStr);
+        tvSemester.setText(sem + ", " + yStr);
     }
 
     private void showSemesterPicker() {
         Calendar c = Calendar.getInstance();
         int y = c.get(Calendar.YEAR);
-        String[] sems = {"Học kỳ 1, năm học " + (y - 1) + "-" + y, "Học kỳ 2, năm học " + (y - 1) + "-" + y, "Học kỳ 1, năm học " + y + "-" + (y + 1)};
+        String[] sems = {"HK1, " + (y - 1) + "-" + y, "HK2, " + (y - 1) + "-" + y, "HK1, " + y + "-" + (y + 1)};
         new AlertDialog.Builder(this).setTitle("Chọn học kỳ").setItems(sems, (d, i) -> tvSemester.setText(sems[i])).show();
     }
 

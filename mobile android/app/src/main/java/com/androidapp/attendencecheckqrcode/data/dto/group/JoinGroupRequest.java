@@ -10,7 +10,6 @@ public class JoinGroupRequest {
         this.joinCode = joinCode;
     }
 
-    // Getter (thêm vào cho chắc chắn)
     public String getJoinCode() {
         return joinCode;
     }

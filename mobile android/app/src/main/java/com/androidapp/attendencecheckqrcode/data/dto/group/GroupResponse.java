@@ -12,7 +12,6 @@ public class GroupResponse {
     @SerializedName("status")
     private String status;
 
-    // Getters
     public String getId() { return id; }
     public String getName() { return name; }
     public String getCode() { return code; }

@@ -27,7 +27,6 @@ public class AuthResponse {
     @SerializedName("user")
     private UserDto user;
 
-    // --- GETTERS ---
     public String getAccessToken() { return accessToken; }
     public String getTokenType() { return tokenType; }
     public String getRefreshToken() { return refreshToken; }
@@ -37,7 +36,6 @@ public class AuthResponse {
     public boolean isFirstLogin() { return firstLogin; }
     public UserDto getUser() { return user; }
 
-    // --- INNER CLASS ---
     public static class UserDto {
         @SerializedName("id")
         private String id;
@@ -51,7 +49,6 @@ public class AuthResponse {
         @SerializedName("platformRole")
         private String platformRole;
 
-        // Bổ sung đầy đủ Getter để hiển thị thông tin User
         public String getId() { return id; }
         public String getEmail() { return email; }
         public String getFullName() { return fullName; }

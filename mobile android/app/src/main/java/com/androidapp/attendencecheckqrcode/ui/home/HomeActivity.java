@@ -12,6 +12,7 @@ import androidx.cardview.widget.CardView;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.androidapp.attendencecheckqrcode.R;
+import com.androidapp.attendencecheckqrcode.ui.join.JoinClassActivity;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
@@ -32,7 +33,6 @@ public class HomeActivity extends AppCompatActivity {
     private TextView tvSummary, tvDate, tvGreeting, tvName;
     private ImageView btnNotification;
 
-    // Khai báo ViewModel
     private HomeViewModel homeViewModel;
 
     @Override
@@ -47,7 +47,6 @@ public class HomeActivity extends AppCompatActivity {
         initViews();
         setupUI();
 
-        // Khởi tạo ViewModel và Lắng nghe dữ liệu
         homeViewModel = new ViewModelProvider(this).get(HomeViewModel.class);
         observeViewModel();
 
@@ -82,17 +81,14 @@ public class HomeActivity extends AppCompatActivity {
 
     // --- MVVM: LẮNG NGHE SỰ THAY ĐỔI TỪ VIEWMODEL ---
     private void observeViewModel() {
-        // Cập nhật Lời chào
         homeViewModel.getGreetingText().observe(this, greeting -> {
             if (tvGreeting != null) tvGreeting.setText(greeting);
         });
 
-        // Cập nhật Ngày giờ
         homeViewModel.getCurrentDateText().observe(this, date -> {
             if (tvDate != null) tvDate.setText(date);
         });
 
-        // Cập nhật Tên User
         homeViewModel.getUserName().observe(this, name -> {
             if (tvName != null) tvName.setText(name);
         });
@@ -103,9 +99,11 @@ public class HomeActivity extends AppCompatActivity {
             startActivity(new Intent(HomeActivity.this, QRScanActivity.class));
         });
 
-        btnJoin.setOnClickListener(v ->
-                Toast.makeText(HomeActivity.this, "Chức năng: Tham gia lớp", Toast.LENGTH_SHORT).show()
-        );
+        btnJoin.setOnClickListener(v -> {
+            Toast.makeText(HomeActivity.this, "Mở màn hình tham gia lớp", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(HomeActivity.this, JoinClassActivity.class);
+            startActivity(intent);
+        });
 
         btnCreate.setOnClickListener(v -> {
             startActivity(new Intent(HomeActivity.this, CreateClassActivity.class));

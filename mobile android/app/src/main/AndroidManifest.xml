@@ -22,51 +22,38 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".ui.qr.QRScanActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.settings.SettingsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.stats.StatsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.clazz.CreateClassActivity"
-            android:exported="false" />
-        <!--        <activity-->
-        <!--            android:name=".ui.attendance.AttendanceActivity"-->
-        <!--            android:exported="false" />-->
-        <activity
-            android:name=".ui.home.HomeActivity"
-            android:exported="false" />
-        <!-- <activity -->
-        <!-- android:name=".ui.signup.SignUpActivity" -->
-        <!-- android:exported="false" /> -->
-        <activity
-            android:name=".ui.auth.SignUpActivity"
-            android:exported="false" />
-        <activity
             android:name=".ui.auth.LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- CAM Qr Code -->
-        <!--        <uses-permission android:name="android.permission.CAMERA" />-->
+        <activity android:name=".ui.auth.SignUpActivity" android:exported="false" />
+        <activity android:name=".ui.home.HomeActivity" android:exported="false" />
 
-        <!--        <uses-feature-->
-        <!--            android:name="android.hardware.camera"-->
-        <!--            android:required="false" />-->
-        <activity android:name=".ui.clazz.ClassListActivity" />
-        <activity android:name=".ui.clazz.ClassDetailActivity" />
+        <activity
+            android:name=".ui.join.JoinClassActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustPan" />
 
-        <activity android:name=".ui.teaching.TeachingListActivity" />
-        <activity android:name=".ui.teaching.TeachingDetailActivity" />
-        <activity android:name=".ui.teaching.CreateQRActivity" />
+        <activity
+            android:name=".ui.qr.CreateQRActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustPan" />
+
+        <activity android:name=".ui.qr.QRScanActivity" android:exported="false" />
+
+        <activity android:name=".ui.settings.SettingsActivity" android:exported="false" />
+        <activity android:name=".ui.stats.StatsActivity" android:exported="false" />
+        <activity android:name=".ui.clazz.CreateClassActivity" android:exported="false" />
+        <activity android:name=".ui.clazz.ClassListActivity" android:exported="false" />
+        <activity android:name=".ui.clazz.ClassDetailActivity" android:exported="false" />
+        <activity android:name=".ui.teaching.TeachingListActivity" android:exported="false" />
+        <activity android:name=".ui.teaching.TeachingDetailActivity" android:exported="false" />
+
     </application>
-
 </manifest>

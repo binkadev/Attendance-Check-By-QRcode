@@ -1,6 +1,10 @@
 package com.androidapp.attendencecheckqrcode.data.api;
 
+import com.androidapp.attendencecheckqrcode.data.dto.PageResponse;
+import com.androidapp.attendencecheckqrcode.data.dto.SemesterDto;
 import com.androidapp.attendencecheckqrcode.data.dto.attendance.CheckinQrRequest;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.ChangePasswordRequest;
+import com.androidapp.attendencecheckqrcode.data.dto.auth.ForgotPasswordRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.CreateGroupRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.GroupResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.group.JoinGroupRequest;
@@ -11,6 +15,7 @@ import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.AuthResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.LoginRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.RegisterRequest;
+import com.androidapp.attendencecheckqrcode.domain.models.Classroom;
 import com.androidapp.attendencecheckqrcode.domain.models.User;
 
 import java.util.List;
@@ -23,8 +28,6 @@ import retrofit2.http.Path;
 import retrofit2.http.Query;
 
 public interface ApiService {
-
-    // --- 1. AUTH & USER ---
     @POST("api/v1/auth/login")
     Call<AuthResponse> loginUser(@Body LoginRequest request);
 
@@ -35,32 +38,41 @@ public interface ApiService {
     Call<User> getMyProfile();
 
     @POST("api/v1/auth/forgot-password")
-    Call<Object> forgotPassword(@Query("email") String email);
+    Call<AuthResponse> forgotPassword(@Body ForgotPasswordRequest request);
+
+    @POST("/api/v1/auth/change-password")
+    Call<AuthResponse> changePassword(@Body ChangePasswordRequest request);
 
 
-    // --- 2. GROUPS (CLASS) ---
     @POST("api/v1/groups")
     Call<GroupResponse> createClassGroup(@Body CreateGroupRequest request);
 
-    // Dùng chung API lấy danh sách, Backend sẽ tự phân biệt bằng role (hoặc tự nhận diện qua Token)
-    @GET("api/v1/groups")
-    Call<List<Attendance.Classroom>> getEnrolledClasses(@Query("role") String role); // Gửi role="STUDENT"
+    @GET("api/v1/me/classes/teaching")
+    Call<PageResponse<Classroom>> getTeachingClasses(
+            @Query("page") int page,
+            @Query("size") int size,
+            @Query("semester") String semester // Thêm dòng này vào
+    );
 
-    @GET("api/v1/groups")
-    Call<List<Attendance.Classroom>> getTeachingClasses(@Query("role") String role); // Gửi role="LECTURER"
+    @GET("api/v1/me/classes")
+    Call<PageResponse<Classroom>> getEnrolledClasses(
+            @Query("page") int page,
+            @Query("size") int size
+    );
+
+    @GET("api/v1/me/classes/semesters")
+    Call<List<SemesterDto>> getSemesters();
 
     @POST("api/v1/groups/join")
     Call<MemberResponse> joinClass(@Body JoinGroupRequest request);
 
 
-    // --- 3. TEACHING & POLICY ---
     @PUT("api/v1/groups/{groupId}/attendance-policy")
     Call<Void> updateAttendancePolicy(@Path("groupId") String groupId, @Body AttendancePolicyRequest request);
 
     @GET("api/v1/groups/{groupId}/attendance-policy/students")
     Call<GroupStudentPolicyResponse> getTeachingClassDetails(@Path("groupId") String groupId);
 
-    // --- 4. QR & ATTENDANCE  ---
     @POST("api/v1/sessions/{sessionId}/qr/rotate")
     Call<Void> rotateQrCode(@Path("sessionId") String sessionId);
 

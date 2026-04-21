@@ -5,23 +5,22 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F9F9F9">
-
-    <View
-        android:id="@+id/viewHeader"
-        android:layout_width="match_parent"
-        android:layout_height="80dp"
-        android:background="#D32F2F"
-        app:layout_constraintTop_toTopOf="parent" />
+    android:background="#F5F7FA"> <View
+    android:id="@+id/viewHeader"
+    android:layout_width="match_parent"
+    android:layout_height="85dp"
+    android:background="#D32F2F"
+    app:layout_constraintTop_toTopOf="parent" />
 
     <ImageView
         android:id="@+id/btnBack"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="30dp"
+        android:layout_marginTop="32dp"
         android:padding="8dp"
         android:src="@drawable/ic_back"
+        android:background="?attr/selectableItemBackgroundBorderless"
         app:tint="@color/white"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -29,7 +28,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Cài đặt"
+        android:text="Cài đặt tài khoản"
         android:textColor="@color/white"
         android:textSize="20sp"
         android:textStyle="bold"
@@ -53,56 +52,13 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-<!--            <LinearLayout-->
-<!--                android:layout_width="match_parent"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:gravity="center"-->
-<!--                android:orientation="vertical"-->
-<!--                android:layout_marginBottom="20dp">-->
-
-<!--                <de.hdodenhof.circleimageview.CircleImageView-->
-<!--                    android:id="@+id/imgAvatar"-->
-<!--                    android:layout_width="80dp"-->
-<!--                    android:layout_height="80dp"-->
-<!--                    android:src="@drawable/logo"-->
-<!--                    app:civ_border_width="2dp"-->
-<!--                    app:civ_border_color="@color/white"/>-->
-
-<!--                <LinearLayout-->
-<!--                    android:layout_width="wrap_content"-->
-<!--                    android:layout_height="wrap_content"-->
-<!--                    android:gravity="center_vertical"-->
-<!--                    android:orientation="horizontal"-->
-<!--                    android:layout_marginTop="8dp">-->
-<!--                    <TextView-->
-<!--                        android:id="@+id/tvName"-->
-<!--                        android:layout_width="wrap_content"-->
-<!--                        android:layout_height="wrap_content"-->
-<!--                        android:text="Nguyễn Văn A"-->
-<!--                        android:textStyle="bold"-->
-<!--                        android:textSize="18sp"-->
-<!--                        android:textColor="#000"/>-->
-<!--                    <ImageView-->
-<!--                        android:layout_width="16dp"-->
-<!--                        android:layout_height="16dp"-->
-<!--                        android:src="@drawable/ic_arrow_right"-->
-<!--                        app:tint="#757575"/>-->
-<!--                </LinearLayout>-->
-
-<!--                <TextView-->
-<!--                    android:id="@+id/tvStudentId"-->
-<!--                    android:layout_width="wrap_content"-->
-<!--                    android:layout_height="wrap_content"-->
-<!--                    android:text="SV20234567"-->
-<!--                    android:textSize="14sp"-->
-<!--                    android:textColor="#757575"/>-->
-<!--            </LinearLayout>-->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:layout_marginBottom="20dp">
+                android:layout_marginBottom="24dp"
+                android:layout_marginTop="10dp">
 
                 <androidx.constraintlayout.widget.ConstraintLayout
                     android:layout_width="wrap_content"
@@ -110,11 +66,11 @@
 
                     <de.hdodenhof.circleimageview.CircleImageView
                         android:id="@+id/imgAvatar"
-                        android:layout_width="100dp"
-                        android:layout_height="100dp"
+                        android:layout_width="110dp"
+                        android:layout_height="110dp"
                         android:src="@drawable/logo"
-                        app:civ_border_width="2dp"
-                        app:civ_border_color="@color/white"
+                        app:civ_border_width="3dp"
+                        app:civ_border_color="#D32F2F"
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintEnd_toEndOf="parent"
                         app:layout_constraintTop_toTopOf="parent"
@@ -122,23 +78,25 @@
 
                     <LinearLayout
                         android:id="@+id/btnChangeAvatar"
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
                         android:background="@drawable/bg_circle_gray"
-                        android:backgroundTint="#E0E0E0"
+                        android:backgroundTint="#FFFFFF"
+                        android:elevation="4dp"
                         android:gravity="center"
                         android:clickable="true"
                         android:focusable="true"
                         app:layout_constraintBottom_toBottomOf="@id/imgAvatar"
-                        app:layout_constraintEnd_toEndOf="@id/imgAvatar">
+                        app:layout_constraintEnd_toEndOf="@id/imgAvatar"
+                        app:layout_constraintHorizontal_bias="1.0"
+                        app:layout_constraintVertical_bias="0.9">
 
                         <ImageView
                             android:layout_width="20dp"
                             android:layout_height="20dp"
                             android:src="@drawable/ic_camera_alt"
-                            app:tint="#555"/>
+                            app:tint="#D32F2F"/>
                     </LinearLayout>
-
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
                 <LinearLayout
@@ -149,33 +107,36 @@
                     android:orientation="horizontal"
                     android:clickable="true"
                     android:background="?attr/selectableItemBackground"
-                    android:padding="8dp"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="8dp"
                     android:layout_marginTop="8dp">
 
                     <TextView
                         android:id="@+id/tvName"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Nguyễn Văn A"
+                        tools:text="Phạm Văn Phú"
                         android:textStyle="bold"
-                        android:textSize="20sp"
-                        android:textColor="#000"/>
+                        android:textSize="22sp"
+                        android:textColor="#2D3748"/>
 
                     <ImageView
                         android:layout_width="18dp"
                         android:layout_height="18dp"
                         android:layout_marginStart="8dp"
                         android:src="@drawable/ic_edit"
-                        app:tint="#757575"/>
+                        app:tint="#A0AEC0"/>
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/tvStudentId"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="SV20234567"
-                    android:textSize="14sp"
-                    android:textColor="#757575"/>
+                    tools:text="N22DCCN160"
+                    android:fontFamily="monospace"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="#718096"/>
             </LinearLayout>
 
             <TextView
@@ -183,8 +144,11 @@
                 android:layout_height="wrap_content"
                 android:text="Thông tin học tập"
                 android:textStyle="bold"
-                android:textColor="#757575"
-                android:layout_marginBottom="8dp"/>
+                android:textSize="13sp"
+                android:textAllCaps="true"
+                android:textColor="#A0AEC0"
+                android:layout_marginBottom="8dp"
+                android:layout_marginStart="4dp"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -192,7 +156,8 @@
                 android:orientation="vertical"
                 android:background="@drawable/bg_section_pink"
                 android:padding="16dp"
-                android:layout_marginBottom="20dp">
+                android:elevation="1dp"
+                android:layout_marginBottom="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -200,23 +165,13 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingVertical="8dp">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_school" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Khoa/Viện" android:layout_marginStart="12dp" android:textStyle="bold"/>
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CNTT &amp; TT" android:textColor="#757575"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" app:tint="#AAA" android:layout_marginStart="8dp"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_school" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Cơ sở đào tạo" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
+                    <TextView android:id="@+id/tvFacultyValue" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="PTIT Cơ sở Hồ Chí Minh" android:textColor="#718096" android:textSize="13sp"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" app:tint="#CBD5E0" android:layout_marginStart="8dp"/>
                 </LinearLayout>
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingVertical="8dp">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_school" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Chuyên ngành" android:layout_marginStart="12dp" android:textStyle="bold"/>
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Kỹ thuật phần mềm" android:textColor="#757575"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" app:tint="#AAA" android:layout_marginStart="8dp"/>
-                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EDF2F7" android:layout_marginVertical="4dp"/>
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -224,10 +179,24 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingVertical="8dp">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_email" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Email trường" android:layout_marginStart="12dp" android:textStyle="bold"/>
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="nva.st@uni.edu.vn" android:textColor="#757575"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" app:tint="#AAA" android:layout_marginStart="8dp"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_school" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Chuyên ngành" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
+                    <TextView android:id="@+id/tvMajorValue" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Công nghệ thông tin" android:textColor="#718096" android:textSize="13sp"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" app:tint="#CBD5E0" android:layout_marginStart="8dp"/>
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EDF2F7" android:layout_marginVertical="4dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingVertical="8dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_email" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Email trường" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
+                    <TextView android:id="@+id/tvEmailValue" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="phupv.n22dccn160@stu.ptit.edu.vn" android:textColor="#718096" android:textSize="12sp"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" app:tint="#CBD5E0" android:layout_marginStart="8dp"/>
                 </LinearLayout>
             </LinearLayout>
 
@@ -236,8 +205,11 @@
                 android:layout_height="wrap_content"
                 android:text="Thông tin liên lạc"
                 android:textStyle="bold"
-                android:textColor="#757575"
-                android:layout_marginBottom="8dp"/>
+                android:textSize="13sp"
+                android:textAllCaps="true"
+                android:textColor="#A0AEC0"
+                android:layout_marginBottom="8dp"
+                android:layout_marginStart="4dp"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -245,7 +217,8 @@
                 android:orientation="vertical"
                 android:background="@drawable/bg_section_pink"
                 android:padding="16dp"
-                android:layout_marginBottom="20dp">
+                android:elevation="1dp"
+                android:layout_marginBottom="24dp">
 
                 <LinearLayout
                     android:id="@+id/rowPhone"
@@ -256,16 +229,18 @@
                     android:paddingVertical="8dp"
                     android:clickable="true"
                     android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_phone" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Số điện thoại" android:layout_marginStart="12dp" android:textStyle="bold"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_phone" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Số điện thoại" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
                     <TextView
                         android:id="@+id/tvPhoneValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="0909 123 456"
-                        android:textColor="#757575"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#AAA" android:layout_marginStart="8dp"/>
+                        tools:text="0909 123 456"
+                        android:textColor="#718096"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#A0AEC0" android:layout_marginStart="8dp"/>
                 </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EDF2F7" android:layout_marginVertical="4dp"/>
 
                 <LinearLayout
                     android:id="@+id/rowAddress"
@@ -276,28 +251,31 @@
                     android:paddingVertical="8dp"
                     android:clickable="true"
                     android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_location" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Địa chỉ" android:layout_marginStart="12dp" android:textStyle="bold"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_location" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Địa chỉ" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
                     <TextView
                         android:id="@+id/tvAddressValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Thủ Đức, Hồ Chí Minh"
-                        android:textColor="#757575"
+                        tools:text="Thủ Đức, Hồ Chí Minh"
+                        android:textColor="#718096"
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:maxWidth="150dp"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#AAA" android:layout_marginStart="8dp"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#A0AEC0" android:layout_marginStart="8dp"/>
                 </LinearLayout>
             </LinearLayout>
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Cài đặt ứng dụng"
+                android:text="Hệ thống"
                 android:textStyle="bold"
-                android:textColor="#757575"
-                android:layout_marginBottom="8dp"/>
+                android:textSize="13sp"
+                android:textAllCaps="true"
+                android:textColor="#A0AEC0"
+                android:layout_marginBottom="8dp"
+                android:layout_marginStart="4dp"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -305,7 +283,8 @@
                 android:orientation="vertical"
                 android:background="@drawable/bg_section_pink"
                 android:padding="16dp"
-                android:layout_marginBottom="20dp">
+                android:elevation="1dp"
+                android:layout_marginBottom="24dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -313,15 +292,15 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingVertical="8dp">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_notifications" app:tint="#555"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_notifications" app:tint="#4A5568"/>
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
                         android:layout_marginStart="12dp">
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Thông báo nhắc nhở" android:textStyle="bold"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Nhận thông báo trước buổi học" android:textSize="10sp" android:textColor="#757575"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Thông báo nhắc nhở" android:textColor="#2D3748" android:textStyle="bold"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Nhận thông báo trước buổi học" android:textSize="11sp" android:textColor="#718096"/>
                     </LinearLayout>
                     <androidx.appcompat.widget.SwitchCompat
                         android:id="@+id/swNotification"
@@ -330,20 +309,24 @@
                         android:checked="true"/>
                 </LinearLayout>
 
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EDF2F7" android:layout_marginVertical="4dp"/>
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingVertical="8dp">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_moon" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Giao diện tối" android:layout_marginStart="12dp" android:textStyle="bold"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_moon" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Giao diện tối" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
                     <androidx.appcompat.widget.SwitchCompat
                         android:id="@+id/swDarkMode"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:checked="false"/>
                 </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EDF2F7" android:layout_marginVertical="4dp"/>
 
                 <LinearLayout
                     android:id="@+id/rowLanguage"
@@ -354,15 +337,15 @@
                     android:paddingVertical="8dp"
                     android:clickable="true"
                     android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_language" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Ngôn ngữ" android:layout_marginStart="12dp" android:textStyle="bold"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_language" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Ngôn ngữ" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
                     <TextView
                         android:id="@+id/tvLanguageValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Tiếng Việt"
-                        android:textColor="#757575"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#AAA" android:layout_marginStart="8dp"/>
+                        android:textColor="#718096"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#A0AEC0" android:layout_marginStart="8dp"/>
                 </LinearLayout>
             </LinearLayout>
 
@@ -371,8 +354,11 @@
                 android:layout_height="wrap_content"
                 android:text="Bảo mật"
                 android:textStyle="bold"
-                android:textColor="#757575"
-                android:layout_marginBottom="8dp"/>
+                android:textSize="13sp"
+                android:textAllCaps="true"
+                android:textColor="#A0AEC0"
+                android:layout_marginBottom="8dp"
+                android:layout_marginStart="4dp"/>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -380,7 +366,8 @@
                 android:orientation="vertical"
                 android:background="@drawable/bg_section_pink"
                 android:padding="16dp"
-                android:layout_marginBottom="20dp">
+                android:elevation="1dp"
+                android:layout_marginBottom="32dp">
 
                 <LinearLayout
                     android:id="@+id/rowChangePass"
@@ -391,10 +378,12 @@
                     android:paddingVertical="8dp"
                     android:clickable="true"
                     android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_security" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Đổi mật khẩu" android:layout_marginStart="12dp" android:textStyle="bold"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#AAA"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_security" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Đổi mật khẩu" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#A0AEC0"/>
                 </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#EDF2F7" android:layout_marginVertical="4dp"/>
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -402,34 +391,34 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingVertical="8dp">
-                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_fingerprint" app:tint="#555"/>
-                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Đăng nhập sinh trắc học" android:layout_marginStart="12dp" android:textStyle="bold"/>
-                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#AAA"/>
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_fingerprint" app:tint="#4A5568"/>
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Đăng nhập sinh trắc học" android:layout_marginStart="12dp" android:textColor="#2D3748" android:textStyle="bold"/>
+                    <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_arrow_right" app:tint="#A0AEC0"/>
                 </LinearLayout>
             </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/btnLogout"
-                android:layout_width="180dp"
+                android:layout_width="match_parent"
                 android:layout_height="50dp"
+                android:layout_marginHorizontal="20dp"
                 android:background="@drawable/bg_button_light_red"
                 android:gravity="center"
                 android:orientation="horizontal"
                 android:layout_gravity="center"
-                android:layout_marginTop="10dp"
                 android:clickable="true"
                 android:focusable="true">
 
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:src="@drawable/ic_logout"
                     app:tint="#D32F2F"
                     android:layout_marginEnd="8dp"/>
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Đăng xuất"
+                    android:text="Đăng xuất khỏi thiết bị"
                     android:textColor="#D32F2F"
                     android:textStyle="bold"
                     android:textSize="16sp"/>

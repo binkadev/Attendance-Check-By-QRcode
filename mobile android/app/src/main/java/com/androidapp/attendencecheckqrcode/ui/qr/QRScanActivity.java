@@ -144,7 +144,6 @@ public class QRScanActivity extends AppCompatActivity {
 
                 cameraProvider.unbindAll();
 
-                // Gán vào biến camera để dùng cho Auto-Zoom
                 camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
 
             } catch (ExecutionException | InterruptedException e) {
@@ -153,8 +152,9 @@ public class QRScanActivity extends AppCompatActivity {
         }, ContextCompat.getMainExecutor(this));
     }
 
-    // Xử lý kết quả quét và tự động Zoom
     private void handleQRCodeResult(String qrCodeText, Rect boundingBox, int imgWidth, int imgHeight) {
+        viewFinder.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+
         if (isProcessing) return;
 
         // Xử lý AUTO-ZOOM nếu mã QR ở quá xa
@@ -162,59 +162,48 @@ public class QRScanActivity extends AppCompatActivity {
             float qrWidth = boundingBox.width();
             float ratio = qrWidth / imgWidth; // Tính tỷ lệ mã QR so với khung hình
 
-            // Nếu mã QR chiếm ít hơn 25% chiều rộng màn hình -> Đang ở xa
             if (ratio < 0.25f) {
                 ZoomState zoomState = camera.getCameraInfo().getZoomState().getValue();
                 if (zoomState != null) {
                     float currentZoom = zoomState.getZoomRatio();
                     float maxZoom = zoomState.getMaxZoomRatio();
 
-                    // Tính toán mức zoom mới sao cho mã QR to lên khoảng 40% màn hình
                     float targetZoom = currentZoom * (0.4f / ratio);
                     if (targetZoom > maxZoom) targetZoom = maxZoom;
 
-                    // Thực hiện hiệu ứng Zoom
                     camera.getCameraControl().setZoomRatio(targetZoom);
 
                     isProcessing = true; // Khóa lại để tránh gọi nhiều lần
 
-                    // Đợi 300ms để người dùng nhìn thấy hiệu ứng camera kéo gần vào QR, sau đó mới gọi API
                     viewFinder.postDelayed(() -> processApiCheckIn(qrCodeText), 300);
                     return;
                 }
             }
         }
 
-        // Nếu mã QR đã đủ to và rõ, xử lý luôn
         isProcessing = true;
         processApiCheckIn(qrCodeText);
     }
 
     // Xử lý logic gọi API
     private void processApiCheckIn(String qrCodeText) {
-        // Trong hệ thống mới, qrCodeText chính là "sessionId_timestamp" hoặc tương tự
-        // Tùy thuộc vào cách bạn sinh mã QR ở CreateQRActivity
-
         try {
-            // Giả sử mã QR của bạn có dạng: "3fa85f64-5717..._1678889990" (được phân cách bởi dấu _)
-            // Hoặc dạng: "3fa85f64-5717...|1678889990" (phân cách bởi dấu |)
+            String[] parts = qrCodeText.split("_");
 
-            // Ở đây mình dùng chung ký tự phân cách là dấu | hoặc _
-            String[] parts = qrCodeText.split("[|_]");
+            if (parts.length >= 3) {
+                String groupId = parts[0];
 
-            if (parts.length >= 1) {
-                // sessionId là chuỗi (String), không ép kiểu sang int nữa
-                String sessionId = parts[0];
+                Log.d("QR_SCAN", "Đã bóc tách được GroupId: " + groupId);
 
-                // Gọi ViewModel với 2 tham số đều là String
-                // Truyền toàn bộ qrCodeText lên làm token để Backend xác thực
-                qrViewModel.processQRCode(sessionId, qrCodeText);
+                qrViewModel.processQRCode(groupId, qrCodeText);
+
             } else {
-                Toast.makeText(this, "Mã QR rỗng hoặc không hợp lệ!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Mã QR không đúng định dạng hệ thống!", Toast.LENGTH_SHORT).show();
                 isProcessing = false;
             }
         } catch (Exception e) {
-            Toast.makeText(this, "Mã QR không đúng định dạng của trường!", Toast.LENGTH_SHORT).show();
+            Log.e("QR_SCAN", "Lỗi xử lý chuỗi: " + e.getMessage());
+            Toast.makeText(this, "Lỗi nhận diện mã QR!", Toast.LENGTH_SHORT).show();
             isProcessing = false;
         }
     }

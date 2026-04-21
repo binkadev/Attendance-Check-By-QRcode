@@ -10,7 +10,6 @@ public class GroupStudentPolicyResponse {
     @SerializedName("items")
     private List<StudentItem> students;
 
-    // Các trường phân trang (Thêm vào để khỏi bị lỗi parse JSON)
     @SerializedName("page")
     private int page;
     @SerializedName("size")

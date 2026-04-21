@@ -19,7 +19,6 @@ public class QRCodeAnalyzer implements ImageAnalysis.Analyzer {
     private final QRCodeListener listener;
     private final BarcodeScanner scanner;
 
-    // Cập nhật interface để truyền thêm Rect và Kích thước ảnh
     public interface QRCodeListener {
         void onQRCodeFound(String qrCode, Rect boundingBox, int imageWidth, int imageHeight);
     }
@@ -46,7 +45,6 @@ public class QRCodeAnalyzer implements ImageAnalysis.Analyzer {
                             Rect boundingBox = barcode.getBoundingBox();
 
                             if (rawValue != null && boundingBox != null) {
-                                // Truyền thêm chiều rộng và chiều cao của ảnh (đã xoay chiều)
                                 listener.onQRCodeFound(rawValue, boundingBox, image.getWidth(), image.getHeight());
                                 break;
                             }

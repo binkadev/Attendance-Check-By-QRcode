@@ -1,7 +1,5 @@
 package com.androidapp.attendencecheckqrcode.models.entities;
 
-//package com.androidapp.attendencecheckqrcode.models;
-
 public class ClassItem {
     private String className;
     private String subjectCode; // Mã môn
@@ -21,7 +19,6 @@ public class ClassItem {
         this.studentCount = studentCount;
     }
 
-    // Getter methods
     public String getClassName() { return className; }
     public String getSubjectCode() { return subjectCode; }
     public String getClassCode() { return classCode; }

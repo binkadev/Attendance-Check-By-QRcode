@@ -9,6 +9,7 @@ import androidx.lifecycle.MutableLiveData;
 import com.androidapp.attendencecheckqrcode.data.dto.teaching.GroupStudentPolicyResponse;
 import com.androidapp.attendencecheckqrcode.data.repository.TeachingRepository;
 import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
+import com.androidapp.attendencecheckqrcode.domain.models.Classroom;
 import com.androidapp.attendencecheckqrcode.utils.Resource;
 
 import java.util.List;
@@ -17,7 +18,7 @@ public class TeachingViewModel extends AndroidViewModel {
 
     private final TeachingRepository repository;
 
-    private final MutableLiveData<Resource<List<Attendance.Classroom>>> teachingClasses = new MutableLiveData<>();
+    private final MutableLiveData<Resource<List<Classroom>>> teachingClasses = new MutableLiveData<>();
     private final MutableLiveData<Resource<GroupStudentPolicyResponse>> classDetailsResult = new MutableLiveData<>();
 
     public TeachingViewModel(@NonNull Application application) {
@@ -25,7 +26,7 @@ public class TeachingViewModel extends AndroidViewModel {
         repository = new TeachingRepository(application);
     }
 
-    public LiveData<Resource<List<Attendance.Classroom>>> getTeachingClassesResult() {
+    public LiveData<Resource<List<Classroom>>> getTeachingClassesResult() {
         return teachingClasses;
     }
 
@@ -35,11 +36,13 @@ public class TeachingViewModel extends AndroidViewModel {
 
     public void fetchTeachingClasses() {
         teachingClasses.setValue(Resource.loading(null));
-        repository.getTeachingClasses().observeForever(teachingClasses::setValue);
+
+        repository.getTeachingClasses(teachingClasses);
     }
 
     public void fetchClassDetails(String groupId) {
         classDetailsResult.setValue(Resource.loading(null));
-        repository.getTeachingClassDetails(groupId).observeForever(classDetailsResult::setValue);
+
+        repository.getTeachingClassDetails(groupId, classDetailsResult);
     }
 }
