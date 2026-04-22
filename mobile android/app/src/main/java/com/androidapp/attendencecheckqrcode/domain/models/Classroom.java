@@ -45,6 +45,32 @@ public class Classroom implements Serializable {
     @SerializedName("weeklySchedules")
     private List<WeeklySchedule> weeklySchedules;
 
+    // ==========================================
+    // CÁC BIẾN CHO MÀN HÌNH DANH SÁCH (Rút gọn)
+    // ==========================================
+    @SerializedName("startTime")
+    private String startTime;
+
+    @SerializedName("endTime")
+    private String endTime;
+
+    // ==========================================
+    // CÁC BIẾN CHO MÀN HÌNH CHI TIẾT (Full)
+    // Đã bổ sung khai báo tại đây để sửa lỗi!
+    // ==========================================
+    @SerializedName("joinCode")
+    private String joinCode;
+
+    @SerializedName("description")
+    private String description;
+
+    @SerializedName("totalSessions")
+    private int totalSessions;
+
+    @SerializedName("maxAllowedAbsences")
+    private int maxAllowedAbsences;
+
+    // --- CÁC CLASS CON ---
     public static class WeeklySchedule implements Serializable {
         @SerializedName("dayOfWeek")
         private String dayOfWeek;
@@ -62,6 +88,7 @@ public class Classroom implements Serializable {
 
     public Classroom() {}
 
+    // --- GETTERS CƠ BẢN ---
     public String getCode() { return code; }
     public String getGroupId() { return groupId; }
     public String getGroupName() { return groupName; }
@@ -74,10 +101,36 @@ public class Classroom implements Serializable {
     public String getAcademicYear() { return academicYear; }
     public String getLocationDisplay() { return locationDisplay; }
     public String getMyRole() { return myRole; }
-
     public List<WeeklySchedule> getWeeklySchedules() { return weeklySchedules; }
 
     public String getDisplayTitle() {
         return classCode + " - " + groupName;
+    }
+
+    // --- GETTERS CHO DANH SÁCH RÚT GỌN ---
+    public String getStartTime() { return startTime; }
+    public String getEndTime() { return endTime; }
+
+    // --- GETTERS CHO CHI TIẾT LỚP ---
+    public String getJoinCode() { return joinCode; }
+    public String getDescription() { return description; }
+    public int getTotalSessions() { return totalSessions; }
+    public int getMaxAllowedAbsences() { return maxAllowedAbsences; }
+
+    // --- SETTERS ĐỂ MERGE DATA (BƠM DỮ LIỆU) ---
+    public void setWeeklySchedules(List<WeeklySchedule> weeklySchedules) {
+        this.weeklySchedules = weeklySchedules;
+    }
+    public void setJoinCode(String joinCode) {
+        this.joinCode = joinCode;
+    }
+    public void setDescription(String description) {
+        this.description = description;
+    }
+    public void setTotalSessions(int totalSessions) {
+        this.totalSessions = totalSessions;
+    }
+    public void setMaxAllowedAbsences(int maxAllowedAbsences) {
+        this.maxAllowedAbsences = maxAllowedAbsences;
     }
 }

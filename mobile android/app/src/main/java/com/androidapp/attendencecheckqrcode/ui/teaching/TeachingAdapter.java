@@ -51,27 +51,33 @@ public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.Teachi
 
         holder.tvBadge.setText("Giáo viên");
 
-        if (item.getWeeklySchedules() != null && !item.getWeeklySchedules().isEmpty()) {
-            Classroom.WeeklySchedule firstSchedule = item.getWeeklySchedules().get(0);
+        // ========================================================
+        // ĐÃ SỬA LỖI TẠI ĐÂY: DÙNG CHUỖI ISO 8601 CỦA API DANH SÁCH
+        // ========================================================
+        String startTimeStr = item.getStartTime();
+        String endTimeStr = item.getEndTime();
 
-            if (firstSchedule.getStartTime() != null && firstSchedule.getEndTime() != null) {
-                try {
-                    String start = firstSchedule.getStartTime();
-                    String end = firstSchedule.getEndTime();
+        if (startTimeStr != null && !startTimeStr.isEmpty()) {
+            // Lấy Thứ từ startTime
+            String thu = extractDayOfWeek(startTimeStr);
+            // Dòng này rất quan trọng để nó hiện trên Danh sách
+            if(holder.tvDayDate != null) holder.tvDayDate.setText(thu);
 
-                    if (start.length() >= 5) start = start.substring(0, 5);
-                    if (end.length() >= 5) end = end.substring(0, 5);
+            // Lấy Giờ từ startTime và endTime
+            String gioBatDau = extractTime(startTimeStr);
+            String gioKetThuc = extractTime(endTimeStr);
 
-                    holder.tvTime.setText(start + " - " + end);
-                } catch (Exception e) {
-                    holder.tvTime.setText("--:-- - --:--");
-                }
+            if (!gioKetThuc.isEmpty()) {
+                holder.tvTime.setText(gioBatDau + " - " + gioKetThuc);
             } else {
-                holder.tvTime.setText("Chưa xếp lịch");
+                holder.tvTime.setText(gioBatDau);
             }
         } else {
-            holder.tvTime.setText("Chưa xếp lịch");
+            // Dự phòng nếu Backend trả về rỗng
+            if(holder.tvDayDate != null) holder.tvDayDate.setText("Chưa xếp lịch");
+            holder.tvTime.setText("--:--");
         }
+        // ========================================================
 
         String room = item.getRoom() != null ? item.getRoom() : "";
         String campus = item.getLocationDisplay() != null ? item.getLocationDisplay() : "";
@@ -93,8 +99,41 @@ public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.Teachi
         return mListClass != null ? mListClass.size() : 0;
     }
 
+    // --- 2 HÀM PHỤ TRỢ CẮT CHUỖI THỜI GIAN ---
+
+    // Lấy ra Thứ (Tiếng Việt) từ chuỗi 2026-04-22T15:22:49.605Z
+    private String extractDayOfWeek(String isoDateString) {
+        try {
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault());
+            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            java.util.Date date = sdf.parse(isoDateString);
+
+            java.text.SimpleDateFormat dayFormat = new java.text.SimpleDateFormat("EEEE", new java.util.Locale("vi", "VN"));
+            String dayName = dayFormat.format(date);
+            return dayName.substring(0, 1).toUpperCase() + dayName.substring(1);
+        } catch (Exception e) {
+            return "N/A";
+        }
+    }
+
+    // Lấy ra Giờ Phút (HH:mm) từ chuỗi 2026-04-22T15:22:49.605Z
+    private String extractTime(String isoDateString) {
+        if (isoDateString == null || isoDateString.isEmpty()) return "";
+        try {
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault());
+            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            java.util.Date date = sdf.parse(isoDateString);
+
+            java.text.SimpleDateFormat timeFormat = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault());
+            return timeFormat.format(date);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     public static class TeachingViewHolder extends RecyclerView.ViewHolder {
-        TextView tvClassName, tvBadge, tvSubjectCode, tvClassCode, tvLecturer, tvTime, tvRoom, tvStudentCount;
+        // NHỚ THÊM tvDayDate VÀO KHAI BÁO
+        TextView tvClassName, tvBadge, tvSubjectCode, tvClassCode, tvLecturer, tvTime, tvRoom, tvStudentCount, tvDayDate;
 
         public TeachingViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -106,6 +145,7 @@ public class TeachingAdapter extends RecyclerView.Adapter<TeachingAdapter.Teachi
             tvTime = itemView.findViewById(R.id.tvTime);
             tvRoom = itemView.findViewById(R.id.tvRoom);
             tvStudentCount = itemView.findViewById(R.id.tvStudentCount);
+            tvDayDate = itemView.findViewById(R.id.tvDayDate); // Nhớ ánh xạ cái này để không bị Crash!
         }
     }
 }

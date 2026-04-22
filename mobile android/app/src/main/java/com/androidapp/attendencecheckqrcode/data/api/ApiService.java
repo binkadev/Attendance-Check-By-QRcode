@@ -3,6 +3,7 @@ package com.androidapp.attendencecheckqrcode.data.api;
 import com.androidapp.attendencecheckqrcode.data.dto.PageResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.SemesterDto;
 import com.androidapp.attendencecheckqrcode.data.dto.attendance.CheckinQrRequest;
+import com.androidapp.attendencecheckqrcode.data.dto.attendance.RotateQrResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.ChangePasswordRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.ForgotPasswordRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.CreateGroupRequest;
@@ -66,6 +67,9 @@ public interface ApiService {
     @POST("api/v1/groups/join")
     Call<MemberResponse> joinClass(@Body JoinGroupRequest request);
 
+    @GET("api/v1/groups/{groupId}")
+    Call<Classroom> getClassById(@Path("groupId") String groupId);
+
 
     @PUT("api/v1/groups/{groupId}/attendance-policy")
     Call<Void> updateAttendancePolicy(@Path("groupId") String groupId, @Body AttendancePolicyRequest request);
@@ -74,7 +78,7 @@ public interface ApiService {
     Call<GroupStudentPolicyResponse> getTeachingClassDetails(@Path("groupId") String groupId);
 
     @POST("api/v1/sessions/{sessionId}/qr/rotate")
-    Call<Void> rotateQrCode(@Path("sessionId") String sessionId);
+    Call<RotateQrResponse> rotateQrCode(@Path("sessionId") String sessionId);
 
 
 

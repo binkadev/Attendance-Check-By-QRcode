@@ -9,8 +9,9 @@ import com.androidapp.attendencecheckqrcode.data.api.ApiService;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.AuthResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.LoginRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.auth.RegisterRequest;
-import com.androidapp.attendencecheckqrcode.domain.models.User;
 import com.androidapp.attendencecheckqrcode.utils.Resource;
+
+import org.json.JSONObject;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -33,15 +34,40 @@ public class AuthRepository {
                 if (response.isSuccessful() && response.body() != null) {
                     data.setValue(Resource.success(response.body()));
                 } else {
-                    int code = response.code();
-                    String errorMsg = (code == 400 || code == 401 || code == 404) ?
-                            "Sai Email hoặc Mật khẩu! (" + code + ")" : "Lỗi máy chủ: " + code;
+                    // --- ĐỌC CHI TIẾT LỖI TỪ BACKEND ---
+                    String errorMsg = "Tài khoản không tồn tại hoặc sai mật khẩu!"; // Mặc định cho 401
+
+                    try {
+                        if (response.errorBody() != null) {
+                            String errorJson = response.errorBody().string();
+                            JSONObject jsonObject = new JSONObject(errorJson);
+
+                            // Lấy chính xác lời nhắn từ Backend gửi về (nếu có key "message")
+                            if (jsonObject.has("message")) {
+                                String backendMessage = jsonObject.getString("message");
+
+                                // Dịch các lỗi phổ biến sang Tiếng Việt cho User dễ hiểu
+                                if (backendMessage.toLowerCase().contains("invalid email or password") ||
+                                        backendMessage.toLowerCase().contains("bad credentials")) {
+                                    errorMsg = "Tài khoản không tồn tại hoặc sai mật khẩu!";
+                                } else if (backendMessage.toLowerCase().contains("user not found")) {
+                                    errorMsg = "Tài khoản này chưa được đăng ký!";
+                                } else {
+                                    errorMsg = backendMessage; // Lấy y nguyên lời Backend báo
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        errorMsg = "Lỗi máy chủ: " + response.code();
+                    }
+
                     data.setValue(Resource.error(errorMsg, null));
                 }
             }
             @Override
             public void onFailure(Call<AuthResponse> call, Throwable t) {
-                data.setValue(Resource.error("Lỗi kết nối mạng: " + t.getMessage(), null));
+                data.setValue(Resource.error("Lỗi kết nối mạng: Vui lòng kiểm tra lại Wifi/3G!", null));
             }
         });
         return data;
@@ -57,20 +83,37 @@ public class AuthRepository {
                 if (response.isSuccessful() && response.body() != null) {
                     data.setValue(Resource.success(response.body()));
                 } else {
-                    String errorMsg = "Lỗi " + response.code();
+                    // --- ĐỌC CHI TIẾT LỖI TỪ BACKEND KHI ĐĂNG KÝ ---
+                    String errorMsg = "Đăng ký thất bại!";
+
                     try {
                         if (response.errorBody() != null) {
-                            errorMsg = response.errorBody().string();
-                            android.util.Log.e("API_ERROR", "Lỗi Backend: " + errorMsg);
-                        }
-                    } catch (Exception e) { e.printStackTrace(); }
+                            String errorJson = response.errorBody().string();
+                            JSONObject jsonObject = new JSONObject(errorJson);
 
-                    data.setValue(Resource.error("Đăng ký thất bại. Mã lỗi: " + response.code(), null));
+                            if (jsonObject.has("message")) {
+                                String backendMessage = jsonObject.getString("message");
+
+                                // Dịch một số lỗi quen thuộc
+                                if (backendMessage.toLowerCase().contains("email already exists") ||
+                                        backendMessage.toLowerCase().contains("already taken")) {
+                                    errorMsg = "Email này đã được sử dụng. Vui lòng chọn Email khác!";
+                                } else {
+                                    errorMsg = backendMessage;
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        errorMsg = "Lỗi hệ thống: " + response.code();
+                    }
+
+                    data.setValue(Resource.error(errorMsg, null));
                 }
             }
             @Override
             public void onFailure(Call<AuthResponse> call, Throwable t) {
-                data.setValue(Resource.error("Lỗi kết nối mạng: " + t.getMessage(), null));
+                data.setValue(Resource.error("Lỗi kết nối mạng: Vui lòng kiểm tra lại Wifi/3G!", null));
             }
         });
         return data;

@@ -1,4 +1,4 @@
-package com.androidapp.attendencecheckqrcode.ui.clazz; // Đảm bảo đúng package của bạn
+package com.androidapp.attendencecheckqrcode.ui.clazz;
 
 import android.content.Intent;
 import android.view.LayoutInflater;
@@ -51,23 +51,26 @@ public class ClassAdapter extends RecyclerView.Adapter<ClassAdapter.ClassViewHol
 
         if ("LECTURER".equals(item.getMyRole())) {
             holder.tvBadge.setText("Giảng viên");
-             holder.tvBadge.setTextColor(holder.itemView.getContext().getResources().getColor(R.color.app_primary));
+            holder.tvBadge.setTextColor(holder.itemView.getContext().getResources().getColor(R.color.app_primary));
         } else {
             holder.tvBadge.setText("Sinh viên");
         }
 
+        // --- XỬ LÝ LỊCH HỌC (THỨ VÀ GIỜ) ---
         if (item.getWeeklySchedules() != null && !item.getWeeklySchedules().isEmpty()) {
             Classroom.WeeklySchedule firstSchedule = item.getWeeklySchedules().get(0);
 
+            // 1. Dịch Thứ tiếng Anh sang tiếng Việt
+            String engDay = firstSchedule.getDayOfWeek();
+            holder.tvDayDate.setText(translateDay(engDay)); // Hiển thị "Thứ 2", "Thứ 3"...
+
+            // 2. Hiển thị Giờ
             if (firstSchedule.getStartTime() != null && firstSchedule.getEndTime() != null) {
                 try {
                     String start = firstSchedule.getStartTime();
                     String end = firstSchedule.getEndTime();
-
-                    // Cắt lấy định dạng HH:mm
                     if (start.length() >= 5) start = start.substring(0, 5);
                     if (end.length() >= 5) end = end.substring(0, 5);
-
                     holder.tvTime.setText(start + " - " + end);
                 } catch (Exception e) {
                     holder.tvTime.setText("--:-- - --:--");
@@ -76,6 +79,7 @@ public class ClassAdapter extends RecyclerView.Adapter<ClassAdapter.ClassViewHol
                 holder.tvTime.setText("Chưa xếp lịch");
             }
         } else {
+            holder.tvDayDate.setText("Chưa xếp lịch");
             holder.tvTime.setText("Chưa xếp lịch");
         }
 
@@ -101,19 +105,35 @@ public class ClassAdapter extends RecyclerView.Adapter<ClassAdapter.ClassViewHol
         return mListClass != null ? mListClass.size() : 0;
     }
 
+    // Hàm phụ trợ dịch tiếng Anh sang tiếng Việt
+    private String translateDay(String englishDay) {
+        if (englishDay == null) return "N/A";
+        switch (englishDay.toUpperCase()) {
+            case "MONDAY": return "Thứ 2";
+            case "TUESDAY": return "Thứ 3";
+            case "WEDNESDAY": return "Thứ 4";
+            case "THURSDAY": return "Thứ 5";
+            case "FRIDAY": return "Thứ 6";
+            case "SATURDAY": return "Thứ 7";
+            case "SUNDAY": return "Chủ Nhật";
+            default: return englishDay;
+        }
+    }
+
     public static class ClassViewHolder extends RecyclerView.ViewHolder {
-        TextView tvClassName, tvBadge, tvSubjectCode, tvClassCode, tvLecturer, tvTime, tvRoom, tvStudentCount;
+        TextView tvClassName, tvBadge, tvSubjectCode, tvClassCode, tvLecturer, tvTime, tvRoom, tvStudentCount, tvDayDate;
 
         public ClassViewHolder(@NonNull View itemView) {
             super(itemView);
             tvClassName = itemView.findViewById(R.id.tvClassName);
-            tvBadge = itemView.findViewById(R.id.tvBadge); // Ánh xạ tvBadge
+            tvBadge = itemView.findViewById(R.id.tvBadge);
             tvSubjectCode = itemView.findViewById(R.id.tvSubjectCode);
             tvClassCode = itemView.findViewById(R.id.tvClassCode);
             tvLecturer = itemView.findViewById(R.id.tvLecturer);
             tvTime = itemView.findViewById(R.id.tvTime);
             tvRoom = itemView.findViewById(R.id.tvRoom);
             tvStudentCount = itemView.findViewById(R.id.tvStudentCount);
+            tvDayDate = itemView.findViewById(R.id.tvDayDate); // Ánh xạ tvDayDate
         }
     }
 }

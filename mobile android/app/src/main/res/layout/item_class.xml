@@ -76,18 +76,30 @@
             app:layout_constraintEnd_toStartOf="@+id/tvStudentCount"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/tvClassCode" />
+
         <TextView
-            android:id="@+id/tvTime"
+            android:id="@+id/tvDayDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="7:00 - 10:30"
-            android:textColor="@color/text_gray"
+            android:text="Thứ 2, 22/04/2026"
+            android:textColor="@color/app_primary"
             android:textSize="12sp"
-            app:layout_constraintBottom_toBottomOf="@+id/tvSubjectCode"
+            android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.6"
             app:layout_constraintStart_toEndOf="@+id/tvSubjectCode"
             app:layout_constraintTop_toTopOf="@+id/tvSubjectCode" />
+
+        <TextView
+            android:id="@+id/tvTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="7:00 - 10:30"
+            android:textColor="@color/text_gray"
+            android:textSize="12sp"
+            app:layout_constraintStart_toStartOf="@+id/tvDayDate"
+            app:layout_constraintTop_toBottomOf="@+id/tvDayDate" />
 
         <TextView
             android:id="@+id/tvRoom"

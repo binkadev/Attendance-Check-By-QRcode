@@ -89,4 +89,25 @@ public class TeachingRepository {
             }
         });
     }
+
+    // =========================================================
+    // THÊM HÀM NÀY VÀO ĐỂ VIEWMODEL CÓ THỂ GỌI ĐƯỢC
+    // =========================================================
+    public void getClassFullInfo(String groupId, MutableLiveData<Resource<Classroom>> resultLiveData) {
+        apiService.getClassById(groupId).enqueue(new Callback<Classroom>() {
+            @Override
+            public void onResponse(Call<Classroom> call, Response<Classroom> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    resultLiveData.setValue(Resource.success(response.body()));
+                } else {
+                    resultLiveData.setValue(Resource.error("Không thể lấy chi tiết lớp", null));
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Classroom> call, Throwable t) {
+                resultLiveData.setValue(Resource.error("Lỗi kết nối mạng: " + t.getMessage(), null));
+            }
+        });
+    }
 }

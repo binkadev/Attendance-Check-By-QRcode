@@ -55,5 +55,10 @@
         <activity android:name=".ui.teaching.TeachingListActivity" android:exported="false" />
         <activity android:name=".ui.teaching.TeachingDetailActivity" android:exported="false" />
 
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="portrait"
+            tools:replace="screenOrientation" />
+
     </application>
 </manifest>

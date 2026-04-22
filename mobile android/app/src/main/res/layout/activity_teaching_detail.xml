@@ -18,10 +18,13 @@
 
             <View
                 android:id="@+id/viewHeaderBg"
-                android:layout_width="match_parent"
-                android:layout_height="260dp"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
                 android:background="@drawable/bg_header_home"
-                app:layout_constraintTop_toTopOf="parent"/>
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintBottom_toBottomOf="@id/headerBottomSpace" />
 
             <ImageView
                 android:id="@+id/btnBack"
@@ -112,23 +115,10 @@
                 app:layout_constraintTop_toBottomOf="@id/tvLecturer"/>
 
             <TextView
-                android:id="@+id/tvTime"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
-                android:text="Giờ học"
-                android:textColor="#E0E0E0"
-                android:textSize="13sp"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toEndOf="@id/guidelineHeader"
-                app:layout_constraintTop_toTopOf="@id/tvClassCode"/>
-
-            <TextView
                 android:id="@+id/tvSemester"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
                 android:text="Học kỳ"
                 android:textColor="#E0E0E0"
                 android:textSize="13sp"
@@ -139,17 +129,102 @@
                 app:layout_constraintTop_toBottomOf="@id/tvClassCode"/>
 
             <TextView
+                android:id="@+id/tvDayDate"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:text="Thứ 2, 22/04/2026"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/guidelineHeader"
+                app:layout_constraintTop_toTopOf="@id/tvClassCode"/>
+
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Giờ học"
+                android:textColor="#E0E0E0"
+                android:textSize="13sp"
+                app:layout_constraintEnd_toEndOf="@id/tvDayDate"
+                app:layout_constraintStart_toStartOf="@id/tvDayDate"
+                app:layout_constraintTop_toBottomOf="@id/tvDayDate"/>
+
+            <TextView
                 android:id="@+id/tvRoom"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:text="Phòng học"
                 android:textColor="#E0E0E0"
                 android:textSize="13sp"
                 android:maxLines="1"
                 android:ellipsize="end"
-                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintEnd_toEndOf="@id/tvTime"
                 app:layout_constraintStart_toStartOf="@id/tvTime"
-                app:layout_constraintTop_toTopOf="@id/tvSemester"/>
+                app:layout_constraintTop_toBottomOf="@id/tvTime"/>
+
+            <androidx.constraintlayout.widget.Barrier
+                android:id="@+id/barrierBottom"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:barrierDirection="bottom"
+                app:constraint_referenced_ids="tvSemester,tvRoom" />
+
+            <Space
+                android:id="@+id/headerBottomSpace"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                app:layout_constraintTop_toBottomOf="@id/barrierBottom" />
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cvJoinInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="15dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:layout_constraintTop_toBottomOf="@id/viewHeaderBg"
+                android:foreground="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:src="@android:drawable/ic_dialog_dialer"
+                        app:tint="#D32F2F"/>
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp"
+                        android:text="Mã QR &amp; Tham gia lớp học"
+                        android:textColor="#333333"
+                        android:textSize="14sp"
+                        android:textStyle="bold"/>
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@android:drawable/arrow_down_float"
+                        android:rotation="-90"
+                        app:tint="#9E9E9E"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
 
             <androidx.cardview.widget.CardView
                 android:id="@+id/cvCreateQR"
@@ -159,7 +234,7 @@
                 android:layout_marginTop="15dp"
                 app:cardCornerRadius="15dp"
                 app:cardElevation="4dp"
-                app:layout_constraintTop_toBottomOf="@id/viewHeaderBg">
+                app:layout_constraintTop_toBottomOf="@id/cvJoinInfo">
 
                 <LinearLayout
                     android:layout_width="match_parent"

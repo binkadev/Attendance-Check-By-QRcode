@@ -55,6 +55,9 @@ public class JoinClassActivity extends AppCompatActivity {
             integrator.setPrompt("Quét mã QR để tham gia lớp");
             integrator.setCameraId(0); // Dùng camera sau
             integrator.setBeepEnabled(true);
+
+            integrator.setOrientationLocked(false);
+
             integrator.initiateScan();
         });
     }

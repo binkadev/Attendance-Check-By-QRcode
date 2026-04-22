@@ -20,6 +20,17 @@ public class TeachingViewModel extends AndroidViewModel {
 
     private final MutableLiveData<Resource<List<Classroom>>> teachingClasses = new MutableLiveData<>();
     private final MutableLiveData<Resource<GroupStudentPolicyResponse>> classDetailsResult = new MutableLiveData<>();
+    private final MutableLiveData<Resource<Classroom>> classFullInfo = new MutableLiveData<>();
+
+    public LiveData<Resource<Classroom>> getClassFullInfo() {
+        return classFullInfo;
+    }
+
+    public void fetchClassFullInfo(String groupId) {
+        classFullInfo.setValue(Resource.loading(null));
+        // Giả sử bạn thêm hàm này vào TeachingRepository hoặc gọi trực tiếp từ ApiService qua Repository
+        repository.getClassFullInfo(groupId, classFullInfo);
+    }
 
     public TeachingViewModel(@NonNull Application application) {
         super(application);
