@@ -96,7 +96,8 @@ public class AttendanceSession {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
-    public AttendanceSession() {}
+    public AttendanceSession() {
+    }
 
     public boolean isAllowManualOverride() {
         return allowManualOverride == 1;
@@ -104,6 +105,14 @@ public class AttendanceSession {
 
     public void setAllowManualOverride(boolean allowManualOverride) {
         this.allowManualOverride = (byte) (allowManualOverride ? 1 : 0);
+    }
+
+    public byte getAllowManualOverride() {
+        return allowManualOverride;
+    }
+
+    public void setAllowManualOverride(byte allowManualOverride) {
+        this.allowManualOverride = allowManualOverride;
     }
 
     public UUID getId() {
@@ -184,6 +193,10 @@ public class AttendanceSession {
         return Boolean.TRUE.equals(open);
     }
 
+    public Boolean getOpen() {
+        return open;
+    }
+
     public void setOpen(boolean open) {
         this.open = open;
     }
@@ -210,14 +223,6 @@ public class AttendanceSession {
 
     public void setQrRotateSeconds(int qrRotateSeconds) {
         this.qrRotateSeconds = qrRotateSeconds;
-    }
-
-    public byte getAllowManualOverride() {
-        return allowManualOverride;
-    }
-
-    public void setAllowManualOverride(byte allowManualOverride) {
-        this.allowManualOverride = allowManualOverride;
     }
 
     public String getSessionSecret() {
