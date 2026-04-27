@@ -20,6 +20,8 @@ public record GroupResponse(
         String academicYear,
         String campus,
         String room,
+        String lecturerName,
+        Long studentCount,
         Integer totalSessions,
         Integer maxAllowedAbsences,
         List<GroupWeeklyScheduleResponse> weeklySchedules,

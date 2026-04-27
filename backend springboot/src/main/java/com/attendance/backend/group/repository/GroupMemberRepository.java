@@ -1,5 +1,7 @@
 package com.attendance.backend.group.repository;
 
+import com.attendance.backend.domain.enums.MemberRole;
+import com.attendance.backend.domain.enums.MemberStatus;
 import com.attendance.backend.domain.entity.GroupMember;
 import com.attendance.backend.domain.id.GroupMemberId;
 import jakarta.persistence.LockModeType;
@@ -65,4 +67,26 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, GroupM
           and gm.role = com.attendance.backend.domain.enums.MemberRole.OWNER
     """)
     Optional<GroupMember> findOwnerByGroupId(@Param("groupId") UUID groupId);
+
+    @Query("""
+            select count(gm)
+            from GroupMember gm
+            where gm.id.groupId = :groupId
+              and gm.role = :role
+              and gm.memberStatus = :memberStatus
+              and gm.removedAt is null
+            """)
+    long countByGroupIdAndRoleAndMemberStatus(
+            @Param("groupId") UUID groupId,
+            @Param("role") MemberRole role,
+            @Param("memberStatus") MemberStatus memberStatus
+    );
+
+    @Query("""
+            select u.fullName
+            from User u
+            where u.id = :userId
+              and u.deletedAt is null
+            """)
+    Optional<String> findUserFullNameById(@Param("userId") UUID userId);
 }

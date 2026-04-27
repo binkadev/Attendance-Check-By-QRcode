@@ -428,13 +428,13 @@ class GroupControllerIT {
     }
 
     @Test
-    void get_group_detail_forbidden_returns_403() throws Exception {
+    void get_group_detail_member_approved_can_view_basic_detail() throws Exception {
         UUID ownerUserId = UUID.randomUUID();
         UUID memberUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
-        insertUser(ownerUserId, "owner-forbidden@example.com", "Owner Forbidden");
-        insertUser(memberUserId, "member-forbidden@example.com", "Member Forbidden");
+        insertUser(ownerUserId, "owner-detail-member@example.com", "Owner Detail");
+        insertUser(memberUserId, "member-detail@example.com", "Member Detail");
 
         insertGroup(
                 groupId,
@@ -444,7 +444,7 @@ class GroupControllerIT {
                 "INT3001",
                 "D22CQCNPM03-N",
                 "JOIN0011",
-                "Forbidden detail",
+                "Member can view detail",
                 "HK2",
                 "2025-2026",
                 "CS Thu Duc",
@@ -455,12 +455,56 @@ class GroupControllerIT {
                 false,
                 "ACTIVE"
         );
+
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
         insertMember(groupId, memberUserId, "MEMBER", "APPROVED");
         insertSchedule(groupId, "TUESDAY", "08:00", "10:00");
 
         mockMvc.perform(get("/api/v1/groups/{groupId}", groupId)
                         .with(auth(memberUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(groupId.toString())))
+                .andExpect(jsonPath("$.ownerUserId", is(ownerUserId.toString())))
+                .andExpect(jsonPath("$.name", is("Mạng máy tính")))
+                .andExpect(jsonPath("$.lecturerName", is("Owner Detail")))
+                .andExpect(jsonPath("$.studentCount", is(1)))
+                .andExpect(jsonPath("$.weeklySchedules", hasSize(1)));
+    }
+
+    @Test
+    void get_group_detail_outsider_returns_403() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID outsiderUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-detail-outsider@example.com", "Owner Detail");
+        insertUser(outsiderUserId, "outsider-detail@example.com", "Outsider Detail");
+
+        insertGroup(
+                groupId,
+                ownerUserId,
+                "Mạng máy tính",
+                "DBG012",
+                "INT3001",
+                "D22CQCNPM03-N",
+                "JOIN0012",
+                "Outsider cannot view detail",
+                "HK2",
+                "2025-2026",
+                "CS Thu Duc",
+                "B202",
+                12,
+                3,
+                "AUTO",
+                false,
+                "ACTIVE"
+        );
+
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertSchedule(groupId, "TUESDAY", "08:00", "10:00");
+
+        mockMvc.perform(get("/api/v1/groups/{groupId}", groupId)
+                        .with(auth(outsiderUserId)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code", is("FORBIDDEN")));
     }

@@ -95,7 +95,7 @@ public class GroupServiceImpl implements GroupService {
         ClassGroup group = classGroupRepository.findActiveById(groupId)
                 .orElseThrow(() -> ApiException.notFound("GROUP_NOT_FOUND", "Group not found"));
 
-        requireManageAccess(callerUserId, groupId);
+        requireReadAccess(callerUserId, groupId);
 
         return mapToResponse(group, groupWeeklyScheduleRepository.findByGroupIdOrderByDayOfWeekAscStartTimeAsc(groupId));
     }
@@ -208,6 +208,15 @@ public class GroupServiceImpl implements GroupService {
         UpdateGroupStatusRequest req = new UpdateGroupStatusRequest();
         req.setStatus(GroupStatus.ARCHIVED);
         return updateGroupStatus(callerUserId, groupId, req);
+    }
+
+    private void requireReadAccess(UUID callerUserId, UUID groupId) {
+        GroupMember membership = groupMemberRepository.findByGroupIdAndUserId(groupId, callerUserId)
+                .orElseThrow(() -> ApiException.forbidden("FORBIDDEN", "You do not have permission to access this group"));
+
+        if (membership.getMemberStatus() != MemberStatus.APPROVED) {
+            throw ApiException.forbidden("FORBIDDEN", "You do not have permission to access this group");
+        }
     }
 
     private void requireManageAccess(UUID callerUserId, UUID groupId) {
@@ -323,6 +332,15 @@ public class GroupServiceImpl implements GroupService {
                 ))
                 .toList();
 
+        String lecturerName = groupMemberRepository.findUserFullNameById(group.getOwnerUserId())
+                .orElse(null);
+
+        long studentCount = groupMemberRepository.countByGroupIdAndRoleAndMemberStatus(
+                group.getId(),
+                MemberRole.MEMBER,
+                MemberStatus.APPROVED
+        );
+
         return new GroupResponse(
                 group.getId(),
                 group.getOwnerUserId(),
@@ -336,6 +354,8 @@ public class GroupServiceImpl implements GroupService {
                 group.getAcademicYear(),
                 group.getCampus(),
                 group.getRoom(),
+                lecturerName,
+                studentCount,
                 group.getTotalSessions(),
                 group.getMaxAllowedAbsences(),
                 weeklyScheduleResponses,

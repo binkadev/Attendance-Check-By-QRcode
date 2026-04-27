@@ -557,7 +557,7 @@ paths:
       summary: Get group details
       description: >
         Return full class/group detail for group form/detail screen.
-        Only APPROVED OWNER or CO_HOST can access this endpoint.
+        Approved group members can view this endpoint. OWNER/CO_HOST/MEMBER are allowed if memberStatus is APPROVED.
       parameters:
         - $ref: '#/components/parameters/GroupId'
       responses:
@@ -3349,6 +3349,12 @@ components:
         ownerUserId:
           type: string
           format: uuid
+        lecturerName:
+          type: string
+          nullable: true
+        studentCount:
+          type: integer
+          format: int64
         name:
           type: string
           maxLength: 150

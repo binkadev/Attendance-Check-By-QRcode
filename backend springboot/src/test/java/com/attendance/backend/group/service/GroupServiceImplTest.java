@@ -360,16 +360,46 @@ class GroupServiceImplTest {
     }
 
     @Test
-    void getGroupDetail_shouldThrowForbidden_whenRoleIsMember() {
+    void getGroupDetail_shouldReturnFullGroupDetail_whenApprovedMemberHasReadAccess() {
         UUID groupId = UUID.randomUUID();
+        UUID memberUserId = UUID.randomUUID();
 
         ClassGroup group = buildGroup(groupId, callerUserId);
-        GroupMember membership = buildMembership(groupId, callerUserId, MemberRole.MEMBER, MemberStatus.APPROVED);
+        GroupMember membership = buildMembership(groupId, memberUserId, MemberRole.MEMBER, MemberStatus.APPROVED);
+
+        List<GroupWeeklySchedule> schedules = List.of(
+                buildSchedule(groupId, "MONDAY", "09:00", "11:00"),
+                buildSchedule(groupId, "WEDNESDAY", "13:00", "15:00")
+        );
 
         when(classGroupRepository.findActiveById(groupId)).thenReturn(Optional.of(group));
-        when(groupMemberRepository.findByGroupIdAndUserId(groupId, callerUserId)).thenReturn(Optional.of(membership));
+        when(groupMemberRepository.findByGroupIdAndUserId(groupId, memberUserId)).thenReturn(Optional.of(membership));
+        when(groupWeeklyScheduleRepository.findByGroupIdOrderByDayOfWeekAscStartTimeAsc(groupId)).thenReturn(schedules);
+        when(groupMemberRepository.findUserFullNameById(callerUserId)).thenReturn(Optional.of("Owner Test"));
+        when(groupMemberRepository.countByGroupIdAndRoleAndMemberStatus(groupId, MemberRole.MEMBER, MemberStatus.APPROVED))
+                .thenReturn(1L);
 
-        assertThrows(ApiException.class, () -> groupService.getGroupDetail(callerUserId, groupId));
+        GroupResponse response = groupService.getGroupDetail(memberUserId, groupId);
+
+        assertNotNull(response);
+        assertEquals(groupId, response.id());
+        assertEquals("Lập trình Android", response.name());
+        assertEquals("Owner Test", response.lecturerName());
+        assertEquals(1L, response.studentCount());
+        assertEquals(2, response.weeklySchedules().size());
+    }
+
+    @Test
+    void getGroupDetail_shouldThrowForbidden_whenUserIsNotMember() {
+        UUID groupId = UUID.randomUUID();
+        UUID outsiderUserId = UUID.randomUUID();
+
+        ClassGroup group = buildGroup(groupId, callerUserId);
+
+        when(classGroupRepository.findActiveById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.findByGroupIdAndUserId(groupId, outsiderUserId)).thenReturn(Optional.empty());
+
+        assertThrows(ApiException.class, () -> groupService.getGroupDetail(outsiderUserId, groupId));
 
         verify(groupWeeklyScheduleRepository, never()).findByGroupIdOrderByDayOfWeekAscStartTimeAsc(any(UUID.class));
     }
