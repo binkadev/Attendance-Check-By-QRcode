@@ -11,9 +11,11 @@ import com.attendance.backend.domain.enums.AttendanceStatus;
 import com.attendance.backend.domain.enums.CheckInMethod;
 import com.attendance.backend.domain.enums.EventType;
 import com.attendance.backend.domain.enums.SessionStatus;
+import com.attendance.backend.domain.id.SessionAttendanceId;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -196,6 +198,8 @@ public class AttendanceAdminService {
             );
         }
 
+        ensureApprovedTargetMember(session.getGroupId(), targetUserId);
+
         if (requestedStatus == null) {
             throw ApiException.badRequest("MANUAL_STATUS_REQUIRED", "status is required");
         }
@@ -209,12 +213,8 @@ public class AttendanceAdminService {
 
         String normalizedNote = normalizeRequiredNote(note);
 
-        SessionAttendance attendance = sessionAttendanceRepository
-                .findBySessionAndUserForUpdate(sessionId, targetUserId)
-                .orElseThrow(() -> ApiException.notFound(
-                        "ATTENDANCE_NOT_FOUND",
-                        "Attendance row not found for this session/user"
-                ));
+        ManualAttendanceRow attendanceRow = getOrCreateAttendanceRowForManualMark(session, targetUserId, now);
+        SessionAttendance attendance = attendanceRow.attendance();
 
         ensureNotExcusedForManualMutation(attendance, "manual override");
 
@@ -232,7 +232,7 @@ public class AttendanceAdminService {
         String oldSuspiciousReason = attendance.suspiciousReason;
         UUID oldExcusedByRequestId = attendance.excusedByRequestId;
 
-        boolean alreadyNoOp = isManualMarkNoOp(attendance, requestedStatus);
+        boolean alreadyNoOp = !attendanceRow.created() && isManualMarkNoOp(attendance, requestedStatus);
         if (alreadyNoOp) {
             return toAttendanceRecordResult(sessionId, targetUserId, attendance);
         }
@@ -291,6 +291,7 @@ public class AttendanceAdminService {
         payload.put("newStatus", attendance.attendanceStatus.name());
         payload.put("requestedStatus", requestedStatus.name());
         payload.put("note", normalizedNote);
+        payload.put("autoCreatedAttendanceRow", attendanceRow.created());
         putIfNotNull(payload, "oldCheckInAt", oldCheckInAt);
         if (oldCheckInMethod != null) {
             payload.put("oldCheckInMethod", oldCheckInMethod.name());
@@ -521,6 +522,39 @@ public class AttendanceAdminService {
         return new AttendanceEventsResult(sessionId, items);
     }
 
+    private ManualAttendanceRow getOrCreateAttendanceRowForManualMark(
+            AttendanceSession session,
+            UUID targetUserId,
+            Instant now
+    ) {
+        SessionAttendanceId id = new SessionAttendanceId(session.getId(), targetUserId);
+
+        SessionAttendance existing = entityManager.find(
+                SessionAttendance.class,
+                id,
+                LockModeType.PESSIMISTIC_WRITE
+        );
+
+        if (existing != null) {
+            return new ManualAttendanceRow(existing, false);
+        }
+
+        SessionAttendance created = SessionAttendance.createNew(session.getId(), targetUserId);
+        created.createdAt = now;
+        created.updatedAt = now;
+
+        entityManager.persist(created);
+        entityManager.flush();
+
+        SessionAttendance locked = entityManager.find(
+                SessionAttendance.class,
+                id,
+                LockModeType.PESSIMISTIC_WRITE
+        );
+
+        return new ManualAttendanceRow(locked == null ? created : locked, true);
+    }
+
     private void ensureManualOverrideEnabled(UUID sessionId) {
         Number flag = (Number) entityManager.createNativeQuery("""
             select s.allow_manual_override
@@ -655,6 +689,26 @@ public class AttendanceAdminService {
         }
     }
 
+    private void ensureApprovedTargetMember(UUID groupId, UUID targetUserId) {
+        Number cnt = (Number) entityManager.createNativeQuery("""
+            select count(*)
+            from group_members gm
+            where gm.group_id = UUID_TO_BIN(:groupId, 1)
+              and gm.user_id  = UUID_TO_BIN(:userId, 1)
+              and gm.member_status = 'APPROVED'
+        """)
+                .setParameter("groupId", groupId.toString())
+                .setParameter("userId", targetUserId.toString())
+                .getSingleResult();
+
+        if (cnt == null || cnt.longValue() == 0L) {
+            throw ApiException.forbidden(
+                    "NOT_A_GROUP_MEMBER",
+                    "Target user is not an APPROVED member of this group"
+            );
+        }
+    }
+
     private void ensureNoOtherOpenSession(UUID groupId, UUID currentSessionId) {
         Number cnt = (Number) entityManager.createNativeQuery("""
             select count(*)
@@ -687,6 +741,11 @@ public class AttendanceAdminService {
             node.put(key, value);
         }
     }
+
+    private record ManualAttendanceRow(
+            SessionAttendance attendance,
+            boolean created
+    ) {}
 
     public record ReopenCheckinResult(
             UUID sessionId,
