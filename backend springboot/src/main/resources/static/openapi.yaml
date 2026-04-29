@@ -1369,6 +1369,33 @@ paths:
           $ref: '#/components/responses/Err403'
         '404':
           $ref: '#/components/responses/Err404'
+
+  /sessions/{sessionId}/me/checkin-result:
+    get:
+      tags:
+        - Attendance
+      summary: Get my check-in result for success screen
+      description: >
+        Returns current user's check-in result for a session.
+        This endpoint is intended for the mobile success result screen after QR check-in.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckinResultResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+        '409':
+          $ref: '#/components/responses/Err409'
+
   /sessions/{sessionId}/close:
     post:
       tags:
@@ -1965,6 +1992,65 @@ components:
                 message: Too many requests
 
   schemas:
+
+    CheckinResultResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        title:
+          type: string
+          example: Điểm danh thành công!
+        message:
+          type: string
+          example: Bạn đã được ghi nhận có mặt tại lớp.
+        sessionId:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        sessionName:
+          type: string
+          example: Buổi học số 1
+        subjectName:
+          type: string
+          example: Cơ sở dữ liệu nâng cao
+        groupCode:
+          type: string
+          example: CS204.01
+        courseCode:
+          type: string
+          example: CS204
+        classCode:
+          type: string
+          example: D22CQCNPM02-N
+        displayCode:
+          type: string
+          example: CS204.01
+        checkInAt:
+          type: string
+          format: date-time
+        attendanceStatus:
+          $ref: '#/components/schemas/AttendanceStatus'
+        attendanceStatusLabel:
+          type: string
+          example: Đúng giờ
+        checkInMethod:
+          $ref: '#/components/schemas/CheckInMethod'
+        room:
+          type: string
+          example: 3D2
+        campus:
+          type: string
+          example: Cơ sở Quận 9
+        locationDisplay:
+          type: string
+          example: Phòng 3D2 - Cơ sở Quận 9
+        locationSubtitle:
+          type: string
+          example: Cơ sở Quận 9
 
     MyClassScope:
       type: string
