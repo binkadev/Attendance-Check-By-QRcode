@@ -23,6 +23,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,7 +37,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "attendance.session.auto-close.initial-delay-ms=3600000",
+        "attendance.session.auto-close.fixed-delay-ms=3600000"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
@@ -68,10 +72,10 @@ class SessionControllerIT {
         String requestBody = """
                 {
                   "title": "Buổi học số 1",
-                  "startAt": "2026-04-21T01:00:00Z",
-                  "endAt": "2026-04-21T03:00:00Z",
-                  "checkinOpenAt": "2026-04-21T01:00:00Z",
-                  "checkinCloseAt": "2026-04-21T01:20:00Z",
+                  "startAt": "2099-04-21T01:00:00Z",
+                  "endAt": "2099-04-21T03:00:00Z",
+                  "checkinOpenAt": "2099-04-21T01:00:00Z",
+                  "checkinCloseAt": "2099-04-21T01:20:00Z",
                   "timeWindowMinutes": 20,
                   "lateAfterMinutes": 10,
                   "qrRotateSeconds": 30,
@@ -88,12 +92,12 @@ class SessionControllerIT {
                 .andExpect(jsonPath("$.groupId", is(groupId.toString())))
                 .andExpect(jsonPath("$.createdByUserId", is(ownerUserId.toString())))
                 .andExpect(jsonPath("$.title", is("Buổi học số 1")))
-                .andExpect(jsonPath("$.sessionDate", is("2026-04-21")))
+                .andExpect(jsonPath("$.sessionDate", is("2099-04-21")))
                 .andExpect(jsonPath("$.status", is("OPEN")))
-                .andExpect(jsonPath("$.startAt", is("2026-04-21T01:00:00Z")))
-                .andExpect(jsonPath("$.endAt", is("2026-04-21T03:00:00Z")))
-                .andExpect(jsonPath("$.checkinOpenAt", is("2026-04-21T01:00:00Z")))
-                .andExpect(jsonPath("$.checkinCloseAt", is("2026-04-21T01:20:00Z")))
+                .andExpect(jsonPath("$.startAt", is("2099-04-21T01:00:00Z")))
+                .andExpect(jsonPath("$.endAt", is("2099-04-21T03:00:00Z")))
+                .andExpect(jsonPath("$.checkinOpenAt", is("2099-04-21T01:00:00Z")))
+                .andExpect(jsonPath("$.checkinCloseAt", is("2099-04-21T01:20:00Z")))
                 .andExpect(jsonPath("$.timeWindowMinutes", is(20)))
                 .andExpect(jsonPath("$.lateAfterMinutes", is(10)))
                 .andExpect(jsonPath("$.qrRotateSeconds", is(30)))
@@ -152,7 +156,7 @@ class SessionControllerIT {
         String requestBody = """
                 {
                   "title": "Buổi học số 1",
-                  "startAt": "2026-04-21T01:00:00Z"
+                  "startAt": "2099-04-21T01:00:00Z"
                 }
                 """;
 
@@ -177,7 +181,7 @@ class SessionControllerIT {
         String requestBody = """
                 {
                   "title": "Buổi học số 1",
-                  "startAt": "2026-04-21T01:00:00Z"
+                  "startAt": "2099-04-21T01:00:00Z"
                 }
                 """;
 
@@ -198,12 +202,14 @@ class SessionControllerIT {
         insertUser(ownerUserId, "owner-session-conflict@example.com", "Owner Session Conflict");
         insertGroup(groupId, ownerUserId, "Cơ sở dữ liệu", "SES003", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
-        insertSession(openSessionId, groupId, ownerUserId, "Phiên đang mở", "OPEN");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(openSessionId, groupId, ownerUserId, "Phiên đang mở", "OPEN", startAt, null);
 
         String requestBody = """
                 {
                   "title": "Buổi học mới",
-                  "startAt": "2026-04-22T01:00:00Z"
+                  "startAt": "2099-04-22T01:00:00Z"
                 }
                 """;
 
@@ -213,6 +219,47 @@ class SessionControllerIT {
                         .content(requestBody))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code", is("SESSION_ALREADY_OPEN")));
+    }
+
+    @Test
+    void create_session_should_auto_close_expired_open_session_then_create_new_one() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID expiredSessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-session-expired-create@example.com", "Owner Session Expired Create");
+        insertGroup(groupId, ownerUserId, "Cấu trúc dữ liệu", "SES099", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+
+        Instant expiredStartAt = Instant.now().minusSeconds(3600);
+        insertSession(expiredSessionId, groupId, ownerUserId, "Phiên cũ đã hết hạn", "OPEN", expiredStartAt, null);
+
+        String requestBody = """
+                {
+                  "title": "Buổi học mới sau khi phiên cũ hết hạn",
+                  "startAt": "2099-04-22T01:00:00Z"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/groups/{groupId}/sessions", groupId)
+                        .with(auth(ownerUserId))
+                        .contentType("application/json")
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status", is("OPEN")))
+                .andExpect(jsonPath("$.title", is("Buổi học mới sau khi phiên cũ hết hạn")));
+
+        Map<String, Object> oldSession = jdbcTemplate.queryForMap(
+                """
+                SELECT status, end_at
+                FROM attendance_sessions
+                WHERE id = UUID_TO_BIN(?, 1)
+                """,
+                expiredSessionId.toString()
+        );
+
+        assertEquals("CLOSED", oldSession.get("status"));
+        assertNotNull(oldSession.get("end_at"));
     }
 
     @Test
@@ -227,7 +274,7 @@ class SessionControllerIT {
         String requestBody = """
                 {
                   "title": "Buổi học số 1",
-                  "startAt": "2026-04-21T01:00:00Z"
+                  "startAt": "2099-04-21T01:00:00Z"
                 }
                 """;
 
@@ -248,7 +295,9 @@ class SessionControllerIT {
         insertUser(ownerUserId, "owner-open-session@example.com", "Owner Open Session");
         insertGroup(groupId, ownerUserId, "Kiến trúc máy tính", "SES005", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
-        insertSession(sessionId, groupId, ownerUserId, "Phiên đang mở", "OPEN");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên đang mở", "OPEN", startAt, null);
 
         mockMvc.perform(get("/api/v1/groups/{groupId}/sessions/open", groupId)
                         .with(auth(ownerUserId)))
@@ -275,6 +324,37 @@ class SessionControllerIT {
     }
 
     @Test
+    void get_open_session_should_auto_close_expired_open_session_and_return_404() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-expired-open@example.com", "Owner Expired Open");
+        insertGroup(groupId, ownerUserId, "Phiên hết hạn", "EXP999", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+
+        Instant startAt = Instant.now().minusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên đã hết hạn", "OPEN", startAt, null);
+
+        mockMvc.perform(get("/api/v1/groups/{groupId}/sessions/open", groupId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("SESSION_OPEN_NOT_FOUND")));
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                """
+                SELECT status, end_at
+                FROM attendance_sessions
+                WHERE id = UUID_TO_BIN(?, 1)
+                """,
+                sessionId.toString()
+        );
+
+        assertEquals("CLOSED", row.get("status"));
+        assertNotNull(row.get("end_at"));
+    }
+
+    @Test
     void list_sessions_success_with_paging_and_status_filter() throws Exception {
         UUID ownerUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
@@ -284,8 +364,12 @@ class SessionControllerIT {
         insertUser(ownerUserId, "owner-list-session@example.com", "Owner List Session");
         insertGroup(groupId, ownerUserId, "Lập trình Web", "SES007", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
-        insertSession(closedSessionId, groupId, ownerUserId, "Phiên đã đóng", "CLOSED");
-        insertSession(cancelledSessionId, groupId, ownerUserId, "Phiên đã hủy", "CANCELLED");
+
+        Instant closedStartAt = Instant.now().minusSeconds(7200);
+        Instant cancelledStartAt = Instant.now().minusSeconds(3600);
+
+        insertSession(closedSessionId, groupId, ownerUserId, "Phiên đã đóng", "CLOSED", closedStartAt, closedStartAt.plusSeconds(5400));
+        insertSession(cancelledSessionId, groupId, ownerUserId, "Phiên đã hủy", "CANCELLED", cancelledStartAt, cancelledStartAt.plusSeconds(5400));
 
         mockMvc.perform(get("/api/v1/groups/{groupId}/sessions", groupId)
                         .with(auth(ownerUserId))
@@ -304,6 +388,31 @@ class SessionControllerIT {
     }
 
     @Test
+    void list_sessions_should_auto_close_expired_open_session_and_return_closed_when_filter_closed() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID expiredSessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-list-expired@example.com", "Owner List Expired");
+        insertGroup(groupId, ownerUserId, "Lịch sử phiên hết hạn", "EXP998", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+
+        Instant expiredStartAt = Instant.now().minusSeconds(3600);
+        insertSession(expiredSessionId, groupId, ownerUserId, "Phiên hết hạn trong list", "OPEN", expiredStartAt, null);
+
+        mockMvc.perform(get("/api/v1/groups/{groupId}/sessions", groupId)
+                        .with(auth(ownerUserId))
+                        .param("status", "CLOSED")
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].id", is(expiredSessionId.toString())))
+                .andExpect(jsonPath("$.items[0].status", is("CLOSED")))
+                .andExpect(jsonPath("$.items[0].title", is("Phiên hết hạn trong list")));
+    }
+
+    @Test
     void get_session_detail_success() throws Exception {
         UUID ownerUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
@@ -312,7 +421,9 @@ class SessionControllerIT {
         insertUser(ownerUserId, "owner-detail-session@example.com", "Owner Detail Session");
         insertGroup(groupId, ownerUserId, "Phân tích thiết kế", "SES008", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
-        insertSession(sessionId, groupId, ownerUserId, "Phiên chi tiết", "OPEN");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên chi tiết", "OPEN", startAt, null);
 
         mockMvc.perform(get("/api/v1/sessions/{sessionId}", sessionId)
                         .with(auth(ownerUserId)))
@@ -325,6 +436,27 @@ class SessionControllerIT {
     }
 
     @Test
+    void get_session_detail_should_auto_close_expired_open_session() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-detail-expired@example.com", "Owner Detail Expired");
+        insertGroup(groupId, ownerUserId, "Chi tiết phiên hết hạn", "EXP997", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+
+        Instant expiredStartAt = Instant.now().minusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên detail đã hết hạn", "OPEN", expiredStartAt, null);
+
+        mockMvc.perform(get("/api/v1/sessions/{sessionId}", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(sessionId.toString())))
+                .andExpect(jsonPath("$.status", is("CLOSED")))
+                .andExpect(jsonPath("$.title", is("Phiên detail đã hết hạn")));
+    }
+
+    @Test
     void close_session_success() throws Exception {
         UUID ownerUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
@@ -333,7 +465,9 @@ class SessionControllerIT {
         insertUser(ownerUserId, "owner-close-session@example.com", "Owner Close Session");
         insertGroup(groupId, ownerUserId, "An toàn thông tin", "SES009", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
-        insertSession(sessionId, groupId, ownerUserId, "Phiên cần đóng", "OPEN");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên cần đóng", "OPEN", startAt, null);
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
                         .with(auth(ownerUserId)))
@@ -366,7 +500,9 @@ class SessionControllerIT {
         insertGroup(groupId, ownerUserId, "Trí tuệ nhân tạo", "SES010", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
         insertMember(groupId, memberUserId, "MEMBER", "APPROVED");
-        insertSession(sessionId, groupId, ownerUserId, "Phiên không được đóng", "OPEN");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên không được đóng", "OPEN", startAt, null);
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
                         .with(auth(memberUserId)))
@@ -383,7 +519,9 @@ class SessionControllerIT {
         insertUser(ownerUserId, "owner-cancel-session@example.com", "Owner Cancel Session");
         insertGroup(groupId, ownerUserId, "Điện toán đám mây", "SES011", "ACTIVE");
         insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
-        insertSession(sessionId, groupId, ownerUserId, "Phiên cần hủy", "OPEN");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên cần hủy", "OPEN", startAt, null);
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/cancel", sessionId)
                         .with(auth(ownerUserId)))
@@ -401,6 +539,37 @@ class SessionControllerIT {
         );
 
         assertEquals("CANCELLED", row.get("status"));
+        assertNotNull(row.get("end_at"));
+    }
+
+    @Test
+    void cancel_expired_open_session_should_auto_close_and_return_conflict() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-cancel-expired@example.com", "Owner Cancel Expired");
+        insertGroup(groupId, ownerUserId, "Hủy phiên hết hạn", "EXP996", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+
+        Instant expiredStartAt = Instant.now().minusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên hết hạn không được hủy", "OPEN", expiredStartAt, null);
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/cancel", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code", is("SESSION_ALREADY_CLOSED")));
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                """
+                SELECT status, end_at
+                FROM attendance_sessions
+                WHERE id = UUID_TO_BIN(?, 1)
+                """,
+                sessionId.toString()
+        );
+
+        assertEquals("CLOSED", row.get("status"));
         assertNotNull(row.get("end_at"));
     }
 
@@ -579,13 +748,14 @@ class SessionControllerIT {
             UUID groupId,
             UUID createdByUserId,
             String title,
-            String status
+            String status,
+            Instant startAt,
+            Instant endAt
     ) {
-        Instant startAt = Instant.parse("2026-04-21T01:00:00Z");
-        Instant endAt = "OPEN".equals(status) ? null : Instant.parse("2026-04-21T03:00:00Z");
-        Instant checkinOpenAt = Instant.parse("2026-04-21T01:00:00Z");
-        Instant checkinCloseAt = Instant.parse("2026-04-21T01:20:00Z");
-        Instant now = Instant.parse("2026-04-20T01:00:00Z");
+        Instant checkinOpenAt = startAt;
+        Instant checkinCloseAt = startAt.plusSeconds(30 * 60L);
+        Instant now = Instant.now().minusSeconds(1800);
+        LocalDate sessionDate = LocalDate.ofInstant(startAt, ZoneId.systemDefault());
 
         jdbcTemplate.update(
                 """
@@ -635,13 +805,13 @@ class SessionControllerIT {
                 groupId.toString(),
                 createdByUserId.toString(),
                 title,
-                Date.valueOf(LocalDate.of(2026, 4, 21)),
+                Date.valueOf(sessionDate),
                 Timestamp.from(startAt),
                 endAt == null ? null : Timestamp.from(endAt),
                 status,
-                20,
-                10,
                 30,
+                5,
+                15,
                 "test-session-secret-" + sessionId,
                 1,
                 Timestamp.from(checkinOpenAt),

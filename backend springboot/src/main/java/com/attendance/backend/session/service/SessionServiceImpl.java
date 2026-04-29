@@ -32,7 +32,7 @@ import java.util.UUID;
 @Service
 public class SessionServiceImpl implements SessionService {
 
-    private static final int DEFAULT_TIME_WINDOW_MINUTES = 15;
+    private static final int DEFAULT_TIME_WINDOW_MINUTES = 30;
     private static final int DEFAULT_LATE_AFTER_MINUTES = 5;
     private static final int DEFAULT_QR_ROTATE_SECONDS = 15;
     private static final int MAX_PAGE_SIZE = 200;
@@ -57,6 +57,9 @@ public class SessionServiceImpl implements SessionService {
     public SessionResponse createSession(UUID actorUserId, UUID groupId, CreateSessionRequest req) {
         ClassGroup group = requireGroup(groupId);
         requireManageAccess(actorUserId, groupId);
+
+        Instant now = Instant.now();
+        attendanceSessionRepository.closeExpiredOpenSessionsByGroupId(groupId, now);
 
         if (group.getStatus() == GroupStatus.ARCHIVED) {
             throw ApiException.conflict("GROUP_ARCHIVED", "Archived group cannot create a new session");
@@ -118,10 +121,13 @@ public class SessionServiceImpl implements SessionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SessionResponse getOpenSession(UUID actorUserId, UUID groupId) {
         requireGroup(groupId);
         requireApprovedMember(actorUserId, groupId);
+
+        Instant now = Instant.now();
+        attendanceSessionRepository.closeExpiredOpenSessionsByGroupId(groupId, now);
 
         AttendanceSession session = attendanceSessionRepository.findOpenByGroupId(groupId)
                 .orElseThrow(() -> ApiException.notFound("SESSION_OPEN_NOT_FOUND", "Open session not found"));
@@ -130,7 +136,7 @@ public class SessionServiceImpl implements SessionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public PageSessionResponse listSessions(
             UUID actorUserId,
             UUID groupId,
@@ -142,6 +148,8 @@ public class SessionServiceImpl implements SessionService {
     ) {
         requireGroup(groupId);
         requireApprovedMember(actorUserId, groupId);
+
+        attendanceSessionRepository.closeExpiredOpenSessionsByGroupId(groupId, Instant.now());
 
         if (from != null && to != null && from.isAfter(to)) {
             throw ApiException.badRequest("INVALID_DATE_RANGE", "from must be before or equal to to");
@@ -173,14 +181,16 @@ public class SessionServiceImpl implements SessionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SessionResponse getSession(UUID actorUserId, UUID sessionId) {
         AttendanceSession session = attendanceSessionRepository.findActiveById(sessionId)
                 .orElseThrow(() -> ApiException.notFound("SESSION_NOT_FOUND", "Session not found"));
 
         requireApprovedMember(actorUserId, session.getGroupId());
 
-        return mapToResponse(session);
+        AttendanceSession normalized = closeExpiredSessionIfNeeded(session, Instant.now());
+
+        return mapToResponse(normalized);
     }
 
     @Override
@@ -214,23 +224,25 @@ public class SessionServiceImpl implements SessionService {
 
         requireManageAccess(actorUserId, session.getGroupId());
 
-        if (session.getStatus() == SessionStatus.CLOSED) {
+        AttendanceSession normalized = closeExpiredSessionIfNeeded(session, Instant.now());
+
+        if (normalized.getStatus() == SessionStatus.CLOSED) {
             throw ApiException.conflict("SESSION_ALREADY_CLOSED", "Closed session cannot be cancelled");
         }
 
-        if (session.getStatus() == SessionStatus.CANCELLED) {
+        if (normalized.getStatus() == SessionStatus.CANCELLED) {
             throw ApiException.conflict("SESSION_ALREADY_CANCELLED", "Session is already cancelled");
         }
 
-        session.setStatus(SessionStatus.CANCELLED);
+        normalized.setStatus(SessionStatus.CANCELLED);
 
-        if (session.getEndAt() == null) {
-            session.setEndAt(Instant.now());
+        if (normalized.getEndAt() == null) {
+            normalized.setEndAt(Instant.now());
         }
 
-        attendanceSessionRepository.saveAndFlush(session);
+        attendanceSessionRepository.saveAndFlush(normalized);
 
-        return buildSessionResponse(session.getId());
+        return buildSessionResponse(normalized.getId());
     }
 
     private ClassGroup requireGroup(UUID groupId) {
@@ -283,6 +295,28 @@ public class SessionServiceImpl implements SessionService {
                     "checkinOpenAt must be before checkinCloseAt"
             );
         }
+    }
+
+    private AttendanceSession closeExpiredSessionIfNeeded(AttendanceSession session, Instant now) {
+        if (session.getStatus() != SessionStatus.OPEN) {
+            return session;
+        }
+
+        if (session.getCheckinCloseAt() == null) {
+            return session;
+        }
+
+        if (session.getCheckinCloseAt().isAfter(now)) {
+            return session;
+        }
+
+        session.setStatus(SessionStatus.CLOSED);
+
+        if (session.getEndAt() == null) {
+            session.setEndAt(session.getCheckinCloseAt());
+        }
+
+        return attendanceSessionRepository.saveAndFlush(session);
     }
 
     private int valueOrDefault(Integer value, int defaultValue) {

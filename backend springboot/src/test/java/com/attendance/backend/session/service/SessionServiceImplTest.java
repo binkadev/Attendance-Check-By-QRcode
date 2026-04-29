@@ -196,14 +196,14 @@ class SessionServiceImplTest {
 
         assertNull(saved.getTitle());
         assertNull(saved.getNote());
-        assertEquals(15, saved.getTimeWindowMinutes());
+        assertEquals(30, saved.getTimeWindowMinutes());
         assertEquals(5, saved.getLateAfterMinutes());
         assertEquals(15, saved.getQrRotateSeconds());
         assertEquals(startAt, saved.getCheckinOpenAt());
-        assertEquals(startAt.plusSeconds(15 * 60L), saved.getCheckinCloseAt());
+        assertEquals(startAt.plusSeconds(30 * 60L), saved.getCheckinCloseAt());
         assertTrue(saved.isAllowManualOverride());
 
-        assertEquals(15, response.timeWindowMinutes());
+        assertEquals(30, response.timeWindowMinutes());
         assertEquals(5, response.lateAfterMinutes());
         assertEquals(15, response.qrRotateSeconds());
         assertNull(response.title());
@@ -608,20 +608,27 @@ class SessionServiceImplTest {
     }
 
     private AttendanceSession buildSession(UUID sessionId, UUID groupId, UUID createdByUserId, SessionStatus status) {
+        Instant startAt = Instant.parse("2099-04-21T01:00:00Z");
+        Instant endAt = status == SessionStatus.OPEN
+                ? null
+                : Instant.parse("2099-04-21T03:00:00Z");
+        Instant checkinOpenAt = startAt;
+        Instant checkinCloseAt = startAt.plusSeconds(30 * 60L);
+
         AttendanceSession session = new AttendanceSession();
         session.setId(sessionId);
         session.setGroupId(groupId);
         session.setCreatedByUserId(createdByUserId);
         session.setTitle("Buổi học số 1");
-        session.setSessionDate(LocalDate.of(2026, 4, 21));
-        session.setStartAt(Instant.parse("2026-04-21T01:00:00Z"));
-        session.setEndAt(Instant.parse("2026-04-21T03:00:00Z"));
-        session.setCheckinOpenAt(Instant.parse("2026-04-21T01:00:00Z"));
-        session.setCheckinCloseAt(Instant.parse("2026-04-21T01:20:00Z"));
+        session.setSessionDate(LocalDate.ofInstant(startAt, ZoneId.systemDefault()));
+        session.setStartAt(startAt);
+        session.setEndAt(endAt);
+        session.setCheckinOpenAt(checkinOpenAt);
+        session.setCheckinCloseAt(checkinCloseAt);
         session.setStatus(status);
-        session.setTimeWindowMinutes(20);
-        session.setLateAfterMinutes(10);
-        session.setQrRotateSeconds(30);
+        session.setTimeWindowMinutes(30);
+        session.setLateAfterMinutes(5);
+        session.setQrRotateSeconds(15);
         session.setSessionSecret("test-session-secret");
         session.setAllowManualOverride(true);
         session.setNote("Ghi chú phiên học");

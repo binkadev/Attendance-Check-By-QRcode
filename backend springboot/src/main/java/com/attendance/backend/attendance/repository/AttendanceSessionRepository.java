@@ -7,9 +7,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -94,4 +97,40 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
             @Param("status") SessionStatus status,
             Pageable pageable
     );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            update attendance_sessions
+            set status = 'CLOSED',
+                end_at = coalesce(end_at, checkin_close_at, :now)
+            where status = 'OPEN'
+              and deleted_at is null
+              and checkin_close_at is not null
+              and checkin_close_at <= :now
+            """, nativeQuery = true)
+    int closeExpiredOpenSessionsInternal(@Param("now") Timestamp now);
+
+    default int closeExpiredOpenSessions(Instant now) {
+        return closeExpiredOpenSessionsInternal(Timestamp.from(now));
+    }
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            update attendance_sessions
+            set status = 'CLOSED',
+                end_at = coalesce(end_at, checkin_close_at, :now)
+            where group_id = UUID_TO_BIN(:groupId, 1)
+              and status = 'OPEN'
+              and deleted_at is null
+              and checkin_close_at is not null
+              and checkin_close_at <= :now
+            """, nativeQuery = true)
+    int closeExpiredOpenSessionsByGroupIdInternal(
+            @Param("groupId") String groupId,
+            @Param("now") Timestamp now
+    );
+
+    default int closeExpiredOpenSessionsByGroupId(UUID groupId, Instant now) {
+        return closeExpiredOpenSessionsByGroupIdInternal(groupId.toString(), Timestamp.from(now));
+    }
 }
