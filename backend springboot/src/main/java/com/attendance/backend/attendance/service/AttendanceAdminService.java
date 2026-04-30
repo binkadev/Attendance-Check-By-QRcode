@@ -375,10 +375,21 @@ public class AttendanceAdminService {
         String oldSuspiciousReason = attendance.suspiciousReason;
         UUID oldExcusedByRequestId = attendance.excusedByRequestId;
 
+        /*
+         * Reset sạch nghĩa là:
+         * - ABSENT
+         * - checkInAt null
+         * - qrTokenId null
+         * - device/ip/userAgent/location null
+         * - suspicious false
+         *
+         * checkInMethod giữ QR vì DB/entity đang thiết kế NOT NULL/default QR.
+         * State này vẫn được hiểu là "chưa điểm danh", vì checkInAt và qrTokenId đều null.
+         */
         boolean alreadyClean =
                 attendance.attendanceStatus == AttendanceStatus.ABSENT &&
                         attendance.checkInAt == null &&
-                        attendance.checkInMethod == null &&
+                        attendance.checkInMethod == CheckInMethod.QR &&
                         attendance.qrTokenId == null &&
                         attendance.deviceId == null &&
                         attendance.ipAddress == null &&
@@ -402,7 +413,7 @@ public class AttendanceAdminService {
 
         attendance.attendanceStatus = AttendanceStatus.ABSENT;
         attendance.checkInAt = null;
-        attendance.checkInMethod = null;
+        attendance.checkInMethod = CheckInMethod.QR;
         attendance.qrTokenId = null;
         attendance.deviceId = null;
         attendance.ipAddress = null;
@@ -425,7 +436,14 @@ public class AttendanceAdminService {
         event.eventType = EventType.MARK_MANUAL_ABSENT;
         event.oldStatus = oldStatus;
         event.newStatus = AttendanceStatus.ABSENT;
-        event.qrTokenId = oldQrTokenId;
+
+        /*
+         * Quan trọng:
+         * Không gán event.qrTokenId = oldQrTokenId.
+         * attendance_events.qr_token_id có FK tới qr_tokens(token_id).
+         * Reset không cần FK trực tiếp tới token cũ; lưu token cũ trong payload là đủ.
+         */
+        event.qrTokenId = null;
 
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("action", "RESET_ATTENDANCE");
@@ -436,25 +454,34 @@ public class AttendanceAdminService {
         payload.put("actorUserId", actorUserId.toString());
         payload.put("oldStatus", oldStatus.name());
         payload.put("newStatus", AttendanceStatus.ABSENT.name());
+
         putIfNotNull(payload, "oldCheckInAt", oldCheckInAt);
+
         if (oldCheckInMethod != null) {
             payload.put("oldCheckInMethod", oldCheckInMethod.name());
         }
+
         putIfNotNull(payload, "oldQrTokenId", oldQrTokenId);
         putIfNotNull(payload, "oldDeviceId", oldDeviceId);
         putIfNotNull(payload, "oldIpAddress", oldIpAddress);
         putIfNotNull(payload, "oldUserAgent", oldUserAgent);
+
         if (oldGeoLat != null) {
             payload.put("oldGeoLat", oldGeoLat);
         }
+
         if (oldGeoLng != null) {
             payload.put("oldGeoLng", oldGeoLng);
         }
+
         if (oldDistanceMeter != null) {
             payload.put("oldDistanceMeter", oldDistanceMeter);
         }
+
         payload.put("oldSuspiciousFlag", oldSuspiciousFlag);
+
         putIfNotNull(payload, "oldSuspiciousReason", oldSuspiciousReason);
+
         if (oldExcusedByRequestId != null) {
             payload.put("oldExcusedByRequestId", oldExcusedByRequestId.toString());
         }
@@ -464,12 +491,21 @@ public class AttendanceAdminService {
 
         attendanceEventRepository.saveAndFlush(event);
 
+        /*
+         * Không để việc bắn notification/policy làm rollback reset.
+         * Nếu notification lỗi DB/dedup thì reset attendance vẫn phải thành công.
+         */
         if (session.getStatus() == SessionStatus.CLOSED) {
-            attendancePolicyNotificationOrchestrator.reevaluateOne(
-                    session.getGroupId(),
-                    targetUserId,
-                    sessionId
-            );
+            try {
+                attendancePolicyNotificationOrchestrator.reevaluateOne(
+                        session.getGroupId(),
+                        targetUserId,
+                        sessionId
+                );
+            } catch (RuntimeException ignored) {
+                // Attendance reset đã thành công.
+                // Notification/policy reevaluate có thể retry bằng job hoặc API riêng nếu cần.
+            }
         }
 
         return new ResetAttendanceResult(
