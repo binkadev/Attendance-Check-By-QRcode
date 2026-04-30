@@ -74,6 +74,8 @@ public class AttendanceCheckinService {
      * - Request quét lặp do camera/app fire nhiều lần sẽ trả lại kết quả cũ 200 OK.
      * - Không update lại checkInAt cho request duplicate.
      * - Không tạo AttendanceEvent mới cho request duplicate.
+     * - ABSENT luôn được phép QR lại nếu phiên còn mở, kể cả trước đó là manual ABSENT.
+     * - EXCUSED không được QR vì đã thuộc workflow xin vắng có phép.
      * - Reject if now < checkin_open_at.
      * - Reject if now > checkin_close_at.
      * - lateThreshold = checkin_open_at + late_after_minutes.
@@ -130,15 +132,12 @@ public class AttendanceCheckinService {
             computed = now.isAfter(lateThreshold) ? AttendanceStatus.LATE : AttendanceStatus.PRESENT;
 
             /*
-             * Quan trọng:
-             * Scanner mobile có thể gọi API 2 lần rất nhanh.
+             * Scanner mobile có thể gọi API nhiều lần rất nhanh.
              *
-             * check_in_method trong entity hiện là nullable=false, nên row placeholder
-             * không được insert NULL. Trạng thái "chưa điểm danh" sẽ là:
+             * check_in_method trong entity/DB đang là NOT NULL/default QR.
+             * Vì vậy row placeholder/chưa điểm danh dùng state:
              *
              * ABSENT + check_in_at NULL + qr_token_id NULL + check_in_method QR
-             *
-             * Khi reset cũng nên về trạng thái như vậy.
              */
             SessionAttendance attendance = getOrCreateAttendanceLocked(cmd.sessionId(), cmd.userId(), now);
 
@@ -159,17 +158,12 @@ public class AttendanceCheckinService {
             }
 
             /*
-             * Nếu giảng viên đã chủ động mark ABSENT thủ công thì không cho sinh viên QR đè lên.
-             * Muốn cho QR lại thì giảng viên phải gọi reset để đưa về:
-             * ABSENT + checkInAt null + qrTokenId null + checkInMethod QR.
+             * Quan trọng:
+             * KHÔNG chặn ABSENT + MANUAL nữa.
+             *
+             * ABSENT chỉ có nghĩa là "hiện chưa được ghi nhận có mặt".
+             * Nếu phiên còn mở và token hợp lệ thì sinh viên vẫn được QR lại.
              */
-            if (isLockedByManualAbsent(attendance)) {
-                throw ApiException.conflict(
-                        "ALREADY_CHECKED_IN",
-                        "User attendance was manually marked ABSENT for this session"
-                );
-            }
-
             AttendanceStatus oldStatus = attendance.attendanceStatus;
 
             attendance.attendanceStatus = computed;
@@ -206,9 +200,11 @@ public class AttendanceCheckinService {
             if (cmd.geoLat() != null) {
                 payload.put("geoLat", cmd.geoLat());
             }
+
             if (cmd.geoLng() != null) {
                 payload.put("geoLng", cmd.geoLng());
             }
+
             if (cmd.distanceMeter() != null) {
                 payload.put("distanceMeter", cmd.distanceMeter());
             }
@@ -417,9 +413,11 @@ public class AttendanceCheckinService {
             if (cmd.geoLat() != null) {
                 payload.put("geoLat", cmd.geoLat());
             }
+
             if (cmd.geoLng() != null) {
                 payload.put("geoLng", cmd.geoLng());
             }
+
             if (cmd.distanceMeter() != null) {
                 payload.put("distanceMeter", cmd.distanceMeter());
             }
@@ -434,12 +432,15 @@ public class AttendanceCheckinService {
             if (computedStatus != null) {
                 payload.put("computedStatus", computedStatus.name());
             }
+
             if (openAt != null) {
                 payload.put("openAt", openAt.toString());
             }
+
             if (closeAt != null) {
                 payload.put("closeAt", closeAt.toString());
             }
+
             if (lateThreshold != null) {
                 payload.put("lateThreshold", lateThreshold.toString());
             }
@@ -466,8 +467,6 @@ public class AttendanceCheckinService {
 
             case "CHECKIN_NOT_OPEN_YET" -> CheckinFailureCode.CHECKIN_NOT_OPEN_YET;
             case "CHECKIN_CLOSED" -> CheckinFailureCode.CHECKIN_CLOSED;
-
-            case "ALREADY_CHECKED_IN" -> CheckinFailureCode.DUPLICATE_CHECKIN;
 
             case "NOT_A_GROUP_MEMBER" -> CheckinFailureCode.USER_NOT_MEMBER;
 
@@ -537,11 +536,6 @@ public class AttendanceCheckinService {
                 || attendance.qrTokenId != null
                 || attendance.attendanceStatus == AttendanceStatus.PRESENT
                 || attendance.attendanceStatus == AttendanceStatus.LATE;
-    }
-
-    private boolean isLockedByManualAbsent(SessionAttendance attendance) {
-        return attendance.attendanceStatus == AttendanceStatus.ABSENT
-                && attendance.checkInMethod == CheckInMethod.MANUAL;
     }
 
     private QrCheckinResult toExistingQrCheckinResult(

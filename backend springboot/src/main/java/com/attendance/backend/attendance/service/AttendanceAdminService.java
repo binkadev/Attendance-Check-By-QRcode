@@ -279,7 +279,12 @@ public class AttendanceAdminService {
         event.eventType = mapManualMarkEventType(requestedStatus);
         event.oldStatus = oldStatus;
         event.newStatus = attendance.attendanceStatus;
-        event.qrTokenId = oldQrTokenId;
+
+        /*
+         * Không gán FK trực tiếp tới old QR token.
+         * Token cũ vẫn được lưu trong eventPayload để audit.
+         */
+        event.qrTokenId = null;
 
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("action", "MANUAL_OVERRIDE");
@@ -321,11 +326,16 @@ public class AttendanceAdminService {
         attendanceEventRepository.saveAndFlush(event);
 
         if (session.getStatus() == SessionStatus.CLOSED) {
-            attendancePolicyNotificationOrchestrator.reevaluateOne(
-                    session.getGroupId(),
-                    targetUserId,
-                    sessionId
-            );
+            try {
+                attendancePolicyNotificationOrchestrator.reevaluateOne(
+                        session.getGroupId(),
+                        targetUserId,
+                        sessionId
+                );
+            } catch (RuntimeException ignored) {
+                // Manual attendance update đã thành công.
+                // Notification/policy reevaluate có thể retry bằng job/API riêng nếu cần.
+            }
         }
 
         return toAttendanceRecordResult(sessionId, targetUserId, attendance);
@@ -352,12 +362,9 @@ public class AttendanceAdminService {
             );
         }
 
-        SessionAttendance attendance = sessionAttendanceRepository
-                .findBySessionAndUserForUpdate(sessionId, targetUserId)
-                .orElseThrow(() -> ApiException.notFound(
-                        "ATTENDANCE_NOT_FOUND",
-                        "Attendance row not found for this session/user"
-                ));
+        ensureApprovedTargetMember(session.getGroupId(), targetUserId);
+
+        SessionAttendance attendance = getOrCreateAttendanceRowForReset(session, targetUserId, now);
 
         ensureNotExcusedForManualMutation(attendance, "manual reset");
 
@@ -436,13 +443,6 @@ public class AttendanceAdminService {
         event.eventType = EventType.MARK_MANUAL_ABSENT;
         event.oldStatus = oldStatus;
         event.newStatus = AttendanceStatus.ABSENT;
-
-        /*
-         * Quan trọng:
-         * Không gán event.qrTokenId = oldQrTokenId.
-         * attendance_events.qr_token_id có FK tới qr_tokens(token_id).
-         * Reset không cần FK trực tiếp tới token cũ; lưu token cũ trong payload là đủ.
-         */
         event.qrTokenId = null;
 
         ObjectNode payload = objectMapper.createObjectNode();
@@ -491,10 +491,6 @@ public class AttendanceAdminService {
 
         attendanceEventRepository.saveAndFlush(event);
 
-        /*
-         * Không để việc bắn notification/policy làm rollback reset.
-         * Nếu notification lỗi DB/dedup thì reset attendance vẫn phải thành công.
-         */
         if (session.getStatus() == SessionStatus.CLOSED) {
             try {
                 attendancePolicyNotificationOrchestrator.reevaluateOne(
@@ -504,7 +500,7 @@ public class AttendanceAdminService {
                 );
             } catch (RuntimeException ignored) {
                 // Attendance reset đã thành công.
-                // Notification/policy reevaluate có thể retry bằng job hoặc API riêng nếu cần.
+                // Notification/policy reevaluate có thể retry bằng job/API riêng nếu cần.
             }
         }
 
@@ -589,6 +585,39 @@ public class AttendanceAdminService {
         );
 
         return new ManualAttendanceRow(locked == null ? created : locked, true);
+    }
+
+    private SessionAttendance getOrCreateAttendanceRowForReset(
+            AttendanceSession session,
+            UUID targetUserId,
+            Instant now
+    ) {
+        SessionAttendanceId id = new SessionAttendanceId(session.getId(), targetUserId);
+
+        SessionAttendance existing = entityManager.find(
+                SessionAttendance.class,
+                id,
+                LockModeType.PESSIMISTIC_WRITE
+        );
+
+        if (existing != null) {
+            return existing;
+        }
+
+        SessionAttendance created = SessionAttendance.createNew(session.getId(), targetUserId);
+        created.createdAt = now;
+        created.updatedAt = now;
+
+        entityManager.persist(created);
+        entityManager.flush();
+
+        SessionAttendance locked = entityManager.find(
+                SessionAttendance.class,
+                id,
+                LockModeType.PESSIMISTIC_WRITE
+        );
+
+        return locked == null ? created : locked;
     }
 
     private void ensureManualOverrideEnabled(UUID sessionId) {
