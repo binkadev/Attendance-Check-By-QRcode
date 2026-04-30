@@ -132,8 +132,13 @@ public class AttendanceCheckinService {
             /*
              * Quan trọng:
              * Scanner mobile có thể gọi API 2 lần rất nhanh.
-             * Nên phải tạo row nếu chưa có bằng INSERT ... ON DUPLICATE KEY,
-             * sau đó SELECT FOR UPDATE để lock row trước khi xử lý.
+             *
+             * check_in_method trong entity hiện là nullable=false, nên row placeholder
+             * không được insert NULL. Trạng thái "chưa điểm danh" sẽ là:
+             *
+             * ABSENT + check_in_at NULL + qr_token_id NULL + check_in_method QR
+             *
+             * Khi reset cũng nên về trạng thái như vậy.
              */
             SessionAttendance attendance = getOrCreateAttendanceLocked(cmd.sessionId(), cmd.userId(), now);
 
@@ -148,12 +153,6 @@ public class AttendanceCheckinService {
              * Idempotent duplicate:
              * Nếu request trước đã ghi nhận PRESENT/LATE hoặc đã có checkInAt/qrTokenId,
              * request sau trả lại kết quả cũ 200 OK.
-             *
-             * Mục tiêu:
-             * - Không cho điểm danh 2 lần.
-             * - Không làm app bị lỗi giả 409 khi scanner fire trùng.
-             * - Không update lại checkInAt.
-             * - Không tạo thêm event.
              */
             if (isAlreadyCheckedIn(attendance)) {
                 return toExistingQrCheckinResult(cmd.sessionId(), cmd.userId(), attendance);
@@ -161,7 +160,8 @@ public class AttendanceCheckinService {
 
             /*
              * Nếu giảng viên đã chủ động mark ABSENT thủ công thì không cho sinh viên QR đè lên.
-             * Muốn cho QR lại thì giảng viên phải gọi reset để đưa checkInMethod về null.
+             * Muốn cho QR lại thì giảng viên phải gọi reset để đưa về:
+             * ABSENT + checkInAt null + qrTokenId null + checkInMethod QR.
              */
             if (isLockedByManualAbsent(attendance)) {
                 throw ApiException.conflict(
@@ -503,7 +503,7 @@ public class AttendanceCheckinService {
                     UUID_TO_BIN(:userId, 1),
                     'ABSENT',
                     NULL,
-                    NULL,
+                    'QR',
                     NULL,
                     NULL,
                     NULL,
