@@ -12,9 +12,9 @@ import com.attendance.backend.domain.enums.AttendanceStatus;
 import com.attendance.backend.domain.enums.CheckInMethod;
 import com.attendance.backend.domain.enums.EventType;
 import com.attendance.backend.domain.enums.SessionStatus;
-import com.attendance.backend.domain.id.SessionAttendanceId;
 import com.attendance.backend.fraud.domain.CheckinFailureCode;
 import com.attendance.backend.fraud.service.FraudDetectionService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
@@ -28,8 +28,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -67,11 +70,12 @@ public class AttendanceCheckinService {
 
     /**
      * RULE CHỐT:
-     * - Reject if now < checkin_open_at
-     * - Reject if now > checkin_close_at
-     * - lateThreshold = checkin_open_at + late_after_minutes
-     *   now <= threshold => PRESENT
-     *   threshold < now <= close => LATE
+     * - 1 session + 1 user chỉ được check-in thành công 1 lần.
+     * - Reject if now < checkin_open_at.
+     * - Reject if now > checkin_close_at.
+     * - lateThreshold = checkin_open_at + late_after_minutes.
+     *   now <= threshold => PRESENT.
+     *   threshold < now <= close => LATE.
      */
     @Transactional
     public QrCheckinResult qrCheckin(QrCheckinCommand cmd) {
@@ -96,20 +100,25 @@ public class AttendanceCheckinService {
             QrToken token = verifyQrToken(cmd.token(), cmd.sessionId(), now);
             resolvedQrTokenId = token.getTokenId();
 
-            // fallback: window tính từ open
-            openAt = session.getCheckinOpenAt() != null ? session.getCheckinOpenAt() : session.getStartAt();
+            openAt = session.getCheckinOpenAt() != null
+                    ? session.getCheckinOpenAt()
+                    : session.getStartAt();
 
             closeAt = session.getCheckinCloseAt() != null
                     ? session.getCheckinCloseAt()
                     : openAt.plus(Duration.ofMinutes(session.getTimeWindowMinutes()));
 
             if (closeAt.isBefore(openAt)) {
-                throw ApiException.unprocessable("SESSION_TIME_INVALID", "checkin_close_at is before checkin_open_at");
+                throw ApiException.unprocessable(
+                        "SESSION_TIME_INVALID",
+                        "checkin_close_at is before checkin_open_at"
+                );
             }
 
             if (now.isBefore(openAt)) {
                 throw ApiException.conflict("CHECKIN_NOT_OPEN_YET", "Check-in not open yet");
             }
+
             if (now.isAfter(closeAt)) {
                 throw ApiException.conflict("CHECKIN_CLOSED", "Check-in window already closed");
             }
@@ -117,22 +126,15 @@ public class AttendanceCheckinService {
             lateThreshold = openAt.plus(Duration.ofMinutes(session.getLateAfterMinutes()));
             computed = now.isAfter(lateThreshold) ? AttendanceStatus.LATE : AttendanceStatus.PRESENT;
 
+            /*
+             * Quan trọng:
+             * Scanner mobile có thể gọi API 2 lần rất nhanh.
+             * Nên phải tạo row nếu chưa có bằng INSERT ... ON DUPLICATE KEY,
+             * sau đó SELECT FOR UPDATE để lock row trước khi check duplicate.
+             */
             SessionAttendance attendance = getOrCreateAttendanceLocked(cmd.sessionId(), cmd.userId(), now);
 
-            if (attendance.attendanceStatus == AttendanceStatus.EXCUSED && attendance.excusedByRequestId != null) {
-                throw ApiException.conflict(
-                        "ATTENDANCE_ALREADY_EXCUSED",
-                        "Attendance already excused by approved absence request"
-                );
-            }
-
-            if (attendance.checkInAt != null) {
-                throw ApiException.conflict("ALREADY_CHECKED_IN", "User already checked in");
-            }
-
-            if (attendance.attendanceStatus == AttendanceStatus.EXCUSED) {
-                throw ApiException.conflict("EXCUSED_CANNOT_CHECKIN", "Excused user cannot check in");
-            }
+            ensureCanCheckInOnce(attendance);
 
             AttendanceStatus oldStatus = attendance.attendanceStatus;
 
@@ -140,19 +142,15 @@ public class AttendanceCheckinService {
             attendance.checkInAt = now;
             attendance.checkInMethod = CheckInMethod.QR;
             attendance.qrTokenId = resolvedQrTokenId;
-            attendance.deviceId = cmd.deviceId();
-            attendance.ipAddress = cmd.ipAddress();
-            attendance.userAgent = cmd.userAgent();
+            attendance.deviceId = blankToNull(cmd.deviceId());
+            attendance.ipAddress = blankToNull(cmd.ipAddress());
+            attendance.userAgent = blankToNull(cmd.userAgent());
             attendance.geoLat = cmd.geoLat();
             attendance.geoLng = cmd.geoLng();
             attendance.distanceMeter = cmd.distanceMeter();
             attendance.suspiciousFlag = false;
             attendance.suspiciousReason = null;
             attendance.updatedAt = now;
-
-            if (attendance.id == null) {
-                attendance.id = new SessionAttendanceId(cmd.sessionId(), cmd.userId());
-            }
 
             sessionAttendanceRepository.saveAndFlush(attendance);
 
@@ -170,16 +168,23 @@ public class AttendanceCheckinService {
             putIfNotNull(payload, "deviceId", cmd.deviceId());
             putIfNotNull(payload, "ipAddress", cmd.ipAddress());
             putIfNotNull(payload, "userAgent", cmd.userAgent());
-            if (cmd.geoLat() != null) payload.put("geoLat", cmd.geoLat());
-            if (cmd.geoLng() != null) payload.put("geoLng", cmd.geoLng());
-            if (cmd.distanceMeter() != null) payload.put("distanceMeter", cmd.distanceMeter());
+            if (cmd.geoLat() != null) {
+                payload.put("geoLat", cmd.geoLat());
+            }
+            if (cmd.geoLng() != null) {
+                payload.put("geoLng", cmd.geoLng());
+            }
+            if (cmd.distanceMeter() != null) {
+                payload.put("distanceMeter", cmd.distanceMeter());
+            }
             payload.put("computedStatus", computed.name());
             payload.put("openAt", openAt.toString());
             payload.put("closeAt", closeAt.toString());
             payload.put("lateThreshold", lateThreshold.toString());
+            payload.put("oneTimeCheckin", true);
             event.eventPayload = payload;
-
             event.createdAt = now;
+
             entityManager.persist(event);
             entityManager.flush();
 
@@ -201,7 +206,6 @@ public class AttendanceCheckinService {
                     now,
                     resolvedQrTokenId
             );
-
         } catch (ApiException ex) {
             captureFraudFailure(
                     session.getGroupId(),
@@ -372,9 +376,15 @@ public class AttendanceCheckinService {
             putIfNotNull(payload, "ipAddress", cmd.ipAddress());
             putIfNotNull(payload, "userAgent", cmd.userAgent());
 
-            if (cmd.geoLat() != null) payload.put("geoLat", cmd.geoLat());
-            if (cmd.geoLng() != null) payload.put("geoLng", cmd.geoLng());
-            if (cmd.distanceMeter() != null) payload.put("distanceMeter", cmd.distanceMeter());
+            if (cmd.geoLat() != null) {
+                payload.put("geoLat", cmd.geoLat());
+            }
+            if (cmd.geoLng() != null) {
+                payload.put("geoLng", cmd.geoLng());
+            }
+            if (cmd.distanceMeter() != null) {
+                payload.put("distanceMeter", cmd.distanceMeter());
+            }
 
             if (failureCode == null) {
                 payload.put("outcome", "SUCCESS");
@@ -431,40 +441,107 @@ public class AttendanceCheckinService {
     }
 
     private SessionAttendance getOrCreateAttendanceLocked(UUID sessionId, UUID userId, Instant now) {
-        SessionAttendanceId id = new SessionAttendanceId(sessionId, userId);
+        entityManager.createNativeQuery("""
+                INSERT INTO session_attendance (
+                    session_id,
+                    user_id,
+                    attendance_status,
+                    check_in_at,
+                    check_in_method,
+                    qr_token_id,
+                    device_id,
+                    ip_address,
+                    user_agent,
+                    geo_lat,
+                    geo_lng,
+                    distance_meter,
+                    suspicious_flag,
+                    suspicious_reason,
+                    excused_by_request_id,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    UUID_TO_BIN(:sessionId, 1),
+                    UUID_TO_BIN(:userId, 1),
+                    'ABSENT',
+                    NULL,
+                    'QR',
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    0,
+                    NULL,
+                    NULL,
+                    :now,
+                    :now
+                )
+                ON DUPLICATE KEY UPDATE updated_at = updated_at
+                """)
+                .setParameter("sessionId", sessionId.toString())
+                .setParameter("userId", userId.toString())
+                .setParameter("now", Timestamp.from(now))
+                .executeUpdate();
 
-        // Lock chuẩn bằng entityManager (SELECT ... FOR UPDATE)
-        SessionAttendance existing = entityManager.find(SessionAttendance.class, id, LockModeType.PESSIMISTIC_WRITE);
-        if (existing != null) return existing;
+        return sessionAttendanceRepository
+                .findBySessionAndUserForUpdate(sessionId, userId)
+                .orElseThrow(() -> ApiException.notFound(
+                        "ATTENDANCE_NOT_FOUND",
+                        "Attendance row not found after create-or-lock"
+                ));
+    }
 
-        SessionAttendance created = SessionAttendance.createNew(sessionId, userId);
-        created.createdAt = now;
-        created.updatedAt = now;
+    private void ensureCanCheckInOnce(SessionAttendance attendance) {
+        if (attendance.attendanceStatus == AttendanceStatus.EXCUSED || attendance.excusedByRequestId != null) {
+            throw ApiException.conflict(
+                    "ATTENDANCE_ALREADY_EXCUSED",
+                    "Attendance already excused by approved absence request"
+            );
+        }
 
-        entityManager.persist(created);
-        entityManager.flush(); // flush sớm để bắt lỗi rõ ngay tại đây
-        return created;
+        boolean alreadyCheckedIn =
+                attendance.checkInAt != null
+                        || attendance.qrTokenId != null
+                        || attendance.attendanceStatus == AttendanceStatus.PRESENT
+                        || attendance.attendanceStatus == AttendanceStatus.LATE
+                        || (
+                        attendance.attendanceStatus == AttendanceStatus.ABSENT
+                                && attendance.checkInMethod == CheckInMethod.MANUAL
+                );
+
+        if (alreadyCheckedIn) {
+            throw ApiException.conflict(
+                    "ALREADY_CHECKED_IN",
+                    "User already checked in for this session"
+            );
+        }
     }
 
     private void ensureApprovedMember(UUID groupId, UUID userId) {
         Number cnt = (Number) entityManager.createNativeQuery("""
-        select count(*)
-        from group_members gm
-        where gm.group_id = UUID_TO_BIN(:groupId, 1)
-          and gm.user_id  = UUID_TO_BIN(:userId, 1)
-          and gm.member_status = 'APPROVED'
-    """)
+                select count(*)
+                from group_members gm
+                where gm.group_id = UUID_TO_BIN(:groupId, 1)
+                  and gm.user_id  = UUID_TO_BIN(:userId, 1)
+                  and gm.member_status = 'APPROVED'
+                """)
                 .setParameter("groupId", groupId.toString())
                 .setParameter("userId", userId.toString())
                 .getSingleResult();
 
         if (cnt == null || cnt.longValue() == 0L) {
-            throw ApiException.forbidden("NOT_A_GROUP_MEMBER", "User is not an APPROVED member of this group");
+            throw ApiException.forbidden(
+                    "NOT_A_GROUP_MEMBER",
+                    "User is not an APPROVED member of this group"
+            );
         }
     }
 
-    private QrToken verifyQrToken(String plainToken, UUID expectedSessionId, Instant now) {
-        ParsedToken parsed = parseToken(plainToken);
+    private QrToken verifyQrToken(String rawToken, UUID expectedSessionId, Instant now) {
+        ParsedToken parsed = parseToken(rawToken);
 
         QrToken token = entityManager.find(QrToken.class, parsed.tokenId(), LockModeType.PESSIMISTIC_READ);
         if (token == null) {
@@ -472,7 +549,10 @@ public class AttendanceCheckinService {
         }
 
         if (!Objects.equals(token.getSessionId(), expectedSessionId)) {
-            throw ApiException.conflict("QR_TOKEN_NOT_FOR_SESSION", "QR token does not belong to this session");
+            throw ApiException.conflict(
+                    "QR_TOKEN_NOT_FOR_SESSION",
+                    "QR token does not belong to this session"
+            );
         }
 
         if (token.getRevokedAt() != null) {
@@ -485,9 +565,11 @@ public class AttendanceCheckinService {
 
         byte[] stored = token.getTokenHash();
         byte[] hashSecret = sha256(parsed.secret());
-        byte[] hashFull = sha256(plainToken);
+        byte[] hashFull = sha256(parsed.normalizedPlainToken());
 
-        boolean ok = MessageDigest.isEqual(stored, hashSecret) || MessageDigest.isEqual(stored, hashFull);
+        boolean ok = MessageDigest.isEqual(stored, hashSecret)
+                || MessageDigest.isEqual(stored, hashFull);
+
         if (!ok) {
             throw ApiException.badRequest("QR_TOKEN_INVALID", "QR token hash mismatch");
         }
@@ -495,21 +577,96 @@ public class AttendanceCheckinService {
         return token;
     }
 
-    private ParsedToken parseToken(String token) {
-        if (token == null || token.isBlank()) {
+    private ParsedToken parseToken(String rawToken) {
+        String normalized = normalizeQrToken(rawToken);
+
+        if (normalized == null || normalized.isBlank()) {
             throw ApiException.badRequest("QR_TOKEN_REQUIRED", "token is required");
         }
 
-        String[] parts = token.split("\\.", 2);
+        String[] parts = normalized.split("\\.", 2);
         if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
-            throw ApiException.badRequest("QR_TOKEN_INVALID_FORMAT", "Expected format: <tokenId>.<secret>");
+            throw ApiException.badRequest(
+                    "QR_TOKEN_INVALID_FORMAT",
+                    "Expected format: <tokenId>.<secret>"
+            );
         }
 
         if (parts[0].length() > 64) {
-            throw ApiException.badRequest("QR_TOKEN_INVALID_FORMAT", "tokenId length > 64");
+            throw ApiException.badRequest(
+                    "QR_TOKEN_INVALID_FORMAT",
+                    "tokenId length > 64"
+            );
         }
 
-        return new ParsedToken(parts[0], parts[1]);
+        return new ParsedToken(parts[0], parts[1], normalized);
+    }
+
+    private String normalizeQrToken(String rawToken) {
+        if (rawToken == null) {
+            return null;
+        }
+
+        String text = rawToken.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+
+        if (text.startsWith("{") && text.endsWith("}")) {
+            try {
+                JsonNode node = objectMapper.readTree(text);
+                JsonNode tokenNode = node.get("token");
+                if (tokenNode != null && !tokenNode.asText().isBlank()) {
+                    return tokenNode.asText().trim();
+                }
+            } catch (Exception ignored) {
+                // Fall through to normal parsing.
+            }
+        }
+
+        if (text.contains("://") || text.contains("?token=") || text.contains("&token=")) {
+            String tokenFromUrl = extractTokenFromUrl(text);
+            if (tokenFromUrl != null && !tokenFromUrl.isBlank()) {
+                return tokenFromUrl.trim();
+            }
+        }
+
+        return text;
+    }
+
+    private String extractTokenFromUrl(String text) {
+        try {
+            URI uri = URI.create(text);
+            String query = uri.getRawQuery();
+
+            if (query == null || query.isBlank()) {
+                return null;
+            }
+
+            String[] pairs = query.split("&");
+            for (String pair : pairs) {
+                String[] kv = pair.split("=", 2);
+                if (kv.length == 2 && "token".equals(kv[0])) {
+                    return URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                }
+            }
+
+            return null;
+        } catch (Exception ignored) {
+            int tokenIndex = text.indexOf("token=");
+            if (tokenIndex < 0) {
+                return null;
+            }
+
+            String value = text.substring(tokenIndex + "token=".length());
+            int ampIndex = value.indexOf('&');
+
+            if (ampIndex >= 0) {
+                value = value.substring(0, ampIndex);
+            }
+
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        }
     }
 
     private byte[] sha256(String raw) {
@@ -533,11 +690,13 @@ public class AttendanceCheckinService {
         if (hash == null) {
             return null;
         }
+
         StringBuilder sb = new StringBuilder(hash.length * 2);
         for (byte b : hash) {
             sb.append(Character.forDigit((b >> 4) & 0xF, 16));
             sb.append(Character.forDigit(b & 0xF, 16));
         }
+
         return sb.toString();
     }
 
@@ -545,12 +704,15 @@ public class AttendanceCheckinService {
         if (value == null) {
             return null;
         }
+
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void putIfNotNull(ObjectNode node, String key, String value) {
-        if (value != null && !value.isBlank()) node.put(key, value);
+        if (value != null && !value.isBlank()) {
+            node.put(key, value);
+        }
     }
 
     public record QrCheckinCommand(
@@ -563,7 +725,8 @@ public class AttendanceCheckinService {
             BigDecimal geoLat,
             BigDecimal geoLng,
             Integer distanceMeter
-    ) {}
+    ) {
+    }
 
     public record QrCheckinResult(
             UUID sessionId,
@@ -571,7 +734,13 @@ public class AttendanceCheckinService {
             AttendanceStatus attendanceStatus,
             Instant checkInAt,
             String qrTokenId
-    ) {}
+    ) {
+    }
 
-    private record ParsedToken(String tokenId, String secret) {}
+    private record ParsedToken(
+            String tokenId,
+            String secret,
+            String normalizedPlainToken
+    ) {
+    }
 }
