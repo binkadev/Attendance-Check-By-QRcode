@@ -70,7 +70,10 @@ public class AttendanceCheckinService {
 
     /**
      * RULE CHỐT:
-     * - 1 session + 1 user chỉ được check-in thành công 1 lần.
+     * - 1 session + 1 user chỉ được ghi nhận check-in thành công 1 lần.
+     * - Request quét lặp do camera/app fire nhiều lần sẽ trả lại kết quả cũ 200 OK.
+     * - Không update lại checkInAt cho request duplicate.
+     * - Không tạo AttendanceEvent mới cho request duplicate.
      * - Reject if now < checkin_open_at.
      * - Reject if now > checkin_close_at.
      * - lateThreshold = checkin_open_at + late_after_minutes.
@@ -130,11 +133,42 @@ public class AttendanceCheckinService {
              * Quan trọng:
              * Scanner mobile có thể gọi API 2 lần rất nhanh.
              * Nên phải tạo row nếu chưa có bằng INSERT ... ON DUPLICATE KEY,
-             * sau đó SELECT FOR UPDATE để lock row trước khi check duplicate.
+             * sau đó SELECT FOR UPDATE để lock row trước khi xử lý.
              */
             SessionAttendance attendance = getOrCreateAttendanceLocked(cmd.sessionId(), cmd.userId(), now);
 
-            ensureCanCheckInOnce(attendance);
+            if (attendance.attendanceStatus == AttendanceStatus.EXCUSED || attendance.excusedByRequestId != null) {
+                throw ApiException.conflict(
+                        "ATTENDANCE_ALREADY_EXCUSED",
+                        "Attendance already excused by approved absence request"
+                );
+            }
+
+            /*
+             * Idempotent duplicate:
+             * Nếu request trước đã ghi nhận PRESENT/LATE hoặc đã có checkInAt/qrTokenId,
+             * request sau trả lại kết quả cũ 200 OK.
+             *
+             * Mục tiêu:
+             * - Không cho điểm danh 2 lần.
+             * - Không làm app bị lỗi giả 409 khi scanner fire trùng.
+             * - Không update lại checkInAt.
+             * - Không tạo thêm event.
+             */
+            if (isAlreadyCheckedIn(attendance)) {
+                return toExistingQrCheckinResult(cmd.sessionId(), cmd.userId(), attendance);
+            }
+
+            /*
+             * Nếu giảng viên đã chủ động mark ABSENT thủ công thì không cho sinh viên QR đè lên.
+             * Muốn cho QR lại thì giảng viên phải gọi reset để đưa checkInMethod về null.
+             */
+            if (isLockedByManualAbsent(attendance)) {
+                throw ApiException.conflict(
+                        "ALREADY_CHECKED_IN",
+                        "User attendance was manually marked ABSENT for this session"
+                );
+            }
 
             AttendanceStatus oldStatus = attendance.attendanceStatus;
 
@@ -168,6 +202,7 @@ public class AttendanceCheckinService {
             putIfNotNull(payload, "deviceId", cmd.deviceId());
             putIfNotNull(payload, "ipAddress", cmd.ipAddress());
             putIfNotNull(payload, "userAgent", cmd.userAgent());
+
             if (cmd.geoLat() != null) {
                 payload.put("geoLat", cmd.geoLat());
             }
@@ -177,11 +212,13 @@ public class AttendanceCheckinService {
             if (cmd.distanceMeter() != null) {
                 payload.put("distanceMeter", cmd.distanceMeter());
             }
+
             payload.put("computedStatus", computed.name());
             payload.put("openAt", openAt.toString());
             payload.put("closeAt", closeAt.toString());
             payload.put("lateThreshold", lateThreshold.toString());
             payload.put("oneTimeCheckin", true);
+
             event.eventPayload = payload;
             event.createdAt = now;
 
@@ -359,6 +396,7 @@ public class AttendanceCheckinService {
     ) {
         try {
             ObjectNode payload = objectMapper.createObjectNode();
+
             payload.put("capturedAt", detectedAt.toString());
             payload.put("sessionId", cmd.sessionId().toString());
             payload.put("userId", cmd.userId().toString());
@@ -465,7 +503,7 @@ public class AttendanceCheckinService {
                     UUID_TO_BIN(:userId, 1),
                     'ABSENT',
                     NULL,
-                    'QR',
+                    NULL,
                     NULL,
                     NULL,
                     NULL,
@@ -493,45 +531,40 @@ public class AttendanceCheckinService {
                         "Attendance row not found after create-or-lock"
                 ));
     }
-// PRESENT / LATE => đã điểm danh, không cho quét lại.
-// checkInAt != null => đã ghi nhận, không cho quét lại.
-// qrTokenId != null => đã từng QR, không cho quét lại.
-// ABSENT + MANUAL => giảng viên đã chủ động đánh vắng, không cho tự QR đè lên.
-// ABSENT + checkInMethod null => trạng thái reset sạch, cho phép QR lại.
 
-    private void ensureCanCheckInOnce(SessionAttendance attendance) {
-        if (attendance.attendanceStatus == AttendanceStatus.EXCUSED || attendance.excusedByRequestId != null) {
-            throw ApiException.conflict(
-                    "ATTENDANCE_ALREADY_EXCUSED",
-                    "Attendance already excused by approved absence request"
-            );
-        }
+    private boolean isAlreadyCheckedIn(SessionAttendance attendance) {
+        return attendance.checkInAt != null
+                || attendance.qrTokenId != null
+                || attendance.attendanceStatus == AttendanceStatus.PRESENT
+                || attendance.attendanceStatus == AttendanceStatus.LATE;
+    }
 
-        boolean alreadyCheckedIn =
-                attendance.checkInAt != null
-                        || attendance.qrTokenId != null
-                        || attendance.attendanceStatus == AttendanceStatus.PRESENT
-                        || attendance.attendanceStatus == AttendanceStatus.LATE
-                        || (
-                        attendance.attendanceStatus == AttendanceStatus.ABSENT
-                                && attendance.checkInMethod == CheckInMethod.MANUAL
-                );
+    private boolean isLockedByManualAbsent(SessionAttendance attendance) {
+        return attendance.attendanceStatus == AttendanceStatus.ABSENT
+                && attendance.checkInMethod == CheckInMethod.MANUAL;
+    }
 
-        if (alreadyCheckedIn) {
-            throw ApiException.conflict(
-                    "ALREADY_CHECKED_IN",
-                    "User already checked in for this session"
-            );
-        }
+    private QrCheckinResult toExistingQrCheckinResult(
+            UUID sessionId,
+            UUID userId,
+            SessionAttendance attendance
+    ) {
+        return new QrCheckinResult(
+                sessionId,
+                userId,
+                attendance.attendanceStatus,
+                attendance.checkInAt,
+                attendance.qrTokenId
+        );
     }
 
     private void ensureApprovedMember(UUID groupId, UUID userId) {
         Number cnt = (Number) entityManager.createNativeQuery("""
-                select count(*)
-                from group_members gm
-                where gm.group_id = UUID_TO_BIN(:groupId, 1)
-                  and gm.user_id  = UUID_TO_BIN(:userId, 1)
-                  and gm.member_status = 'APPROVED'
+                SELECT COUNT(*)
+                FROM group_members gm
+                WHERE gm.group_id = UUID_TO_BIN(:groupId, 1)
+                  AND gm.user_id  = UUID_TO_BIN(:userId, 1)
+                  AND gm.member_status = 'APPROVED'
                 """)
                 .setParameter("groupId", groupId.toString())
                 .setParameter("userId", userId.toString())
