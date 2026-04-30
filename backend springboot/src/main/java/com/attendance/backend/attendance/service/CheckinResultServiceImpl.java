@@ -48,6 +48,19 @@ public class CheckinResultServiceImpl implements CheckinResultService {
 
         requireApprovedMember(actorUserId, session.getGroupId());
 
+        /*
+         * Source of truth cho màn kết quả sau điểm danh là session_attendance hiện tại.
+         *
+         * Không lấy từ attendance_events vì attendance_events là audit log:
+         * - quét lần 1
+         * - reset
+         * - quét lần 2
+         *
+         * Nếu lấy event cũ thì rất dễ hiển thị lần check-in đầu tiên.
+         * Query này chỉ lấy current row đã check-in thành công:
+         * - attendance_status IN ('PRESENT', 'LATE')
+         * - check_in_at IS NOT NULL
+         */
         List<CheckinResultRow> rows = jdbcTemplate.query(
                 """
                 SELECT
@@ -62,16 +75,20 @@ public class CheckinResultServiceImpl implements CheckinResultService {
                     g.campus,
                     sa.attendance_status,
                     sa.check_in_at,
-                    sa.check_in_method
-                FROM attendance_sessions s
+                    sa.check_in_method,
+                    sa.qr_token_id,
+                    sa.updated_at
+                FROM session_attendance sa
+                JOIN attendance_sessions s
+                  ON s.id = sa.session_id
+                 AND s.deleted_at IS NULL
                 JOIN class_groups g
                   ON g.id = s.group_id
                  AND g.deleted_at IS NULL
-                JOIN session_attendance sa
-                  ON sa.session_id = s.id
-                 AND sa.user_id = UUID_TO_BIN(?, 1)
-                WHERE s.id = UUID_TO_BIN(?, 1)
-                  AND s.deleted_at IS NULL
+                WHERE sa.session_id = UUID_TO_BIN(?, 1)
+                  AND sa.user_id = UUID_TO_BIN(?, 1)
+                  AND sa.check_in_at IS NOT NULL
+                  AND sa.attendance_status IN ('PRESENT', 'LATE')
                 LIMIT 1
                 """,
                 (rs, rowNum) -> new CheckinResultRow(
@@ -88,34 +105,22 @@ public class CheckinResultServiceImpl implements CheckinResultService {
                         toInstant(rs.getObject("check_in_at")),
                         rs.getString("check_in_method") == null
                                 ? null
-                                : CheckInMethod.valueOf(rs.getString("check_in_method"))
+                                : CheckInMethod.valueOf(rs.getString("check_in_method")),
+                        rs.getString("qr_token_id"),
+                        toInstant(rs.getObject("updated_at"))
                 ),
-                actorUserId.toString(),
-                sessionId.toString()
+                sessionId.toString(),
+                actorUserId.toString()
         );
 
         if (rows.isEmpty()) {
             throw ApiException.notFound(
                     "CHECKIN_RESULT_NOT_FOUND",
-                    "Check-in result not found for this session/user"
+                    "User has not checked in successfully for this session"
             );
         }
 
         CheckinResultRow row = rows.get(0);
-
-        if (row.checkInAt() == null) {
-            throw ApiException.notFound(
-                    "CHECKIN_RESULT_NOT_FOUND",
-                    "User has not checked in for this session"
-            );
-        }
-
-        if (row.attendanceStatus() == AttendanceStatus.ABSENT) {
-            throw ApiException.conflict(
-                    "USER_NOT_CHECKED_IN",
-                    "User is marked ABSENT for this session"
-            );
-        }
 
         String displayCode = firstNonBlank(row.groupCode(), row.classCode(), row.courseCode());
         String locationDisplay = buildLocationDisplay(row.room(), row.campus());
@@ -257,7 +262,9 @@ public class CheckinResultServiceImpl implements CheckinResultService {
             String campus,
             AttendanceStatus attendanceStatus,
             Instant checkInAt,
-            CheckInMethod checkInMethod
+            CheckInMethod checkInMethod,
+            String qrTokenId,
+            Instant updatedAt
     ) {
     }
 }
