@@ -493,6 +493,11 @@ public class AttendanceCheckinService {
                         "Attendance row not found after create-or-lock"
                 ));
     }
+// PRESENT / LATE => đã điểm danh, không cho quét lại.
+// checkInAt != null => đã ghi nhận, không cho quét lại.
+// qrTokenId != null => đã từng QR, không cho quét lại.
+// ABSENT + MANUAL => giảng viên đã chủ động đánh vắng, không cho tự QR đè lên.
+// ABSENT + checkInMethod null => trạng thái reset sạch, cho phép QR lại.
 
     private void ensureCanCheckInOnce(SessionAttendance attendance) {
         if (attendance.attendanceStatus == AttendanceStatus.EXCUSED || attendance.excusedByRequestId != null) {

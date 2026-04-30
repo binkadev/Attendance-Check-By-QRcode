@@ -378,7 +378,7 @@ public class AttendanceAdminService {
         boolean alreadyClean =
                 attendance.attendanceStatus == AttendanceStatus.ABSENT &&
                         attendance.checkInAt == null &&
-                        attendance.checkInMethod == CheckInMethod.QR &&
+                        attendance.checkInMethod == null &&
                         attendance.qrTokenId == null &&
                         attendance.deviceId == null &&
                         attendance.ipAddress == null &&
@@ -402,7 +402,7 @@ public class AttendanceAdminService {
 
         attendance.attendanceStatus = AttendanceStatus.ABSENT;
         attendance.checkInAt = null;
-        attendance.checkInMethod = CheckInMethod.QR;
+        attendance.checkInMethod = null;
         attendance.qrTokenId = null;
         attendance.deviceId = null;
         attendance.ipAddress = null;
