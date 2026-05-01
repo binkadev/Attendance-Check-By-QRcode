@@ -268,6 +268,26 @@ paths:
         '401':
           $ref: '#/components/responses/Err401'
 
+  /me/classes/timeline:
+    get:
+      tags:
+        - Me
+      summary: Get my class timeline for mobile home screen
+      description: >
+        Returns classes visible to the current authenticated user grouped into ongoing,
+        upcomingToday, and upcomingTomorrow buckets. Planned schedule comes from
+        class_groups.start_date/planned_end_date and group_weekly_schedules.
+        If an attendance session exists for that date, representative session fields are included.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyClassTimelineResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+
   /me/classes/semesters:
     get:
       tags:
@@ -2026,6 +2046,137 @@ components:
                 message: Too many requests
 
   schemas:
+
+    MyClassTimelineItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - bucket
+        - groupId
+        - groupName
+        - roleLabel
+        - approvedStudentCount
+        - myRole
+        - myMemberStatus
+        - occurrenceDate
+        - dayOfWeek
+        - startAt
+        - endAt
+      properties:
+        bucket:
+          type: string
+          enum:
+            - ONGOING
+            - UPCOMING_TODAY
+            - UPCOMING_TOMORROW
+        groupId:
+          type: string
+          format: uuid
+        groupName:
+          type: string
+        roleLabel:
+          type: string
+        courseCode:
+          type: string
+          nullable: true
+        classCode:
+          type: string
+          nullable: true
+        room:
+          type: string
+          nullable: true
+        campus:
+          type: string
+          nullable: true
+        locationDisplay:
+          type: string
+          nullable: true
+        lecturerName:
+          type: string
+          nullable: true
+        approvedStudentCount:
+          type: integer
+          format: int64
+        semester:
+          type: string
+          nullable: true
+        academicYear:
+          type: string
+          nullable: true
+        thumbnail:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        myRole:
+          $ref: '#/components/schemas/MemberRole'
+        myMemberStatus:
+          $ref: '#/components/schemas/MemberStatus'
+        occurrenceDate:
+          type: string
+          format: date
+        dayOfWeek:
+          $ref: '#/components/schemas/GroupWeeklyScheduleDayOfWeek'
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        representativeSessionId:
+          type: string
+          format: uuid
+          nullable: true
+        representativeSessionStatus:
+          type: string
+          nullable: true
+          enum:
+            - DRAFT
+            - OPEN
+            - CLOSED
+            - CANCELLED
+        checkinOpenAt:
+          type: string
+          format: date-time
+          nullable: true
+        checkinCloseAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    MyClassTimelineResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - today
+        - tomorrow
+        - serverTime
+        - ongoing
+        - upcomingToday
+        - upcomingTomorrow
+      properties:
+        today:
+          type: string
+          format: date
+        tomorrow:
+          type: string
+          format: date
+        serverTime:
+          type: string
+          format: date-time
+        ongoing:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyClassTimelineItemResponse'
+        upcomingToday:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyClassTimelineItemResponse'
+        upcomingTomorrow:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyClassTimelineItemResponse'
 
     CheckinResultResponse:
       type: object
