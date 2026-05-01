@@ -1,9 +1,11 @@
 package com.attendance.backend.me.api;
 
 import com.attendance.backend.me.api.response.MyClassSemesterOptionResponse;
+import com.attendance.backend.me.api.response.MyClassTimelineResponse;
 import com.attendance.backend.me.api.response.PageMyClassResponse;
 import com.attendance.backend.me.model.MyClassQueryCriteria;
 import com.attendance.backend.me.service.MyClassQueryService;
+import com.attendance.backend.me.service.MyClassTimelineService;
 import com.attendance.backend.security.UserPrincipal;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +20,14 @@ import java.util.List;
 public class MyClassController {
 
     private final MyClassQueryService myClassQueryService;
+    private final MyClassTimelineService myClassTimelineService;
 
-    public MyClassController(MyClassQueryService myClassQueryService) {
+    public MyClassController(
+            MyClassQueryService myClassQueryService,
+            MyClassTimelineService myClassTimelineService
+    ) {
         this.myClassQueryService = myClassQueryService;
+        this.myClassTimelineService = myClassTimelineService;
     }
 
     @GetMapping("/classes")
@@ -51,6 +58,13 @@ public class MyClassController {
         );
 
         return myClassQueryService.listMyClasses(principal.getUserId(), criteria);
+    }
+
+    @GetMapping("/classes/timeline")
+    public MyClassTimelineResponse getMyClassTimeline(
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        return myClassTimelineService.getMyClassTimeline(principal.getUserId());
     }
 
     @GetMapping("/classes/teaching")
