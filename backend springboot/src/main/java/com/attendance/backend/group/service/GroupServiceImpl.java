@@ -9,13 +9,16 @@ import com.attendance.backend.domain.enums.MemberRole;
 import com.attendance.backend.domain.enums.MemberStatus;
 import com.attendance.backend.group.dto.CreateGroupRequest;
 import com.attendance.backend.group.dto.GroupResponse;
+import com.attendance.backend.group.dto.GroupScheduleConflictResponse;
 import com.attendance.backend.group.dto.GroupWeeklyScheduleRequest;
 import com.attendance.backend.group.dto.GroupWeeklyScheduleResponse;
 import com.attendance.backend.group.dto.UpdateGroupRequest;
 import com.attendance.backend.group.dto.UpdateGroupStatusRequest;
+import com.attendance.backend.group.dto.ValidateGroupScheduleRequest;
 import com.attendance.backend.group.repository.ClassGroupRepository;
 import com.attendance.backend.group.repository.GroupMemberRepository;
 import com.attendance.backend.group.repository.GroupWeeklyScheduleRepository;
+import com.attendance.backend.group.service.conflict.GroupScheduleConflictService;
 import com.attendance.backend.group.service.schedule.GroupSchedulePlanner;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,17 +40,20 @@ public class GroupServiceImpl implements GroupService {
     private final GroupMemberRepository groupMemberRepository;
     private final GroupWeeklyScheduleRepository groupWeeklyScheduleRepository;
     private final GroupSchedulePlanner groupSchedulePlanner;
+    private final GroupScheduleConflictService groupScheduleConflictService;
 
     public GroupServiceImpl(
             ClassGroupRepository classGroupRepository,
             GroupMemberRepository groupMemberRepository,
             GroupWeeklyScheduleRepository groupWeeklyScheduleRepository,
-            GroupSchedulePlanner groupSchedulePlanner
+            GroupSchedulePlanner groupSchedulePlanner,
+            GroupScheduleConflictService groupScheduleConflictService
     ) {
         this.classGroupRepository = classGroupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.groupWeeklyScheduleRepository = groupWeeklyScheduleRepository;
         this.groupSchedulePlanner = groupSchedulePlanner == null ? new GroupSchedulePlanner() : groupSchedulePlanner;
+        this.groupScheduleConflictService = groupScheduleConflictService;
     }
 
     @Override
@@ -61,6 +67,16 @@ public class GroupServiceImpl implements GroupService {
                 req.getWeeklySchedules(),
                 req.getTotalSessions(),
                 req.getMaxAllowedAbsences(),
+                normalizedCampus,
+                normalizedRoom
+        );
+
+        assertNoScheduleConflictIfAvailable(
+                callerUserId,
+                null,
+                req.getStartDate(),
+                req.getWeeklySchedules(),
+                req.getTotalSessions(),
                 normalizedCampus,
                 normalizedRoom
         );
@@ -150,6 +166,18 @@ public class GroupServiceImpl implements GroupService {
                 effectiveCampus,
                 effectiveRoom
         );
+
+        if (effectiveStartDate != null) {
+            assertNoScheduleConflictIfAvailable(
+                    group.getOwnerUserId(),
+                    groupId,
+                    effectiveStartDate,
+                    effectiveSchedules,
+                    effectiveTotalSessions,
+                    effectiveCampus,
+                    effectiveRoom
+            );
+        }
 
         if (req.getName() != null) {
             group.setName(normalizeRequired(req.getName(), "name"));
@@ -241,6 +269,24 @@ public class GroupServiceImpl implements GroupService {
         return updateGroupStatus(callerUserId, groupId, req);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public GroupScheduleConflictResponse validateSchedule(UUID callerUserId, ValidateGroupScheduleRequest req) {
+        if (groupScheduleConflictService == null) {
+            throw ApiException.badRequest("SCHEDULE_VALIDATION_UNAVAILABLE", "Schedule validation is unavailable");
+        }
+
+        return groupScheduleConflictService.validateSchedule(
+                callerUserId,
+                req.getExcludeGroupId(),
+                req.getStartDate(),
+                req.getWeeklySchedules(),
+                req.getTotalSessions(),
+                normalizeNullable(req.getCampus()),
+                normalizeNullable(req.getRoom())
+        );
+    }
+
     private void requireReadAccess(UUID callerUserId, UUID groupId) {
         GroupMember membership = groupMemberRepository.findByGroupIdAndUserId(groupId, callerUserId)
                 .orElseThrow(() -> ApiException.forbidden("FORBIDDEN", "You do not have permission to access this group"));
@@ -295,6 +341,30 @@ public class GroupServiceImpl implements GroupService {
         }
 
         return groupSchedulePlanner.calculatePlannedEndDate(
+                startDate,
+                weeklySchedules,
+                totalSessions,
+                campus,
+                room
+        );
+    }
+
+    private void assertNoScheduleConflictIfAvailable(
+            UUID ownerUserId,
+            UUID excludeGroupId,
+            LocalDate startDate,
+            List<GroupWeeklyScheduleRequest> weeklySchedules,
+            Integer totalSessions,
+            String campus,
+            String room
+    ) {
+        if (groupScheduleConflictService == null || startDate == null) {
+            return;
+        }
+
+        groupScheduleConflictService.assertNoConflict(
+                ownerUserId,
+                excludeGroupId,
                 startDate,
                 weeklySchedules,
                 totalSessions,
