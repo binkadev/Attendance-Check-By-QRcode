@@ -68,6 +68,21 @@ public class AttendanceReadController {
         );
     }
 
+    @GetMapping("/groups/{groupId}/me/attendance-history")
+    public PageMyAttendanceHistoryResponse listMyAttendanceHistoryInGroup(
+            @AuthenticationPrincipal UserPrincipal me,
+            @PathVariable UUID groupId,
+            @RequestParam(defaultValue = "0")
+            @Min(value = 0, message = "page must be >= 0")
+            int page,
+            @RequestParam(defaultValue = "20")
+            @Min(value = 1, message = "size must be >= 1")
+            @Max(value = 200, message = "size must be <= 200")
+            int size
+    ) {
+        return listMyAttendancesInGroup(me, groupId, page, size);
+    }
+
     @GetMapping("/groups/{groupId}/attendance/export")
     public ResponseEntity<byte[]> exportGroupAttendance(
             @AuthenticationPrincipal UserPrincipal me,
