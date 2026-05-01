@@ -47,7 +47,7 @@ public class GroupServiceImpl implements GroupService {
         this.classGroupRepository = classGroupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.groupWeeklyScheduleRepository = groupWeeklyScheduleRepository;
-        this.groupSchedulePlanner = groupSchedulePlanner;
+        this.groupSchedulePlanner = groupSchedulePlanner == null ? new GroupSchedulePlanner() : groupSchedulePlanner;
     }
 
     @Override
@@ -142,26 +142,14 @@ public class GroupServiceImpl implements GroupService {
         String effectiveRoom =
                 req.getRoom() != null ? normalizeNullable(req.getRoom()) : group.getRoom();
 
-        boolean scheduleFieldsTouched = req.getStartDate() != null
-                || req.getWeeklySchedules() != null
-                || req.getTotalSessions() != null
-                || req.getMaxAllowedAbsences() != null
-                || req.getCampus() != null
-                || req.getRoom() != null;
-
-        LocalDate effectivePlannedEndDate = group.getPlannedEndDate();
-        if (effectiveStartDate != null) {
-            effectivePlannedEndDate = calculateAndValidatePlannedEndDate(
-                    effectiveStartDate,
-                    effectiveSchedules,
-                    effectiveTotalSessions,
-                    effectiveMaxAllowedAbsences,
-                    effectiveCampus,
-                    effectiveRoom
-            );
-        } else if (scheduleFieldsTouched) {
-            throw ApiException.unprocessable("START_DATE_REQUIRED", "startDate is required before updating schedule fields");
-        }
+        LocalDate effectivePlannedEndDate = calculateAndValidatePlannedEndDate(
+                effectiveStartDate,
+                effectiveSchedules,
+                effectiveTotalSessions,
+                effectiveMaxAllowedAbsences,
+                effectiveCampus,
+                effectiveRoom
+        );
 
         if (req.getName() != null) {
             group.setName(normalizeRequired(req.getName(), "name"));
@@ -193,7 +181,7 @@ public class GroupServiceImpl implements GroupService {
         if (req.getStartDate() != null) {
             group.setStartDate(req.getStartDate());
         }
-        if (effectivePlannedEndDate != null) {
+        if (effectiveStartDate != null) {
             group.setPlannedEndDate(effectivePlannedEndDate);
         }
         if (req.getApprovalMode() != null) {
@@ -301,6 +289,10 @@ public class GroupServiceImpl implements GroupService {
                 totalSessions,
                 maxAllowedAbsences
         );
+
+        if (startDate == null) {
+            return null;
+        }
 
         return groupSchedulePlanner.calculatePlannedEndDate(
                 startDate,
