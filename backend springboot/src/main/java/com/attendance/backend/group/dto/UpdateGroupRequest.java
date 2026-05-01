@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public class UpdateGroupRequest {
@@ -35,6 +36,8 @@ public class UpdateGroupRequest {
 
     @Size(max = 80, message = "room length must be <= 80")
     private String room;
+
+    private LocalDate startDate;
 
     private ApprovalMode approvalMode;
 
@@ -123,6 +126,14 @@ public class UpdateGroupRequest {
 
     public void setRoom(String room) {
         this.room = room;
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public void setStartDate(LocalDate startDate) {
+        this.startDate = startDate;
     }
 
     public ApprovalMode getApprovalMode() {
