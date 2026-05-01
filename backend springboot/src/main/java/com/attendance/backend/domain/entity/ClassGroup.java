@@ -16,6 +16,7 @@ import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Type;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -73,6 +74,12 @@ public class ClassGroup {
 
     @Column(name = "campus", length = 120)
     private String campus;
+
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "planned_end_date")
+    private LocalDate plannedEndDate;
 
     @Column(name = "total_sessions")
     private Integer totalSessions;
@@ -205,6 +212,22 @@ public class ClassGroup {
 
     public void setCampus(String campus) {
         this.campus = campus;
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public void setStartDate(LocalDate startDate) {
+        this.startDate = startDate;
+    }
+
+    public LocalDate getPlannedEndDate() {
+        return plannedEndDate;
+    }
+
+    public void setPlannedEndDate(LocalDate plannedEndDate) {
+        this.plannedEndDate = plannedEndDate;
     }
 
     public Integer getTotalSessions() {
