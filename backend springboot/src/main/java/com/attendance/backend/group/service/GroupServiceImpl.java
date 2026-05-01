@@ -16,11 +16,13 @@ import com.attendance.backend.group.dto.UpdateGroupStatusRequest;
 import com.attendance.backend.group.repository.ClassGroupRepository;
 import com.attendance.backend.group.repository.GroupMemberRepository;
 import com.attendance.backend.group.repository.GroupWeeklyScheduleRepository;
+import com.attendance.backend.group.service.schedule.GroupSchedulePlanner;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.HashSet;
 import java.util.List;
@@ -34,24 +36,33 @@ public class GroupServiceImpl implements GroupService {
     private final ClassGroupRepository classGroupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final GroupWeeklyScheduleRepository groupWeeklyScheduleRepository;
+    private final GroupSchedulePlanner groupSchedulePlanner;
 
     public GroupServiceImpl(
             ClassGroupRepository classGroupRepository,
             GroupMemberRepository groupMemberRepository,
-            GroupWeeklyScheduleRepository groupWeeklyScheduleRepository
+            GroupWeeklyScheduleRepository groupWeeklyScheduleRepository,
+            GroupSchedulePlanner groupSchedulePlanner
     ) {
         this.classGroupRepository = classGroupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.groupWeeklyScheduleRepository = groupWeeklyScheduleRepository;
+        this.groupSchedulePlanner = groupSchedulePlanner == null ? new GroupSchedulePlanner() : groupSchedulePlanner;
     }
 
     @Override
     @Transactional
     public GroupResponse createGroup(UUID callerUserId, CreateGroupRequest req) {
-        validateCreateOrUpdateStep2(
+        String normalizedCampus = normalizeNullable(req.getCampus());
+        String normalizedRoom = normalizeNullable(req.getRoom());
+
+        LocalDate plannedEndDate = calculateAndValidatePlannedEndDate(
+                req.getStartDate(),
                 req.getWeeklySchedules(),
                 req.getTotalSessions(),
-                req.getMaxAllowedAbsences()
+                req.getMaxAllowedAbsences(),
+                normalizedCampus,
+                normalizedRoom
         );
 
         ClassGroup group = new ClassGroup();
@@ -65,8 +76,10 @@ public class GroupServiceImpl implements GroupService {
         group.setDescription(normalizeNullable(req.getDescription()));
         group.setSemester(normalizeNullable(req.getSemester()));
         group.setAcademicYear(normalizeNullable(req.getAcademicYear()));
-        group.setCampus(normalizeNullable(req.getCampus()));
-        group.setRoom(normalizeNullable(req.getRoom()));
+        group.setCampus(normalizedCampus);
+        group.setRoom(normalizedRoom);
+        group.setStartDate(req.getStartDate());
+        group.setPlannedEndDate(plannedEndDate);
         group.setTotalSessions(req.getTotalSessions());
         group.setMaxAllowedAbsences(req.getMaxAllowedAbsences());
         group.setApprovalMode(req.getApprovalMode());
@@ -120,10 +133,22 @@ public class GroupServiceImpl implements GroupService {
         Integer effectiveMaxAllowedAbsences =
                 req.getMaxAllowedAbsences() != null ? req.getMaxAllowedAbsences() : group.getMaxAllowedAbsences();
 
-        validateCreateOrUpdateStep2(
+        LocalDate effectiveStartDate =
+                req.getStartDate() != null ? req.getStartDate() : group.getStartDate();
+
+        String effectiveCampus =
+                req.getCampus() != null ? normalizeNullable(req.getCampus()) : group.getCampus();
+
+        String effectiveRoom =
+                req.getRoom() != null ? normalizeNullable(req.getRoom()) : group.getRoom();
+
+        LocalDate effectivePlannedEndDate = calculateAndValidatePlannedEndDate(
+                effectiveStartDate,
                 effectiveSchedules,
                 effectiveTotalSessions,
-                effectiveMaxAllowedAbsences
+                effectiveMaxAllowedAbsences,
+                effectiveCampus,
+                effectiveRoom
         );
 
         if (req.getName() != null) {
@@ -148,10 +173,16 @@ public class GroupServiceImpl implements GroupService {
             group.setAcademicYear(normalizeNullable(req.getAcademicYear()));
         }
         if (req.getCampus() != null) {
-            group.setCampus(normalizeNullable(req.getCampus()));
+            group.setCampus(effectiveCampus);
         }
         if (req.getRoom() != null) {
-            group.setRoom(normalizeNullable(req.getRoom()));
+            group.setRoom(effectiveRoom);
+        }
+        if (req.getStartDate() != null) {
+            group.setStartDate(req.getStartDate());
+        }
+        if (effectiveStartDate != null) {
+            group.setPlannedEndDate(effectivePlannedEndDate);
         }
         if (req.getApprovalMode() != null) {
             group.setApprovalMode(req.getApprovalMode());
@@ -245,28 +276,55 @@ public class GroupServiceImpl implements GroupService {
         }
     }
 
+    private LocalDate calculateAndValidatePlannedEndDate(
+            LocalDate startDate,
+            List<GroupWeeklyScheduleRequest> weeklySchedules,
+            Integer totalSessions,
+            Integer maxAllowedAbsences,
+            String campus,
+            String room
+    ) {
+        validateCreateOrUpdateStep2(
+                weeklySchedules,
+                totalSessions,
+                maxAllowedAbsences
+        );
+
+        if (startDate == null) {
+            return null;
+        }
+
+        return groupSchedulePlanner.calculatePlannedEndDate(
+                startDate,
+                weeklySchedules,
+                totalSessions,
+                campus,
+                room
+        );
+    }
+
     private void validateCreateOrUpdateStep2(
             List<GroupWeeklyScheduleRequest> weeklySchedules,
             Integer totalSessions,
             Integer maxAllowedAbsences
     ) {
         if (weeklySchedules == null || weeklySchedules.isEmpty()) {
-            throw ApiException.badRequest("INVALID_WEEKLY_SCHEDULE", "weeklySchedules must not be empty");
+            throw ApiException.unprocessable("WEEKLY_SCHEDULE_REQUIRED", "weeklySchedules must not be empty");
         }
 
         if (totalSessions == null || totalSessions <= 0) {
-            throw ApiException.badRequest("INVALID_TOTAL_SESSIONS", "totalSessions must be greater than 0");
+            throw ApiException.unprocessable("TOTAL_SESSIONS_INVALID", "totalSessions must be greater than 0");
         }
 
         if (maxAllowedAbsences == null || maxAllowedAbsences < 0) {
-            throw ApiException.badRequest(
-                    "INVALID_MAX_ALLOWED_ABSENCES",
+            throw ApiException.unprocessable(
+                    "INVALID_ABSENCE_POLICY",
                     "maxAllowedAbsences must be greater than or equal to 0"
             );
         }
 
         if (maxAllowedAbsences > totalSessions) {
-            throw ApiException.badRequest(
+            throw ApiException.unprocessable(
                     "INVALID_ABSENCE_POLICY",
                     "maxAllowedAbsences must be less than or equal to totalSessions"
             );
@@ -275,20 +333,24 @@ public class GroupServiceImpl implements GroupService {
         Set<String> seen = new HashSet<>();
 
         for (GroupWeeklyScheduleRequest item : weeklySchedules) {
+            if (item == null) {
+                throw ApiException.unprocessable("INVALID_WEEKLY_SCHEDULE", "weeklySchedules contains invalid item");
+            }
+
             String normalizedDayOfWeek = normalizeDayOfWeek(item.getDayOfWeek());
             LocalTime startTime = LocalTime.parse(item.getStartTime());
             LocalTime endTime = LocalTime.parse(item.getEndTime());
 
             if (!startTime.isBefore(endTime)) {
-                throw ApiException.badRequest(
-                        "INVALID_WEEKLY_SCHEDULE_TIME_RANGE",
+                throw ApiException.unprocessable(
+                        "INVALID_WEEKLY_SCHEDULE_TIME",
                         "startTime must be earlier than endTime"
                 );
             }
 
             String dedupKey = normalizedDayOfWeek + "|" + startTime + "|" + endTime;
             if (!seen.add(dedupKey)) {
-                throw ApiException.badRequest(
+                throw ApiException.unprocessable(
                         "DUPLICATE_WEEKLY_SCHEDULE",
                         "weeklySchedules contains duplicate entries"
                 );
@@ -354,6 +416,8 @@ public class GroupServiceImpl implements GroupService {
                 group.getAcademicYear(),
                 group.getCampus(),
                 group.getRoom(),
+                group.getStartDate(),
+                group.getPlannedEndDate(),
                 lecturerName,
                 studentCount,
                 group.getTotalSessions(),
@@ -407,7 +471,7 @@ public class GroupServiceImpl implements GroupService {
 
     private String normalizeDayOfWeek(String value) {
         if (!StringUtils.hasText(value)) {
-            throw ApiException.badRequest("INVALID_DAY_OF_WEEK", "dayOfWeek is required");
+            throw ApiException.unprocessable("INVALID_DAY_OF_WEEK", "dayOfWeek is required");
         }
         return value.trim().toUpperCase(Locale.ROOT);
     }

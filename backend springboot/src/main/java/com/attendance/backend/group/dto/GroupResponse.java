@@ -4,6 +4,7 @@ import com.attendance.backend.domain.enums.ApprovalMode;
 import com.attendance.backend.domain.enums.GroupStatus;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +21,8 @@ public record GroupResponse(
         String academicYear,
         String campus,
         String room,
+        LocalDate startDate,
+        LocalDate plannedEndDate,
         String lecturerName,
         Long studentCount,
         Integer totalSessions,

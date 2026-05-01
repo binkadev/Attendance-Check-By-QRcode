@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public class CreateGroupRequest {
@@ -42,6 +43,9 @@ public class CreateGroupRequest {
 
     @Size(max = 80, message = "room length must be <= 80")
     private String room;
+
+    @NotNull(message = "startDate is required")
+    private LocalDate startDate;
 
     @NotNull(message = "approvalMode is required")
     private ApprovalMode approvalMode;
@@ -142,6 +146,14 @@ public class CreateGroupRequest {
 
     public void setRoom(String room) {
         this.room = room;
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public void setStartDate(LocalDate startDate) {
+        this.startDate = startDate;
     }
 
     public ApprovalMode getApprovalMode() {
