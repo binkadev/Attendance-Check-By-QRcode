@@ -91,6 +91,29 @@ public class SessionController {
         );
     }
 
+    @GetMapping("/groups/{groupId}/sessions/history")
+    public PageSessionResponse listSessionHistory(
+            @AuthenticationPrincipal UserPrincipal me,
+            @PathVariable UUID groupId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate to,
+            @RequestParam(required = false)
+            SessionStatus status,
+            @RequestParam(defaultValue = "0")
+            @Min(value = 0, message = "page must be >= 0")
+            int page,
+            @RequestParam(defaultValue = "20")
+            @Min(value = 1, message = "size must be >= 1")
+            @Max(value = 200, message = "size must be <= 200")
+            int size
+    ) {
+        return listSessions(me, groupId, from, to, status, page, size);
+    }
+
     @GetMapping("/sessions/{sessionId}")
     public SessionResponse getSession(
             @AuthenticationPrincipal UserPrincipal me,
