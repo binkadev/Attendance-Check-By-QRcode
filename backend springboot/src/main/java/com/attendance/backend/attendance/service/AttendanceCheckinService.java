@@ -11,9 +11,13 @@ import com.attendance.backend.domain.entity.SessionAttendance;
 import com.attendance.backend.domain.enums.AttendanceStatus;
 import com.attendance.backend.domain.enums.CheckInMethod;
 import com.attendance.backend.domain.enums.EventType;
+import com.attendance.backend.domain.enums.NotificationSeverity;
+import com.attendance.backend.domain.enums.NotificationSourceType;
+import com.attendance.backend.domain.enums.NotificationType;
 import com.attendance.backend.domain.enums.SessionStatus;
 import com.attendance.backend.fraud.domain.CheckinFailureCode;
 import com.attendance.backend.fraud.service.FraudDetectionService;
+import com.attendance.backend.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -51,6 +55,7 @@ public class AttendanceCheckinService {
     private final Clock clock = Clock.systemUTC();
     private final DbErrorTranslator dbErrorTranslator;
     private final FraudDetectionService fraudDetectionService;
+    private final NotificationService notificationService;
 
     public AttendanceCheckinService(
             AttendanceSessionRepository attendanceSessionRepository,
@@ -58,7 +63,8 @@ public class AttendanceCheckinService {
             EntityManager entityManager,
             ObjectMapper objectMapper,
             DbErrorTranslator dbErrorTranslator,
-            FraudDetectionService fraudDetectionService
+            FraudDetectionService fraudDetectionService,
+            NotificationService notificationService
     ) {
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.sessionAttendanceRepository = sessionAttendanceRepository;
@@ -66,6 +72,7 @@ public class AttendanceCheckinService {
         this.objectMapper = objectMapper;
         this.dbErrorTranslator = dbErrorTranslator;
         this.fraudDetectionService = fraudDetectionService;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -221,6 +228,17 @@ public class AttendanceCheckinService {
             entityManager.persist(event);
             entityManager.flush();
 
+            publishCheckinSuccessNotification(
+                    session,
+                    cmd,
+                    computed,
+                    now,
+                    openAt,
+                    closeAt,
+                    lateThreshold,
+                    event.id
+            );
+
             registerFraudSuccessAfterCommit(
                     session.getGroupId(),
                     cmd,
@@ -253,6 +271,57 @@ public class AttendanceCheckinService {
             throw ex;
         } catch (DataIntegrityViolationException ex) {
             throw dbErrorTranslator.translate(ex);
+        }
+    }
+
+    private void publishCheckinSuccessNotification(
+            AttendanceSession session,
+            QrCheckinCommand cmd,
+            AttendanceStatus computed,
+            Instant checkedInAt,
+            Instant openAt,
+            Instant closeAt,
+            Instant lateThreshold,
+            UUID attendanceEventId
+    ) {
+        try {
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("sessionId", cmd.sessionId().toString());
+            payload.put("groupId", session.getGroupId().toString());
+            payload.put("attendanceStatus", computed.name());
+            payload.put("checkedInAt", checkedInAt.toString());
+            payload.put("openAt", openAt.toString());
+            payload.put("closeAt", closeAt.toString());
+            payload.put("lateThreshold", lateThreshold.toString());
+
+            if (session.getTitle() != null && !session.getTitle().isBlank()) {
+                payload.put("sessionTitle", session.getTitle());
+            }
+
+            String body = computed == AttendanceStatus.LATE
+                    ? "Bạn đã điểm danh trễ cho phiên học này."
+                    : "Bạn đã được ghi nhận có mặt tại lớp học. Xin chúc mừng!";
+
+            notificationService.createOne(new NotificationService.CreateNotificationCommand(
+                    cmd.userId(),
+                    session.getGroupId(),
+                    cmd.sessionId(),
+                    NotificationType.CHECKIN_SUCCESS,
+                    "Điểm danh thành công",
+                    body,
+                    payload,
+                    NotificationSeverity.INFO,
+                    NotificationSourceType.ATTENDANCE_EVENT,
+                    attendanceEventId,
+                    sha256Hex("checkin-success|" + cmd.sessionId() + "|" + cmd.userId())
+            ));
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "Failed to publish check-in success notification for sessionId={}, userId={}",
+                    cmd.sessionId(),
+                    cmd.userId(),
+                    ex
+            );
         }
     }
 
@@ -723,12 +792,19 @@ public class AttendanceCheckinService {
             return null;
         }
 
+        return toHex(hash);
+    }
+
+    private String sha256Hex(String raw) {
+        return toHex(sha256(raw));
+    }
+
+    private String toHex(byte[] hash) {
         StringBuilder sb = new StringBuilder(hash.length * 2);
         for (byte b : hash) {
             sb.append(Character.forDigit((b >> 4) & 0xF, 16));
             sb.append(Character.forDigit(b & 0xF, 16));
         }
-
         return sb.toString();
     }
 
