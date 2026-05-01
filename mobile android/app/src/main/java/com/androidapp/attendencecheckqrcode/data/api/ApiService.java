@@ -10,6 +10,7 @@ import com.androidapp.attendencecheckqrcode.data.dto.group.CreateGroupRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.GroupResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.group.JoinGroupRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.MemberResponse;
+import com.androidapp.attendencecheckqrcode.data.dto.group.PolicyStatusResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.teaching.AttendancePolicyRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.teaching.GroupStudentPolicyResponse;
 import com.androidapp.attendencecheckqrcode.domain.models.Attendance;
@@ -60,6 +61,13 @@ public interface ApiService {
             @Query("page") int page,
             @Query("size") int size
     );
+
+    @GET("api/v1/groups/{groupId}")
+    Call<Classroom> getClassGroup(@Path("groupId") String groupId);
+
+
+    @GET("api/v1/groups/{groupId}/me/attendance-policy-status")
+    Call<PolicyStatusResponse> getPolicyStatus(@Path("groupId") String groupId);
 
     @GET("api/v1/me/classes/semesters")
     Call<List<SemesterDto>> getSemesters();

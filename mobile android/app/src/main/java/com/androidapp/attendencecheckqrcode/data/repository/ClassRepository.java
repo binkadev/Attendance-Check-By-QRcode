@@ -11,6 +11,7 @@ import com.androidapp.attendencecheckqrcode.data.dto.group.CreateGroupRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.GroupResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.group.JoinGroupRequest;
 import com.androidapp.attendencecheckqrcode.data.dto.group.MemberResponse;
+import com.androidapp.attendencecheckqrcode.data.dto.group.PolicyStatusResponse;
 import com.androidapp.attendencecheckqrcode.data.dto.teaching.AttendancePolicyRequest;
 import com.androidapp.attendencecheckqrcode.domain.models.Classroom;
 import com.androidapp.attendencecheckqrcode.utils.Resource;
@@ -26,6 +27,34 @@ public class ClassRepository {
 
     public ClassRepository(Context context) {
         apiService = ApiClient.getApiService(context);
+    }
+
+    public void getClassDetail(String groupId, MutableLiveData<Resource<Classroom>> resultLiveData) {
+        android.util.Log.d("DEBUG_API", "===> Đang gọi API lấy chi tiết lớp: " + groupId);
+
+        apiService.getClassGroup(groupId).enqueue(new Callback<Classroom>() {
+            @Override
+            public void onResponse(Call<Classroom> call, Response<Classroom> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    // Trả về dữ liệu chi tiết lớp học (bao gồm weeklySchedules, joinCode...)
+                    resultLiveData.setValue(Resource.success(response.body()));
+                    android.util.Log.d("DEBUG_API", "===> Lấy chi tiết lớp thành công!");
+                } else {
+                    try {
+                        String errorBody = response.errorBody() != null ? response.errorBody().string() : "Không rõ lỗi";
+                        resultLiveData.setValue(Resource.error("Lỗi lấy chi tiết: " + errorBody, null));
+                    } catch (Exception e) {
+                        resultLiveData.setValue(Resource.error("Lỗi lấy chi tiết lớp: " + response.code(), null));
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Classroom> call, Throwable t) {
+                android.util.Log.e("DEBUG_API", "LỖI MẠNG khi lấy chi tiết: " + t.getMessage());
+                resultLiveData.setValue(Resource.error("Lỗi kết nối mạng", null));
+            }
+        });
     }
 
     public void getEnrolledClasses(MutableLiveData<Resource<List<Classroom>>> resultLiveData) {
@@ -164,6 +193,36 @@ public class ClassRepository {
             @Override
             public void onFailure(Call<Void> call, Throwable t) {
                 resultLiveData.setValue(Resource.error("Lỗi mạng: " + t.getMessage(), null));
+            }
+        });
+    }
+
+
+
+
+    public void getPolicyStatus(String groupId, MutableLiveData<Resource<PolicyStatusResponse>> resultLiveData) {
+        android.util.Log.d("DEBUG_API", "===> Đang gọi API lấy Policy Status: " + groupId);
+
+        apiService.getPolicyStatus(groupId).enqueue(new Callback<PolicyStatusResponse>() {
+            @Override
+            public void onResponse(Call<PolicyStatusResponse> call, Response<PolicyStatusResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    resultLiveData.setValue(Resource.success(response.body()));
+                    android.util.Log.d("DEBUG_API", "===> Lấy Policy Status thành công!");
+                } else {
+                    try {
+                        String errorBody = response.errorBody() != null ? response.errorBody().string() : "Không rõ lỗi";
+                        resultLiveData.setValue(Resource.error("Lỗi lấy thống kê: " + errorBody, null));
+                    } catch (Exception e) {
+                        resultLiveData.setValue(Resource.error("Lỗi lấy thống kê: " + response.code(), null));
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(Call<PolicyStatusResponse> call, Throwable t) {
+                android.util.Log.e("DEBUG_API", "LỖI MẠNG khi lấy Policy Status: " + t.getMessage());
+                resultLiveData.setValue(Resource.error("Lỗi kết nối mạng", null));
             }
         });
     }

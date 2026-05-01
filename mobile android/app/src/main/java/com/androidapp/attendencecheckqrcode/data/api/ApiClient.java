@@ -9,13 +9,13 @@ import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import okhttp3.logging.HttpLoggingInterceptor; // Thêm thư viện này
+import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
 public class ApiClient {
     // Nên cân nhắc đưa BASE_URL vào BuildConfig trong file build.gradle sau này
-    private static final String BASE_URL = "http://192.168.46.169:8081/";
+    private static final String BASE_URL = "http://192.168.46.157:8081/";
 
     // Thêm từ khóa volatile để đảm bảo an toàn luồng (Thread-safe)
     private static volatile Retrofit retrofit;

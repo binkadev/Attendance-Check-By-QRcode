@@ -29,7 +29,7 @@ public class TokenAuthenticator implements Authenticator {
     private TokenManager tokenManager;
 
     // Khai báo chung với ApiClient hoặc tự định nghĩa
-    private static final String REFRESH_URL = "http://192.168.46.169:8081/api/v1/auth/refresh";
+    private static final String REFRESH_URL = "http://192.168.46.157:8081/api/v1/auth/refresh";
 
     public TokenAuthenticator(Context context) {
         this.context = context.getApplicationContext();

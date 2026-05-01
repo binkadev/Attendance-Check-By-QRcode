@@ -6,10 +6,11 @@ import java.util.List;
 
 public class Classroom implements Serializable {
 
-    @SerializedName("groupId")
+    // CHÚ Ý: alternate giúp Gson bắt được cả "groupId" VÀ "id"
+    @SerializedName(value = "groupId", alternate = {"id"})
     private String groupId;
 
-    @SerializedName("groupName")
+    @SerializedName(value = "groupName", alternate = {"name"})
     private String groupName;
 
     @SerializedName("courseCode")
@@ -33,31 +34,21 @@ public class Classroom implements Serializable {
     @SerializedName("academicYear")
     private String academicYear;
 
-    @SerializedName("locationDisplay")
+    @SerializedName(value = "locationDisplay", alternate = {"campus"})
     private String locationDisplay;
 
     @SerializedName("myRole")
-    private String myRole; // "LECTURER" hoặc "STUDENT"
+    private String myRole;
 
     @SerializedName("code")
     private String code;
 
-    @SerializedName("weeklySchedules")
-    private List<WeeklySchedule> weeklySchedules;
-
-    // ==========================================
-    // CÁC BIẾN CHO MÀN HÌNH DANH SÁCH (Rút gọn)
-    // ==========================================
     @SerializedName("startTime")
     private String startTime;
 
     @SerializedName("endTime")
     private String endTime;
 
-    // ==========================================
-    // CÁC BIẾN CHO MÀN HÌNH CHI TIẾT (Full)
-    // Đã bổ sung khai báo tại đây để sửa lỗi!
-    // ==========================================
     @SerializedName("joinCode")
     private String joinCode;
 
@@ -70,7 +61,11 @@ public class Classroom implements Serializable {
     @SerializedName("maxAllowedAbsences")
     private int maxAllowedAbsences;
 
-    // --- CÁC CLASS CON ---
+    @SerializedName("weeklySchedules")
+    private List<WeeklySchedule> weeklySchedules;
+
+    public Classroom() {}
+
     public static class WeeklySchedule implements Serializable {
         @SerializedName("dayOfWeek")
         private String dayOfWeek;
@@ -82,13 +77,16 @@ public class Classroom implements Serializable {
         private String endTime;
 
         public String getDayOfWeek() { return dayOfWeek; }
+        public void setDayOfWeek(String dayOfWeek) { this.dayOfWeek = dayOfWeek; }
+
         public String getStartTime() { return startTime; }
+        public void setStartTime(String startTime) { this.startTime = startTime; }
+
         public String getEndTime() { return endTime; }
+        public void setEndTime(String endTime) { this.endTime = endTime; }
     }
 
-    public Classroom() {}
-
-    // --- GETTERS CƠ BẢN ---
+    // --- GETTERS ---
     public String getCode() { return code; }
     public String getGroupId() { return groupId; }
     public String getGroupName() { return groupName; }
@@ -101,36 +99,31 @@ public class Classroom implements Serializable {
     public String getAcademicYear() { return academicYear; }
     public String getLocationDisplay() { return locationDisplay; }
     public String getMyRole() { return myRole; }
-    public List<WeeklySchedule> getWeeklySchedules() { return weeklySchedules; }
 
-    public String getDisplayTitle() {
-        return classCode + " - " + groupName;
-    }
-
-    // --- GETTERS CHO DANH SÁCH RÚT GỌN ---
     public String getStartTime() { return startTime; }
     public String getEndTime() { return endTime; }
 
-    // --- GETTERS CHO CHI TIẾT LỚP ---
     public String getJoinCode() { return joinCode; }
     public String getDescription() { return description; }
     public int getTotalSessions() { return totalSessions; }
     public int getMaxAllowedAbsences() { return maxAllowedAbsences; }
+    public List<WeeklySchedule> getWeeklySchedules() { return weeklySchedules; }
 
-    // --- SETTERS ĐỂ MERGE DATA (BƠM DỮ LIỆU) ---
+    // --- SETTERS ---
     public void setWeeklySchedules(List<WeeklySchedule> weeklySchedules) {
         this.weeklySchedules = weeklySchedules;
     }
     public void setJoinCode(String joinCode) {
         this.joinCode = joinCode;
     }
-    public void setDescription(String description) {
-        this.description = description;
-    }
     public void setTotalSessions(int totalSessions) {
         this.totalSessions = totalSessions;
     }
     public void setMaxAllowedAbsences(int maxAllowedAbsences) {
         this.maxAllowedAbsences = maxAllowedAbsences;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 }
