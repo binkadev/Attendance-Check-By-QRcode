@@ -1,6 +1,9 @@
 package com.attendance.backend.domain.enums;
 
 public enum NotificationType {
+    CHECKIN_SUCCESS,
+    ABSENCE_WARNING,
+    UPCOMING_CLASS_REMINDER,
     ABSENCE_REQUEST_CREATED,
     ABSENCE_REQUEST_APPROVED,
     ABSENCE_REQUEST_REJECTED,
