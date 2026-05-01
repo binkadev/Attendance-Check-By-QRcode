@@ -3,8 +3,10 @@ package com.attendance.backend.group.api;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.group.dto.CreateGroupRequest;
 import com.attendance.backend.group.dto.GroupResponse;
+import com.attendance.backend.group.dto.GroupScheduleConflictResponse;
 import com.attendance.backend.group.dto.UpdateGroupRequest;
 import com.attendance.backend.group.dto.UpdateGroupStatusRequest;
+import com.attendance.backend.group.dto.ValidateGroupScheduleRequest;
 import com.attendance.backend.group.service.GroupService;
 import com.attendance.backend.security.UserPrincipal;
 import jakarta.validation.Valid;
@@ -34,6 +36,17 @@ public class GroupController {
             throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
         }
         return groupService.createGroup(me.getUserId(), req);
+    }
+
+    @PostMapping("/schedule/validate")
+    public GroupScheduleConflictResponse validateSchedule(
+            @AuthenticationPrincipal UserPrincipal me,
+            @Valid @RequestBody ValidateGroupScheduleRequest req
+    ) {
+        if (me == null) {
+            throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
+        }
+        return groupService.validateSchedule(me.getUserId(), req);
     }
 
     @GetMapping("/{groupId}")
