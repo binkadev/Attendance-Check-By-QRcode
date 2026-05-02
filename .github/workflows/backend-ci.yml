@@ -13,9 +13,29 @@ jobs:
     name: Run backend tests
     runs-on: ubuntu-latest
 
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: attendance_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     defaults:
       run:
         working-directory: "backend springboot"
+
+    env:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/attendance_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
 
     steps:
       - name: Checkout source code
@@ -32,4 +52,24 @@ jobs:
         run: chmod +x ./mvnw
 
       - name: Run Maven tests
-        run: ./mvnw test
+        run: ./mvnw -e test
+
+      - name: Print Surefire reports when tests fail
+        if: failure()
+        run: |
+          echo "===== Surefire report files ====="
+          find target/surefire-reports -maxdepth 1 -type f || true
+          echo "===== Surefire report content ====="
+          for file in target/surefire-reports/*.txt target/surefire-reports/*.xml; do
+            echo ""
+            echo "===== $file ====="
+            cat "$file" || true
+          done
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: backend springboot/target/surefire-reports/
+          if-no-files-found: ignore
