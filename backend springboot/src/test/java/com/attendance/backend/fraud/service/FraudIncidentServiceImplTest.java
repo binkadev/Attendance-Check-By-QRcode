@@ -5,7 +5,7 @@ import com.attendance.backend.fraud.domain.FraudIncidentSeverity;
 import com.attendance.backend.fraud.domain.FraudIncidentStatus;
 import com.attendance.backend.fraud.domain.FraudIncidentType;
 import com.attendance.backend.fraud.domain.PatchFraudIncidentAction;
-import com.attendance.backend.fraud.repository.FraudIncident;
+import com.attendance.backend.fraud.entity.FraudIncident;
 import com.attendance.backend.fraud.repository.FraudIncidentRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

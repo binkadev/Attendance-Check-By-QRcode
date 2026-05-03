@@ -4,7 +4,7 @@ import com.attendance.backend.fraud.domain.CheckinAttemptOutcome;
 import com.attendance.backend.fraud.domain.CheckinFailureCode;
 import com.attendance.backend.fraud.domain.FraudIncidentSeverity;
 import com.attendance.backend.fraud.domain.FraudIncidentType;
-import com.attendance.backend.fraud.repository.CheckinAttemptLog;
+import com.attendance.backend.fraud.entity.CheckinAttemptLog;
 import com.attendance.backend.fraud.repository.CheckinAttemptLogRepository;
 import com.attendance.backend.fraud.repository.CheckinAttemptLogRepositoryCustom.DeviceMultiAccountAggregate;
 import com.attendance.backend.fraud.repository.CheckinAttemptLogRepositoryCustom.IpBurstAggregate;

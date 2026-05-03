@@ -3,7 +3,7 @@ package com.attendance.backend.fraud.service;
 import com.attendance.backend.fraud.domain.FraudIncidentSeverity;
 import com.attendance.backend.fraud.domain.FraudIncidentType;
 import com.attendance.backend.fraud.domain.PatchFraudIncidentAction;
-import com.attendance.backend.fraud.repository.FraudIncident;
+import com.attendance.backend.fraud.entity.FraudIncident;
 
 import java.time.Instant;
 import java.util.UUID;

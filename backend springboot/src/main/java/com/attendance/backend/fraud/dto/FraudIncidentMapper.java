@@ -1,6 +1,6 @@
 package com.attendance.backend.fraud.dto;
 
-import com.attendance.backend.fraud.repository.FraudIncident;
+import com.attendance.backend.fraud.entity.FraudIncident;
 import com.attendance.backend.fraud.support.FraudEvidenceSummaryExtractor;
 import org.springframework.stereotype.Component;
 

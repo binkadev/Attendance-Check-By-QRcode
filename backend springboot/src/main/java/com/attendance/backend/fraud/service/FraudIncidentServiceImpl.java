@@ -3,7 +3,7 @@ package com.attendance.backend.fraud.service;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.fraud.domain.FraudIncidentStatus;
 import com.attendance.backend.fraud.domain.PatchFraudIncidentAction;
-import com.attendance.backend.fraud.repository.FraudIncident;
+import com.attendance.backend.fraud.entity.FraudIncident;
 import com.attendance.backend.fraud.repository.FraudIncidentRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;

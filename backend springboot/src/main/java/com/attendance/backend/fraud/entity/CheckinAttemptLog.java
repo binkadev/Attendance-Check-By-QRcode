@@ -1,4 +1,4 @@
-package com.attendance.backend.fraud.repository;
+package com.attendance.backend.fraud.entity;
 
 import com.attendance.backend.common.db.MysqlOrderedUuidConverter;
 import com.attendance.backend.fraud.domain.CheckinAttemptOutcome;

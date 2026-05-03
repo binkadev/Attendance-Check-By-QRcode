@@ -2,6 +2,7 @@ package com.attendance.backend.fraud.repository;
 
 import com.attendance.backend.fraud.dto.FraudIncidentFilter;
 import com.attendance.backend.fraud.dto.FraudIncidentSortBy;
+import com.attendance.backend.fraud.entity.FraudIncident;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;

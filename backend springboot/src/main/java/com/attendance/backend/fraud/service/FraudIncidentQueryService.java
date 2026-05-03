@@ -2,7 +2,7 @@ package com.attendance.backend.fraud.service;
 
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.fraud.dto.FraudIncidentFilter;
-import com.attendance.backend.fraud.repository.FraudIncident;
+import com.attendance.backend.fraud.entity.FraudIncident;
 import com.attendance.backend.fraud.repository.FraudIncidentRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;

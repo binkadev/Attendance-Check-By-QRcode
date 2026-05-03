@@ -12,7 +12,7 @@ import com.attendance.backend.fraud.dto.FraudIncidentResponse;
 import com.attendance.backend.fraud.dto.FraudIncidentSortBy;
 import com.attendance.backend.fraud.dto.PageFraudIncidentResponse;
 import com.attendance.backend.fraud.dto.PatchFraudIncidentRequest;
-import com.attendance.backend.fraud.repository.FraudIncident;
+import com.attendance.backend.fraud.entity.FraudIncident;
 import com.attendance.backend.fraud.service.FraudIncidentQueryService;
 import com.attendance.backend.fraud.service.FraudIncidentService;
 import com.attendance.backend.security.UserPrincipal;
