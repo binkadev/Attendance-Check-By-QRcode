@@ -1,4 +1,4 @@
-package com.attendance.backend.me.api.response;
+package com.attendance.backend.me.dto;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;

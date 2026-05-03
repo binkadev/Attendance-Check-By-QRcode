@@ -1,9 +1,9 @@
 package com.attendance.backend.me.repository.impl;
 
 import com.attendance.backend.common.persistence.UuidBinary16SwapConverter;
-import com.attendance.backend.me.api.response.MyClassResponse;
-import com.attendance.backend.me.api.response.MyClassSemesterOptionResponse;
-import com.attendance.backend.me.api.response.PageMyClassResponse;
+import com.attendance.backend.me.dto.MyClassResponse;
+import com.attendance.backend.me.dto.MyClassSemesterOptionResponse;
+import com.attendance.backend.me.dto.PageMyClassResponse;
 import com.attendance.backend.me.model.MyClassQueryCriteria;
 import com.attendance.backend.me.repository.MyClassQueryRepository;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;

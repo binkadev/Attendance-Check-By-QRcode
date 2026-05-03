@@ -1,7 +1,7 @@
 package com.attendance.backend.me.repository.impl;
 
 import com.attendance.backend.common.persistence.UuidBinary16SwapConverter;
-import com.attendance.backend.me.api.response.MyClassTimelineItemResponse;
+import com.attendance.backend.me.dto.MyClassTimelineItemResponse;
 import com.attendance.backend.me.repository.MyClassTimelineRepository;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;

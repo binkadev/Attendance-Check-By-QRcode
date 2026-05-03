@@ -1,7 +1,7 @@
 package com.attendance.backend.me.service.impl;
 
-import com.attendance.backend.me.api.response.MyClassTimelineItemResponse;
-import com.attendance.backend.me.api.response.MyClassTimelineResponse;
+import com.attendance.backend.me.dto.MyClassTimelineItemResponse;
+import com.attendance.backend.me.dto.MyClassTimelineResponse;
 import com.attendance.backend.me.repository.MyClassTimelineRepository;
 import com.attendance.backend.me.service.MyClassTimelineService;
 import org.springframework.stereotype.Service;

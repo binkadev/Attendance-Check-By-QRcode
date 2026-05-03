@@ -1,6 +1,6 @@
 package com.attendance.backend.me.service;
 
-import com.attendance.backend.me.api.response.MyClassTimelineResponse;
+import com.attendance.backend.me.dto.MyClassTimelineResponse;
 
 import java.util.UUID;
 

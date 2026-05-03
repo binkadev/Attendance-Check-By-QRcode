@@ -1,4 +1,4 @@
-package com.attendance.backend.attendance.api;
+package com.attendance.backend.attendance.dto;
 
 import com.attendance.backend.domain.enums.AttendancePolicyBreachReason;
 import com.attendance.backend.domain.enums.AttendancePolicySource;

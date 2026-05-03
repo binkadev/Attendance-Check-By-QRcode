@@ -1,7 +1,7 @@
 package com.attendance.backend.me.service.impl;
 
-import com.attendance.backend.me.api.response.MyClassSemesterOptionResponse;
-import com.attendance.backend.me.api.response.PageMyClassResponse;
+import com.attendance.backend.me.dto.MyClassSemesterOptionResponse;
+import com.attendance.backend.me.dto.PageMyClassResponse;
 import com.attendance.backend.me.model.MyClassQueryCriteria;
 import com.attendance.backend.me.repository.MyClassQueryRepository;
 import com.attendance.backend.me.service.MyClassQueryService;

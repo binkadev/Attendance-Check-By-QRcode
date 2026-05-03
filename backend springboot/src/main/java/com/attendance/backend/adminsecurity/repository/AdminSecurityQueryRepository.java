@@ -1,8 +1,8 @@
 package com.attendance.backend.adminsecurity.repository;
 
-import com.attendance.backend.adminsecurity.api.dto.SecurityAbuseItemResponse;
-import com.attendance.backend.adminsecurity.api.dto.SecurityDeadOutboxItemResponse;
-import com.attendance.backend.adminsecurity.api.dto.SecurityOverviewResponse;
+import com.attendance.backend.adminsecurity.dto.SecurityAbuseItemResponse;
+import com.attendance.backend.adminsecurity.dto.SecurityDeadOutboxItemResponse;
+import com.attendance.backend.adminsecurity.dto.SecurityOverviewResponse;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;

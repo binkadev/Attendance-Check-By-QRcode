@@ -1,6 +1,6 @@
 package com.attendance.backend.attendance.service;
 
-import com.attendance.backend.attendance.api.AttendancePolicyQueryDtos;
+import com.attendance.backend.attendance.dto.AttendancePolicyQueryDtos;
 import com.attendance.backend.domain.enums.AttendancePolicyBreachReason;
 import com.attendance.backend.domain.enums.AttendancePolicyStatus;
 

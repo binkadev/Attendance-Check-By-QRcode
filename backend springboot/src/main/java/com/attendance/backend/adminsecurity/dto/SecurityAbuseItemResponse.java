@@ -1,4 +1,4 @@
-package com.attendance.backend.adminsecurity.api.dto;
+package com.attendance.backend.adminsecurity.dto;
 
 public record SecurityAbuseItemResponse(
         String source,

@@ -1,6 +1,6 @@
 package com.attendance.backend.attendance.service;
 
-import com.attendance.backend.attendance.api.AttendancePolicyQueryDtos;
+import com.attendance.backend.attendance.dto.AttendancePolicyQueryDtos;
 import com.attendance.backend.attendance.config.AttendancePolicyDefaultsProperties;
 import com.attendance.backend.attendance.repository.AttendancePolicyGroupBasicProjection;
 import com.attendance.backend.attendance.repository.AttendancePolicyMembershipAccessProjection;

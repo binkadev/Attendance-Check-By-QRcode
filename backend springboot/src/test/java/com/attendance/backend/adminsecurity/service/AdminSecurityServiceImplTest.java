@@ -1,8 +1,8 @@
 package com.attendance.backend.adminsecurity.service;
 
-import com.attendance.backend.adminsecurity.api.dto.SecurityAbuseItemResponse;
-import com.attendance.backend.adminsecurity.api.dto.SecurityDeadOutboxItemResponse;
-import com.attendance.backend.adminsecurity.api.dto.SecurityOverviewResponse;
+import com.attendance.backend.adminsecurity.dto.SecurityAbuseItemResponse;
+import com.attendance.backend.adminsecurity.dto.SecurityDeadOutboxItemResponse;
+import com.attendance.backend.adminsecurity.dto.SecurityOverviewResponse;
 import com.attendance.backend.adminsecurity.repository.AdminSecurityQueryRepository;
 import com.attendance.backend.common.exception.ApiException;
 import org.junit.jupiter.api.BeforeEach;

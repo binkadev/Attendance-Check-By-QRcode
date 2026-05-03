@@ -1,6 +1,6 @@
 package com.attendance.backend.me.repository;
 
-import com.attendance.backend.me.api.response.MyClassTimelineItemResponse;
+import com.attendance.backend.me.dto.MyClassTimelineItemResponse;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
