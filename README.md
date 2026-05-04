@@ -6,34 +6,23 @@
 ![MySQL](https://img.shields.io/badge/Database-MySQL-orange)
 ![OpenAPI](https://img.shields.io/badge/API-OpenAPI%203.0-blueviolet)
 
-> Production-like Spring Boot backend for QR-based classroom attendance management.  
-> The project focuses on business-rule correctness, database integrity, API contract clarity, and testable backend workflows.
+> Production-like Spring Boot backend for QR-based classroom attendance management.
 
-**Status:** Academic / portfolio backend project. Around 90% of the initial scope is implemented. This repository should be described as a **production-like backend**, not a deployed production system.
+**Status note:** Academic/portfolio backend project with around 90% of the initial backend scope implemented. This repository is intentionally described as **production-like**, not as a deployed production system.
 
----
+## Quick Summary
 
-## Table of contents
+| Item | Details |
+|---|---|
+| Project type | Backend engineering project (academic/portfolio) for QR-based attendance workflows |
+| Main stack | Java 17, Spring Boot 3.x, Spring Security, Spring Data JPA/Hibernate, MySQL, Flyway |
+| API style | RESTful `/api/v1/**` endpoints with OpenAPI contract |
+| Security model | JWT auth + persisted refresh sessions + password reset/session-abuse tracking tables |
+| Database strategy | Flyway-first migrations, UUID binary keys, relational constraints, indexed query paths |
+| Testing/CI | JUnit 5, Mockito, Spring Boot/MockMvc integration-style tests, GitHub Actions + MySQL service |
+| Status | Production-like backend design; deployment hardening and some contract alignment still pending |
 
-- [Why this project exists](#why-this-project-exists)
-- [What this backend demonstrates](#what-this-backend-demonstrates)
-- [Core capabilities](#core-capabilities)
-- [Tech stack](#tech-stack)
-- [Architecture](#architecture)
-- [Main modules](#main-modules)
-- [Selected business rules](#selected-business-rules)
-- [API documentation](#api-documentation)
-- [Database and Flyway design](#database-and-flyway-design)
-- [Testing and CI](#testing-and-ci)
-- [Run locally](#run-locally)
-- [Docker](#docker)
-- [Project scope and honest notes](#project-scope-and-honest-notes)
-- [Roadmap](#roadmap)
-- [Author](#author)
-
----
-
-## Why this project exists
+## Why This Project Exists
 
 Classroom attendance looks simple at first, but a reliable backend needs more than CRUD records.
 
@@ -46,283 +35,84 @@ A real attendance workflow must answer questions such as:
 - How should absence requests be reviewed and reverted?
 - How can suspicious check-in attempts or account-abuse signals be monitored?
 
-This project models those concerns as backend rules, database constraints, API contracts, and automated tests.
+This project models those concerns through application rules, database-level safeguards, API contract documentation, and automated test support.
 
----
+## Engineering Highlights
 
-## What this backend demonstrates
+- **Session-scoped QR token model**: QR tokens are rotated per attendance session and validated against session context, reducing token misuse across sessions.
+- **Server-side refresh-session persistence**: auth flow includes persisted session lifecycle records such as issue/use/revoke metadata, enabling logout-all and abuse-aware operations.
+- **Flyway-first schema evolution**: schema changes are versioned in migrations, keeping database evolution auditable and reproducible.
+- **Data integrity hardening**: foreign keys, unique constraints, check constraints, and trigger-based protections are used for critical attendance/absence invariants.
+- **Attendance and policy rules**: explicit status/state logic for check-in windows, late thresholds, manual overrides, and policy warning/critical surfaces.
+- **CI with realistic DB setup**: GitHub Actions uses a MySQL 8 service and explicit collation preparation before running backend tests.
+- **OpenAPI-backed contract**: the API surface is documented in-repo to support client integration and reviewer onboarding.
 
-From a backend engineering perspective, this project is designed to show:
+## Demo & Screenshots
 
-| Area                             | What the project demonstrates                                                                                        |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Domain modeling                  | Groups/classes, members, sessions, attendance records, absence requests, policies, notifications, fraud incidents    |
-| Business rules                   | Role-based actions, session state transitions, QR check-in windows, late calculation, manual override restrictions   |
-| Data integrity                   | Flyway migrations, foreign keys, unique constraints, check constraints, indexed query paths, trigger-based hardening |
-| Security-oriented backend design | JWT auth, refresh-session persistence, password reset tokens, login/password-reset attempt logs                      |
-| API contract discipline          | OpenAPI 3.0 contract grouped by domain modules                                                                       |
-| Testability                      | Unit/controller tests and Spring Boot integration-style tests with MockMvc/test profile                              |
-| CI readiness                     | GitHub Actions workflow running backend tests with a MySQL service                                                   |
+| Area | Planned preview | Status |
+|---|---|---|
+| Mobile class list | Student view of enrolled classes and filters | Planned |
+| QR check-in flow | Session QR rotation + student scan/check-in result | Planned |
+| Attendance session management | Lecturer open/close/cancel/reopen session actions | Planned |
+| Absence request workflow | Student submit + reviewer approve/reject/revert | Planned |
+| OpenAPI documentation | Swagger/OpenAPI contract walkthrough | Planned |
+| GitHub Actions CI pass | Successful backend-ci workflow run snapshot | Planned |
+| Database / architecture overview | ER-style relationships + layered architecture diagram | Planned |
 
----
+## Core Workflows
 
-## Core capabilities
+### 1) Account security
 
-### Authentication and account security
+Register/login/refresh/logout/logout-all and password change/reset endpoints provide full account lifecycle surfaces. Backing tables for sessions, login attempts, and password-reset attempts support operational security review in addition to happy-path authentication.
 
-- Register and login
-- JWT-based authentication
-- Refresh token flow backed by persisted user sessions
-- Logout current session and logout all sessions
-- Change password
-- Forgot/reset password flow
-- Login and password-reset attempt logging for security monitoring
+### 2) Class and membership management
 
-### Class / group management
+Groups/classes are created and managed with role/state-aware operations such as `OWNER`, `CO_HOST`, `MEMBER`, and membership states such as `PENDING` / `APPROVED`.
 
-- Create, update, view, archive, and change status of class groups
-- Group ownership model
-- Member roles: `OWNER`, `CO_HOST`, `MEMBER`
-- Member states: `PENDING`, `APPROVED`, `REJECTED`, `REMOVED`
-- Join group by join code
-- Approve, reject, remove, promote, demote, and transfer ownership flows
-- Academic metadata such as semester, academic year, course code, class code, campus, and room
-- Weekly schedule metadata and group-level limits such as total sessions and maximum allowed absences
+Metadata such as semester, academic year, course/class code, campus/room, and schedule limits supports both operational teaching use and mobile filtering use cases.
 
-### Mobile-oriented self-read APIs
+### 3) QR attendance workflow
 
-- Current user profile
-- Class list endpoint for mobile class screens
-- Search and filter support for visible classes
-- Semester / academic-year dropdown support
-- Personal attendance summary
-- Personal absence request list
-- Personal notification list and unread count
+Attendance sessions are created per group and constrained by session state and check-in window timing. QR token rotation and session-bound validation are central to the workflow.
 
-### Attendance session workflow
+After a valid scan, attendance status is computed as `PRESENT` or `LATE` based on threshold rules.
 
-- Create attendance sessions for a group
-- Open session lookup
-- Close, cancel, and reopen check-in windows
-- Session statuses: `OPEN`, `CLOSED`, `CANCELLED`
-- Soft-delete support for sessions
-- Session attendance list and individual attendance records
+### 4) Manual correction and absence workflow
 
-### QR attendance
+Manual attendance operations exist but remain constrained by session settings and permissions. `EXCUSED` is routed through absence review/revert workflows to keep exception handling explicit and auditable.
 
-- Rotate QR token for a live attendance session
-- Return plaintext QR token only at rotation time
-- Persist token reference/hash information
-- Validate QR token against the target session
-- Apply check-in window rules
-- Mark attendance as `PRESENT` or `LATE` based on configured threshold
+### 5) Attendance policy and monitoring
 
-### Manual attendance correction
+Group-level attendance policy configuration supports warning/critical thresholds, including rate-based and/or absence-count-style inputs.
 
-- Manual mark attendance as `PRESENT`, `LATE`, or `ABSENT`
-- Reset attendance back to `ABSENT`
-- Restrict manual override by session settings and user role
-- Keep attendance events for audit-style visibility
-- Keep `EXCUSED` separate from manual override and route it through absence workflow
+Monitoring-related surfaces include notifications, admin security summaries, check-in attempt logs, and fraud incident tracking APIs.
 
-### Absence request workflow
+### 6) API/database/CI support
 
-- Student submits a session-scoped absence request
-- Owner/co-host reviews the request
-- Supported states: `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`, `REVERTED`
-- Approved absence can be reverted by privileged users
-- Database hardening prevents invalid mutable workflows
+The API surface is contract-documented via OpenAPI, while database behavior is migration-driven with integrity controls.
 
-### Attendance policy
-
-- Configure group-level attendance policy
-- Late weight configuration
-- Warning and critical thresholds by attendance rate and absence count
-- Query effective policy
-- Query each student’s policy status
-- Query the current user’s policy status in a group
-
-### Notifications
-
-- Notification persistence
-- Read/unread user APIs
-- Unread count endpoint
-- Group notification listing
-- Delivery state tracking model
-- Notification rule configuration model
-- Admin delivery listing and retry API surfaces
-
-### Fraud and monitoring support
-
-- Check-in attempt logs
-- Fraud incident records
-- Fraud incident list/detail/update API surfaces
-- Admin security overview for login abuse, password reset abuse, and email outbox state
-
-> Fraud and notification delivery are best described as **infrastructure and API surfaces**. They should not be presented as a fully mature autonomous fraud-detection or production notification platform yet.
-
----
-
-## Tech stack
-
-| Area                       | Technology                                   |
-| -------------------------- | -------------------------------------------- |
-| Language                   | Java 17                                      |
-| Framework                  | Spring Boot 3.x                              |
-| API                        | Spring Web REST, OpenAPI 3.0                 |
-| Security                   | Spring Security, JWT/JJWT                    |
-| Persistence                | Spring Data JPA, Hibernate                   |
-| Database                   | MySQL                                        |
-| Migrations                 | Flyway                                       |
-| Cache / rate-limit support | Redis-backed infrastructure where configured |
-| Mail                       | Spring Mail + email outbox model             |
-| Build                      | Maven Wrapper                                |
-| Testing                    | JUnit 5, Mockito, Spring Boot Test, MockMvc  |
-| Container                  | Docker multi-stage backend image             |
-| CI                         | GitHub Actions                               |
-
----
+CI enforces backend tests in a MySQL-backed environment for repeatable validation.
 
 ## Architecture
 
-The backend follows a layered architecture with domain-oriented modules.
-
 ```mermaid
 flowchart LR
-    Client[Mobile / Web Client] --> API[REST Controllers]
-    API --> Security[Spring Security / JWT]
-    API --> Service[Application Services]
-    Service --> Domain[Domain Rules & Policies]
-    Service --> Repo[JPA Repositories]
-    Repo --> DB[(MySQL)]
-    DB --> Flyway[Flyway Migrations]
-
-    Service --> Mail[Email Outbox]
-    Service --> Notify[Notifications]
-    Service --> Audit[Attendance Events]
-    Service --> Monitor[Security / Fraud Monitoring]
+  Client[Client Apps] --> API[REST Controllers]
+  API --> Sec[Spring Security + JWT]
+  API --> Svc[Application Services]
+  Svc --> Domain[Domain Rules & Policies]
+  Svc --> Repo[JPA Repositories]
+  Repo --> DB[(MySQL)]
+  DB --> Flyway[Flyway Migrations]
 ```
 
-### Layer responsibilities
+## Database Design
 
-| Layer          | Responsibility                                                                         |
-| -------------- | -------------------------------------------------------------------------------------- |
-| Controller     | Expose `/api/v1/**` endpoints, validate request shape, resolve authenticated principal |
-| Service        | Execute use cases, enforce authorization-aware business rules, coordinate persistence  |
-| Repository     | Encapsulate JPA queries and database access                                            |
-| Domain / model | Represent entities, enums, statuses, and policy concepts                               |
-| Database       | Enforce relational integrity, constraints, indexes, and migration-based hardening      |
-| OpenAPI        | Document request/response contracts and API groups                                     |
+Flyway migration location:
 
----
+- `backend springboot/src/main/resources/db/migration`
 
-## Main modules
-
-| Module            | Responsibility                                                                        |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| Auth              | Login, register, refresh, logout, password change/reset, session tracking             |
-| Me                | Current user profile, personal class list, attendance summary, personal notifications |
-| Groups            | Class/group lifecycle, metadata, archive/status flows                                 |
-| Members           | Join group, approval flow, role management, ownership transfer                        |
-| Sessions          | Attendance session creation, open lookup, close/cancel/reopen workflows               |
-| QR                | QR token rotation and session-scoped token validation                                 |
-| Attendance        | QR check-in, manual correction, reset, summaries                                      |
-| Absence           | Student absence request lifecycle and review/revert operations                        |
-| Events            | Attendance event history for audit-style visibility                                   |
-| Attendance Policy | Group policy configuration and warning/critical status calculation surfaces           |
-| Notifications     | Notification records, read state, delivery tracking, rule configuration               |
-| Fraud / Attempts  | Check-in attempt logs and fraud incident management surfaces                          |
-| Admin Security    | Login abuse, password reset abuse, and email outbox monitoring APIs                   |
-
----
-
-## Selected business rules
-
-### Role-based access
-
-- Group owners can perform privileged group operations.
-- Co-hosts can perform selected teaching/session workflows.
-- Members have limited self-read and participation actions.
-- Some operations require approved membership, not just authentication.
-
-### QR check-in window
-
-- Reject check-in before `checkinOpenAt`.
-- Reject check-in after `checkinCloseAt`.
-- Use `checkinOpenAt + lateAfterMinutes` as the late threshold.
-- Check-in at or before the late threshold becomes `PRESENT`.
-- Check-in after the late threshold but before close becomes `LATE`.
-- QR token must belong to the same attendance session.
-
-### Attendance session lifecycle
-
-- Sessions move through `OPEN`, `CLOSED`, and `CANCELLED` states.
-- The backend prevents invalid actions based on session state.
-- The database and application are designed around the rule that a group should not have multiple open sessions at the same time.
-
-### Manual override rules
-
-- Manual override is allowed only when the session permits it.
-- Manual override supports `PRESENT`, `LATE`, and `ABSENT`.
-- `EXCUSED` is intentionally handled through the absence request workflow.
-- Repeating the same manual status can be treated as a no-op instead of creating noisy audit records.
-
-### Absence request rules
-
-- New absence requests are session-scoped.
-- Pending requests can be approved, rejected, or cancelled.
-- Approved requests can be reverted by privileged users.
-- Terminal states are protected from invalid transitions.
-
-### Attendance summary rules
-
-- Attendance summary is based on recorded session attendance.
-- Closed, non-deleted sessions are treated as the reliable source for summary-style calculations.
-- Open or cancelled sessions should not be counted as final attendance history.
-
----
-
-## API documentation
-
-OpenAPI contract:
-
-```text
-backend springboot/src/main/resources/static/openapi.yaml
-```
-
-API groups include:
-
-| Group             | Examples                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| Auth              | `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/reset-password`                            |
-| Me                | `/me`, `/me/classes`, `/me/attendance/summary`, `/me/notifications`                               |
-| Groups            | `/groups`, `/groups/{groupId}`, `/groups/{groupId}/status`                                        |
-| Members           | `/groups/join`, `/groups/{groupId}/members`                                                       |
-| Sessions          | `/groups/{groupId}/sessions`, `/sessions/{sessionId}/close`, `/sessions/{sessionId}/cancel`       |
-| QR                | `/sessions/{sessionId}/qr/rotate`                                                                 |
-| Attendance        | `/sessions/{sessionId}/checkin/qr`, `/sessions/{sessionId}/attendance`                            |
-| Absence           | `/groups/{groupId}/absence-requests`, `/absence-requests/{requestId}/review`                      |
-| Events            | `/sessions/{sessionId}/attendance-events`, `/groups/{groupId}/events`                             |
-| Attendance Policy | `/groups/{groupId}/attendance-policy`, `/groups/{groupId}/attendance-policy/students`             |
-| Notifications     | `/me/notifications`, `/admin/notification-deliveries`                                             |
-| Fraud             | `/groups/{groupId}/fraud-incidents`                                                               |
-| Admin Security    | `/admin/security/overview`, `/admin/security/login-abuse`, `/admin/security/password-reset-abuse` |
-
-### Contract alignment note
-
-There is a known contract-alignment item around fraud incident type values between OpenAPI and database/backend constraints. This should be reconciled before exposing the fraud incident API to external consumers.
-
----
-
-## Database and Flyway design
-
-Flyway migrations live under:
-
-```text
-backend springboot/src/main/resources/db/migration
-```
-
-### Core domain tables
+### Core tables
 
 - `users`
 - `class_groups`
@@ -332,7 +122,7 @@ backend springboot/src/main/resources/db/migration
 - `absence_requests`
 - `attendance_events`
 
-### Extended backend tables
+### Extended tables
 
 - `qr_tokens`
 - `user_sessions`
@@ -348,188 +138,175 @@ backend springboot/src/main/resources/db/migration
 - `fraud_incidents`
 - `group_weekly_schedules`
 
+### Key relationships
+
+| Relationship | Design intent |
+|---|---|
+| `users -> group_members -> class_groups` | Membership and role/state access control for class operations |
+| `class_groups -> attendance_sessions` | Sessions are scoped to a class/group lifecycle |
+| `attendance_sessions -> session_attendance` | Attendance rows are anchored to a specific session/user pair |
+| `attendance_sessions -> qr_tokens` | QR rotation/validation remains session-bound |
+| `absence_requests -> excused attendance flow` | Approved absence integrates with attendance exception handling |
+| `notifications -> notification_deliveries` | Notification content and channel-delivery lifecycle are separated |
+| `checkin_attempt_logs -> fraud_incidents` | Attempt telemetry supports incident-level fraud monitoring workflows |
+
 ### Integrity techniques used
 
 - Foreign keys for relationship safety
 - Unique constraints for domain invariants
-- Check constraints for valid state/range values
-- Indexes for common query paths
+- Check constraints for state/range validity
+- Indexes for common query paths such as self-read, history, and monitoring
 - Trigger-based hardening for selected workflows
-- Migration-based schema evolution instead of ad-hoc database edits
 
----
+## API Documentation
 
-## Testing and CI
+OpenAPI contract:
 
-Test sources live under:
+- `backend springboot/src/main/resources/static/openapi.yaml`
 
-```text
-backend springboot/src/test/java
-```
+Endpoint groups include:
 
-Test configuration examples:
+- Auth
+- Me
+- Groups
+- Members
+- Sessions
+- QR
+- Attendance
+- Absence
+- Events
+- Notifications
+- Fraud
+- Admin Security
 
-```text
-backend springboot/src/test/resources/application-test.yml
-backend springboot/src/test/resources/sql
-```
+## Testing
 
-### Test types
+Test source:
 
-- Unit tests for service/domain-style logic
-- Controller tests with MockMvc
-- Spring Boot integration-style tests using the test profile
-- Database-aware CI test execution with MySQL service
+- `backend springboot/src/test/java`
 
-### Run tests locally
+Test configuration helpers:
+
+- `backend springboot/src/test/resources/application-test.yml`
+- `backend springboot/src/test/resources/sql`
+
+Tested areas, representative:
+
+- attendance read/summary logic
+- session service behavior
+- group service behavior
+- admin security aggregation
+- controller/API behavior with MockMvc
+
+Run tests on Linux/macOS:
 
 ```bash
 cd "backend springboot"
 ./mvnw test
 ```
 
-For Windows PowerShell:
+Run tests on Windows PowerShell:
 
 ```powershell
 cd "backend springboot"
 ./mvnw.cmd test
 ```
 
-### GitHub Actions CI
+## GitHub Actions CI
 
-Workflow:
+Workflow file:
 
-```text
-.github/workflows/backend-ci.yml
-```
+- `.github/workflows/backend-ci.yml`
 
-The CI workflow is designed to:
+Current behavior:
 
-- Run on push and pull request
-- Start a MySQL 8 service
-- Prepare database collation
-- Set up JDK and Maven cache
-- Run the backend Maven test suite
-- Upload Surefire test reports as artifacts
+- Triggers on `push`, `pull_request`, and `workflow_dispatch`
+- Starts MySQL 8 service
+- Applies collation setup step
+- Runs backend Maven tests
+- Uploads Surefire reports for CI debugging when configured
 
----
+## Run Locally
 
-## Run locally
-
-### Prerequisites
+Prerequisites:
 
 - JDK 17+
-- Maven or Maven Wrapper
 - MySQL 8.x
-- Redis if running features that depend on Redis-backed infrastructure
+- Maven Wrapper: `mvnw` / `mvnw.cmd`
+- Redis for features relying on Redis-backed components
 
-### Clone repository
+### 1) Create local database
+
+```sql
+CREATE DATABASE attendance_dev
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+### 2) Clone and run on Linux/macOS
 
 ```bash
 git clone https://github.com/binkadev/Attendance-Check-By-QRcode.git
 cd Attendance-Check-By-QRcode
-```
-
-### Configure database
-
-Create a MySQL database for your local profile and update datasource credentials if needed in:
-
-```text
-backend springboot/src/main/resources/application.yml
-backend springboot/src/main/resources/application-dev.yml
-backend springboot/src/test/resources/application-test.yml
-```
-
-### Start backend
-
-```bash
 cd "backend springboot"
 ./mvnw spring-boot:run -Pdev
 ```
 
-For Windows PowerShell:
+### 3) Clone and run on Windows PowerShell
 
 ```powershell
+git clone https://github.com/binkadev/Attendance-Check-By-QRcode.git
+cd Attendance-Check-By-QRcode
 cd "backend springboot"
 ./mvnw.cmd spring-boot:run -Pdev
 ```
 
-> The backend directory name contains a space: `backend springboot`. Keep quotes around the path in shell commands.
-
----
+> Note: `backend springboot` contains a space; keep quotes around the path in shell commands.
 
 ## Docker
 
-Backend Dockerfile:
+Dockerfile:
 
-```text
-backend springboot/Dockerfile
-```
+- `backend springboot/Dockerfile`
 
-Build image:
+Build and run:
 
 ```bash
 cd "backend springboot"
 docker build -t attendance-backend:local .
-```
-
-Run container:
-
-```bash
 docker run --rm -p 8081:8081 attendance-backend:local
 ```
 
-> Runtime connectivity still depends on external services such as MySQL and Redis according to the active profile configuration.
+> Runtime connectivity still depends on external services such as MySQL and Redis according to active profile settings.
 
----
+## Project Status
 
-## Project scope and honest notes
+- Strongly implemented: core attendance domain APIs, Flyway schema evolution, testing patterns, CI workflow.
+- Describe carefully: notification delivery maturity, fraud automation maturity, and deployment hardening are not claimed as production-complete.
 
-This repository is strongest as a backend engineering portfolio project. It is intentionally described as **production-like**, not as a deployed production system.
+## Known Technical Debt
 
-### Implemented / visible in source
-
-- Spring Boot REST backend
-- OpenAPI contract
-- MySQL schema managed by Flyway
-- QR session check-in flow
-- Group/member/session/attendance/absence workflows
-- Attendance policy tables and API surfaces
-- Notification tables and API surfaces
-- Fraud incident and check-in attempt monitoring surfaces
-- Security monitoring tables and admin API surfaces
-- GitHub Actions backend CI workflow
-
-### Describe carefully
-
-- Notification delivery should be described as infrastructure/API support unless deployment-level delivery behavior is verified.
-- Fraud support should be described as monitoring/incident-management support, not advanced autonomous fraud detection.
-- Deployment hardening should not be claimed as production-complete.
-
-### Known alignment item
-
-- Fraud incident type values should be aligned between OpenAPI and database/backend constraints before external API consumers rely on that contract.
-
----
+- Fraud incident enum alignment across OpenAPI vs backend/DB constraints
+- Wider end-to-end verification for notification delivery behavior
+- Expanded deployment/environment matrix documentation
 
 ## Roadmap
 
-- Align fraud incident enum values across OpenAPI, backend code, and database constraints
-- Expand end-to-end tests for notification delivery workflows
-- Add more edge-case tests for role transitions, session state transitions, and concurrent check-ins
-- Improve deployment documentation and environment matrix
-- Add observability support such as metrics, tracing, and structured dashboards
-- Add richer API examples for recruiter/reviewer-friendly documentation
-
----
+- Align fraud enums across OpenAPI/backend/DB
+- Expand notification end-to-end test coverage
+- Add deeper edge-case and concurrency tests for role/session/check-in paths
+- Improve deployment and observability documentation
+- Add final screenshots and workflow previews for GitHub/CV presentation
 
 ## Author
 
 **binkadev**  
 PTIT D22
 
----
+## What Makes This Project Worth Reviewing
 
-## Reviewer note
+This project is worth reviewing because it demonstrates backend engineering judgment, not just endpoint volume.
 
-This project is not valuable because it has many endpoints. It is valuable because it models a realistic backend domain where correctness matters: role-based permissions, state transitions, QR token validity, attendance policy rules, database constraints, audit-style events, and CI-tested API behavior.
+It highlights permission-aware workflows, attendance state transitions, session-scoped QR validation, integrity-focused migration design, audit/monitoring surfaces, and CI-backed test execution in a database-aware environment.
+
+The project is intentionally presented as a production-like backend project rather than a fully deployed production system.
