@@ -13,12 +13,15 @@ import com.attendance.backend.domain.enums.MemberRole;
 import com.attendance.backend.domain.enums.MemberStatus;
 import com.attendance.backend.group.repository.ClassGroupRepository;
 import com.attendance.backend.group.repository.GroupMemberRepository;
+import com.attendance.backend.group.repository.GroupWeeklyScheduleRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +45,12 @@ class AttendanceReadServiceImplTest {
     @Mock
     private GroupMemberRepository groupMemberRepository;
 
+    @Mock
+    private GroupWeeklyScheduleRepository groupWeeklyScheduleRepository;
+
+    @Mock
+    private JdbcTemplate jdbcTemplate;
+
     @InjectMocks
     private AttendanceReadServiceImpl attendanceReadService;
 
@@ -53,6 +63,7 @@ class AttendanceReadServiceImplTest {
         groupId = UUID.randomUUID();
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     @Test
     void listUpcomingSessions_shouldReturnUpcomingSessions_withSafeLimit() {
         UUID sessionId = UUID.randomUUID();
@@ -69,6 +80,21 @@ class AttendanceReadServiceImplTest {
                 )
         );
 
+        /*
+         * New behavior:
+         * listUpcomingSessions first tries to build planned schedule from:
+         * class_groups + group_weekly_schedules + startDate + totalSessions.
+         *
+         * This legacy test only verifies safeLimit fallback behavior.
+         * So we return no planned groups from JdbcTemplate, then service falls back
+         * to attendanceReadQueryRepository.findUpcomingSessions(...).
+         */
+        when(jdbcTemplate.query(
+                anyString(),
+                any(RowMapper.class),
+                any(Object[].class)
+        )).thenReturn(List.of());
+
         when(attendanceReadQueryRepository.findUpcomingSessions(actorUserId, 100))
                 .thenReturn(expected);
 
@@ -82,6 +108,11 @@ class AttendanceReadServiceImplTest {
         assertEquals("A101", actual.get(0).room());
         assertEquals("Lập trình Android", actual.get(0).groupName());
 
+        verify(jdbcTemplate).query(
+                anyString(),
+                any(RowMapper.class),
+                any(Object[].class)
+        );
         verify(attendanceReadQueryRepository).findUpcomingSessions(actorUserId, 100);
     }
 
@@ -264,6 +295,8 @@ class AttendanceReadServiceImplTest {
         group.setAcademicYear("2025-2026");
         group.setCampus("CS Thu Duc");
         group.setRoom("A101");
+        group.setStartDate(LocalDate.of(2026, 4, 20));
+        group.setPlannedEndDate(LocalDate.of(2026, 6, 30));
         group.setTotalSessions(11);
         group.setMaxAllowedAbsences(3);
         group.setApprovalMode(ApprovalMode.AUTO);
