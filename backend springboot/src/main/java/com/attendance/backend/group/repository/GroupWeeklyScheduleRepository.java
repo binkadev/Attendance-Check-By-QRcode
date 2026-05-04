@@ -15,6 +15,8 @@ public interface GroupWeeklyScheduleRepository extends JpaRepository<GroupWeekly
 
     List<GroupWeeklySchedule> findByGroupIdOrderByDayOfWeekAscStartTimeAsc(UUID groupId);
 
+    List<GroupWeeklySchedule> findByGroupIdAndDeletedAtIsNullOrderByDayOfWeekAscStartTimeAsc(UUID groupId);
+
     void deleteByGroupId(UUID groupId);
 
     @Query("""
