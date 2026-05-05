@@ -1,7 +1,7 @@
 package com.attendance.backend.attendance.api;
 
 import com.attendance.backend.attendance.dto.PageMyAttendanceHistoryResponse;
-import com.attendance.backend.attendance.dto.UpcomingSessionResponse;
+import com.attendance.backend.attendance.dto.UpcomingSessionsTimelineResponse;
 import com.attendance.backend.attendance.service.AttendanceReadService;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.security.UserPrincipal;
@@ -15,7 +15,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -30,7 +29,7 @@ public class AttendanceReadController {
     }
 
     @GetMapping("/me/sessions/upcoming")
-    public List<UpcomingSessionResponse> listUpcomingSessions(
+    public UpcomingSessionsTimelineResponse listUpcomingSessions(
             @AuthenticationPrincipal UserPrincipal me,
             @RequestParam(defaultValue = "20")
             @Min(value = 1, message = "limit must be >= 1")

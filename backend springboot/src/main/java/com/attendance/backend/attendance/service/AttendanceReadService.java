@@ -1,14 +1,13 @@
 package com.attendance.backend.attendance.service;
 
 import com.attendance.backend.attendance.dto.PageMyAttendanceHistoryResponse;
-import com.attendance.backend.attendance.dto.UpcomingSessionResponse;
+import com.attendance.backend.attendance.dto.UpcomingSessionsTimelineResponse;
 
-import java.util.List;
 import java.util.UUID;
 
 public interface AttendanceReadService {
 
-    List<UpcomingSessionResponse> listUpcomingSessions(UUID actorUserId, int limit);
+    UpcomingSessionsTimelineResponse listUpcomingSessions(UUID actorUserId, int limit);
 
     PageMyAttendanceHistoryResponse listMyAttendancesInGroup(
             UUID actorUserId,

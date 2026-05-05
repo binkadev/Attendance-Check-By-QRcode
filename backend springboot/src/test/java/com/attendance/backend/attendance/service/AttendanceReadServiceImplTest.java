@@ -2,7 +2,7 @@ package com.attendance.backend.attendance.service;
 
 import com.attendance.backend.attendance.dto.MyAttendanceHistoryItemResponse;
 import com.attendance.backend.attendance.dto.PageMyAttendanceHistoryResponse;
-import com.attendance.backend.attendance.dto.UpcomingSessionResponse;
+import com.attendance.backend.attendance.dto.UpcomingSessionsTimelineResponse;
 import com.attendance.backend.attendance.repository.AttendanceReadQueryRepository;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.domain.entity.ClassGroup;
@@ -65,55 +65,39 @@ class AttendanceReadServiceImplTest {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     @Test
-    void listUpcomingSessions_shouldReturnUpcomingSessions_withSafeLimit() {
-        UUID sessionId = UUID.randomUUID();
-
-        List<UpcomingSessionResponse> expected = List.of(
-                new UpcomingSessionResponse(
-                        sessionId,
-                        groupId,
-                        "Buổi học số 1",
-                        Instant.parse("2026-04-21T01:00:00Z"),
-                        Instant.parse("2026-04-21T03:00:00Z"),
-                        "A101",
-                        "Lập trình Android"
-                )
-        );
-
-        /*
-         * New behavior:
-         * listUpcomingSessions first tries to build planned schedule from:
-         * class_groups + group_weekly_schedules + startDate + totalSessions.
-         *
-         * This legacy test only verifies safeLimit fallback behavior.
-         * So we return no planned groups from JdbcTemplate, then service falls back
-         * to attendanceReadQueryRepository.findUpcomingSessions(...).
-         */
+    void listUpcomingSessions_shouldReturnEmptyTimeline_whenNoVisibleScheduleGroups() {
         when(jdbcTemplate.query(
                 anyString(),
                 any(RowMapper.class),
                 any(Object[].class)
         )).thenReturn(List.of());
 
-        when(attendanceReadQueryRepository.findUpcomingSessions(actorUserId, 100))
-                .thenReturn(expected);
-
-        List<UpcomingSessionResponse> actual =
+        UpcomingSessionsTimelineResponse actual =
                 attendanceReadService.listUpcomingSessions(actorUserId, 999);
 
-        assertEquals(1, actual.size());
-        assertEquals(sessionId, actual.get(0).sessionId());
-        assertEquals(groupId, actual.get(0).groupId());
-        assertEquals("Buổi học số 1", actual.get(0).sessionName());
-        assertEquals("A101", actual.get(0).room());
-        assertEquals("Lập trình Android", actual.get(0).groupName());
+        assertNotNull(actual);
+        assertEquals(2, actual.sections().size());
+
+        UpcomingSessionsTimelineResponse.Section todaySection = actual.sections().get(0);
+        UpcomingSessionsTimelineResponse.Section upcomingSection = actual.sections().get(1);
+
+        assertEquals("TODAY", todaySection.key());
+        assertEquals("Hôm nay", todaySection.title());
+        assertNotNull(todaySection.date());
+        assertTrue(todaySection.items().isEmpty());
+
+        assertEquals("UPCOMING", upcomingSection.key());
+        assertEquals("Lịch học sắp tới", upcomingSection.title());
+        assertNull(upcomingSection.date());
+        assertTrue(upcomingSection.items().isEmpty());
 
         verify(jdbcTemplate).query(
                 anyString(),
                 any(RowMapper.class),
                 any(Object[].class)
         );
-        verify(attendanceReadQueryRepository).findUpcomingSessions(actorUserId, 100);
+
+        verifyNoInteractions(groupWeeklyScheduleRepository);
     }
 
     @Test

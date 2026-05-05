@@ -1,7 +1,6 @@
 package com.attendance.backend.attendance.repository;
 
 import com.attendance.backend.attendance.dto.MyAttendanceHistoryItemResponse;
-import com.attendance.backend.attendance.dto.UpcomingSessionResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -24,45 +23,6 @@ public class AttendanceReadQueryRepository {
 
     public AttendanceReadQueryRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-    }
-
-    public List<UpcomingSessionResponse> findUpcomingSessions(UUID actorUserId, int limit) {
-        return jdbcTemplate.query(
-                """
-                SELECT
-                    BIN_TO_UUID(s.id, 1) AS session_id,
-                    BIN_TO_UUID(g.id, 1) AS group_id,
-                    COALESCE(s.title, CONCAT('Buổi học ', DATE_FORMAT(s.session_date, '%d/%m/%Y'))) AS session_name,
-                    s.start_at,
-                    s.end_at,
-                    g.room,
-                    g.name AS group_name
-                FROM attendance_sessions s
-                JOIN class_groups g
-                  ON g.id = s.group_id
-                 AND g.deleted_at IS NULL
-                JOIN group_members gm
-                  ON gm.group_id = g.id
-                 AND gm.user_id = UUID_TO_BIN(?, 1)
-                 AND gm.member_status = 'APPROVED'
-                WHERE s.deleted_at IS NULL
-                  AND s.status <> 'CANCELLED'
-                  AND s.start_at >= CURRENT_TIMESTAMP
-                ORDER BY s.start_at ASC
-                LIMIT ?
-                """,
-                (rs, rowNum) -> new UpcomingSessionResponse(
-                        UUID.fromString(rs.getString("session_id")),
-                        UUID.fromString(rs.getString("group_id")),
-                        rs.getString("session_name"),
-                        toInstant(rs.getObject("start_at")),
-                        toInstant(rs.getObject("end_at")),
-                        rs.getString("room"),
-                        rs.getString("group_name")
-                ),
-                actorUserId.toString(),
-                limit
-        );
     }
 
     public List<MyAttendanceHistoryItemResponse> findMyAttendancesInGroup(
@@ -232,8 +192,6 @@ public class AttendanceReadQueryRepository {
         try {
             return Instant.parse(text);
         } catch (DateTimeParseException ignored) {
-            // MySQL/JDBC can return DATETIME as a local datetime string without zone,
-            // for example: 2026-04-26T05:49:25.099
             return LocalDateTime.parse(text)
                     .atZone(ZoneId.systemDefault())
                     .toInstant();

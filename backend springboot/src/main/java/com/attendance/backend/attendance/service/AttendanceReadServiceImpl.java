@@ -3,6 +3,7 @@ package com.attendance.backend.attendance.service;
 import com.attendance.backend.attendance.dto.MyAttendanceHistoryItemResponse;
 import com.attendance.backend.attendance.dto.PageMyAttendanceHistoryResponse;
 import com.attendance.backend.attendance.dto.UpcomingSessionResponse;
+import com.attendance.backend.attendance.dto.UpcomingSessionsTimelineResponse;
 import com.attendance.backend.attendance.repository.AttendanceReadQueryRepository;
 import com.attendance.backend.attendance.support.SimpleXlsxWriter;
 import com.attendance.backend.common.exception.ApiException;
@@ -71,13 +72,11 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
      */
     @Override
     @Transactional(readOnly = true)
-    public List<UpcomingSessionResponse> listUpcomingSessions(UUID actorUserId, int limit) {
+    public UpcomingSessionsTimelineResponse listUpcomingSessions(UUID actorUserId, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), MAX_UPCOMING_LIMIT);
-        Instant now = Instant.now();
         LocalDate today = LocalDate.now(APP_ZONE);
 
         List<GroupScheduleSource> groups = findVisibleScheduleGroups(actorUserId);
-
         List<PlannedOccurrence> planned = new ArrayList<>();
 
         for (GroupScheduleSource group : groups) {
@@ -86,34 +85,61 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             }
 
             List<GroupWeeklySchedule> schedules =
-                    groupWeeklyScheduleRepository.findByGroupIdAndDeletedAtIsNullOrderByDayOfWeekAscStartTimeAsc(group.groupId());
+                    groupWeeklyScheduleRepository.findByGroupIdAndDeletedAtIsNullOrderByDayOfWeekAscStartTimeAsc(
+                            group.groupId()
+                    );
 
             if (schedules.isEmpty()) {
                 continue;
             }
 
-            planned.addAll(generateUpcomingOccurrences(group, schedules, today, now, safeLimit));
+            planned.addAll(generateUpcomingOccurrences(group, schedules, today, safeLimit));
         }
 
-        List<UpcomingSessionResponse> result = planned.stream()
+        List<PlannedOccurrence> sorted = planned.stream()
                 .sorted(Comparator
-                        .comparing(PlannedOccurrence::startAt)
+                        .comparing(PlannedOccurrence::sessionDate)
+                        .thenComparing(PlannedOccurrence::startTime)
                         .thenComparing(PlannedOccurrence::groupName)
                         .thenComparing(PlannedOccurrence::sessionIndex))
-                .limit(safeLimit)
+                .toList();
+
+        List<UpcomingSessionResponse> todayItems = sorted.stream()
+                .filter(item -> item.sessionDate().isEqual(today))
                 .map(this::toUpcomingSessionResponse)
                 .toList();
 
-        /*
-         * Compatibility fallback:
-         * Nếu dữ liệu cũ chưa có startDate/weeklySchedules nhưng đã có attendance_sessions thật,
-         * vẫn trả kết quả cũ để không làm app bị rỗng hoàn toàn.
-         */
-        if (result.isEmpty()) {
-            return attendanceReadQueryRepository.findUpcomingSessions(actorUserId, safeLimit);
+        List<UpcomingSessionResponse> upcomingItems = sorted.stream()
+                .filter(item -> item.sessionDate().isAfter(today))
+                .map(this::toUpcomingSessionResponse)
+                .toList();
+
+        int remaining = safeLimit;
+
+        if (todayItems.size() > remaining) {
+            todayItems = todayItems.subList(0, remaining);
         }
 
-        return result;
+        remaining -= todayItems.size();
+
+        if (upcomingItems.size() > remaining) {
+            upcomingItems = upcomingItems.subList(0, Math.max(remaining, 0));
+        }
+
+        return new UpcomingSessionsTimelineResponse(List.of(
+                new UpcomingSessionsTimelineResponse.Section(
+                        "TODAY",
+                        "Hôm nay",
+                        today,
+                        todayItems
+                ),
+                new UpcomingSessionsTimelineResponse.Section(
+                        "UPCOMING",
+                        "Lịch học sắp tới",
+                        null,
+                        upcomingItems
+                )
+        ));
     }
 
     @Override
@@ -228,7 +254,6 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             GroupScheduleSource group,
             List<GroupWeeklySchedule> schedules,
             LocalDate today,
-            Instant now,
             int targetLimit
     ) {
         List<NormalizedWeeklySchedule> normalizedSchedules = schedules.stream()
@@ -262,7 +287,13 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                         .atZone(APP_ZONE)
                         .toInstant();
 
-                if (!startAt.isBefore(now)) {
+                /*
+                 * Với app mobile:
+                 * - Hôm nay vẫn phải hiện dù giờ học đã bắt đầu hoặc đã qua.
+                 * - Các ngày sau hôm nay vẫn hiện bình thường.
+                 * - Chỉ loại các ngày trước hôm nay.
+                 */
+                if (!cursor.isBefore(today)) {
                     RealSessionMatch realSession = findMatchingRealSession(
                             group.groupId(),
                             cursor,
@@ -270,6 +301,7 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                     );
 
                     UUID sessionId = realSession == null ? null : realSession.sessionId();
+
                     String sessionName = realSession != null && hasText(realSession.title())
                             ? realSession.title()
                             : "Buổi " + generatedCount;
@@ -284,11 +316,17 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
 
                     result.add(new PlannedOccurrence(
                             sessionId,
+                            realSession == null ? null : realSession.status(),
+                            realSession == null ? null : realSession.checkinOpenAt(),
+                            realSession == null ? null : realSession.checkinCloseAt(),
                             group.groupId(),
                             sessionName,
                             generatedCount,
                             effectiveStartAt,
                             effectiveEndAt,
+                            cursor,
+                            effectiveStartAt.atZone(APP_ZONE).toLocalTime(),
+                            effectiveEndAt.atZone(APP_ZONE).toLocalTime(),
                             group.room(),
                             group.groupName()
                     ));
@@ -350,7 +388,10 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                     BIN_TO_UUID(s.id, 1) AS session_id,
                     s.title AS title,
                     s.start_at AS start_at,
-                    s.end_at AS end_at
+                    s.end_at AS end_at,
+                    s.status AS status,
+                    s.checkin_open_at AS checkin_open_at,
+                    s.checkin_close_at AS checkin_close_at
                 FROM attendance_sessions s
                 WHERE s.group_id = UUID_TO_BIN(?, 1)
                   AND s.deleted_at IS NULL
@@ -367,7 +408,10 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                         UUID.fromString(rs.getString("session_id")),
                         rs.getString("title"),
                         toInstant(rs.getObject("start_at")),
-                        toInstant(rs.getObject("end_at"))
+                        toInstant(rs.getObject("end_at")),
+                        rs.getString("status"),
+                        toInstant(rs.getObject("checkin_open_at")),
+                        toInstant(rs.getObject("checkin_close_at"))
                 ),
                 groupId.toString(),
                 java.sql.Date.valueOf(sessionDate),
@@ -382,10 +426,16 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
     private UpcomingSessionResponse toUpcomingSessionResponse(PlannedOccurrence occurrence) {
         return new UpcomingSessionResponse(
                 occurrence.sessionId(),
+                occurrence.attendanceStatus(),
+                occurrence.checkinOpenAt(),
+                occurrence.checkinCloseAt(),
                 occurrence.groupId(),
                 occurrence.sessionName(),
                 occurrence.startAt(),
                 occurrence.endAt(),
+                occurrence.sessionDate(),
+                occurrence.startTime(),
+                occurrence.endTime(),
                 occurrence.room(),
                 occurrence.groupName()
         );
@@ -468,11 +518,17 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
 
     private record PlannedOccurrence(
             UUID sessionId,
+            String attendanceStatus,
+            Instant checkinOpenAt,
+            Instant checkinCloseAt,
             UUID groupId,
             String sessionName,
             int sessionIndex,
             Instant startAt,
             Instant endAt,
+            LocalDate sessionDate,
+            LocalTime startTime,
+            LocalTime endTime,
             String room,
             String groupName
     ) {
@@ -482,7 +538,10 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             UUID sessionId,
             String title,
             Instant startAt,
-            Instant endAt
+            Instant endAt,
+            String status,
+            Instant checkinOpenAt,
+            Instant checkinCloseAt
     ) {
     }
 }
