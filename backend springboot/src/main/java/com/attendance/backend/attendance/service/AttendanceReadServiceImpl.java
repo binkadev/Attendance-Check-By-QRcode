@@ -114,16 +114,14 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 .map(this::toUpcomingSessionResponse)
                 .toList();
 
-        int remaining = safeLimit;
-
-        if (todayItems.size() > remaining) {
-            todayItems = todayItems.subList(0, remaining);
-        }
-
-        remaining -= todayItems.size();
-
-        if (upcomingItems.size() > remaining) {
-            upcomingItems = upcomingItems.subList(0, Math.max(remaining, 0));
+        /*
+         * Mobile timeline rule:
+         * - TODAY section should not consume the UPCOMING limit.
+         * - If today has classes, tomorrow/upcoming classes must still be returned.
+         * - limit applies to UPCOMING items only.
+         */
+        if (upcomingItems.size() > safeLimit) {
+            upcomingItems = upcomingItems.subList(0, safeLimit);
         }
 
         return new UpcomingSessionsTimelineResponse(List.of(
@@ -225,9 +223,12 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                     BIN_TO_UUID(g.id, 1) AS group_id,
                     g.name AS group_name,
                     g.room AS room,
+                    u.full_name AS lecturer_name,
                     g.start_date AS start_date,
                     g.total_sessions AS total_sessions
                 FROM class_groups g
+                JOIN users u
+                  ON u.id = g.owner_user_id
                 JOIN group_members gm
                   ON gm.group_id = g.id
                  AND gm.user_id = UUID_TO_BIN(?, 1)
@@ -243,6 +244,7 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                         UUID.fromString(rs.getString("group_id")),
                         rs.getString("group_name"),
                         rs.getString("room"),
+                        rs.getString("lecturer_name"),
                         rs.getDate("start_date").toLocalDate(),
                         rs.getInt("total_sessions")
                 ),
@@ -328,7 +330,8 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                             effectiveStartAt.atZone(APP_ZONE).toLocalTime(),
                             effectiveEndAt.atZone(APP_ZONE).toLocalTime(),
                             group.room(),
-                            group.groupName()
+                            group.groupName(),
+                            group.lecturerName()
                     ));
 
                     /*
@@ -437,7 +440,8 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 occurrence.startTime(),
                 occurrence.endTime(),
                 occurrence.room(),
-                occurrence.groupName()
+                occurrence.groupName(),
+                occurrence.lecturerName()
         );
     }
 
@@ -504,6 +508,7 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             UUID groupId,
             String groupName,
             String room,
+            String lecturerName,
             LocalDate startDate,
             Integer totalSessions
     ) {
@@ -530,7 +535,8 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             LocalTime startTime,
             LocalTime endTime,
             String room,
-            String groupName
+            String groupName,
+            String lecturerName
     ) {
     }
 
