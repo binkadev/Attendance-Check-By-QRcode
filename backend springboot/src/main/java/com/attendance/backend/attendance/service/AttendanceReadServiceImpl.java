@@ -22,8 +22,12 @@ import java.sql.Timestamp;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -102,10 +106,6 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 .map(this::toUpcomingSessionResponse)
                 .toList();
 
-        /*
-         * TODAY không ăn mất limit của UPCOMING.
-         * Nếu hôm nay có nhiều lớp, lớp ngày mai vẫn phải trả về trong section UPCOMING.
-         */
         if (upcomingItems.size() > safeLimit) {
             upcomingItems = upcomingItems.subList(0, safeLimit);
         }
@@ -276,12 +276,6 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                         .atZone(APP_ZONE)
                         .toInstant();
 
-                /*
-                 * Mobile timeline:
-                 * - Hôm nay vẫn phải hiện dù giờ học đã bắt đầu hoặc đã qua.
-                 * - Ngày tương lai vẫn hiện bình thường.
-                 * - Ngày trước hôm nay thì bỏ qua.
-                 */
                 if (!cursor.isBefore(today)) {
                     RealSessionMatch realSession = findMatchingRealSession(
                             actorUserId,
@@ -297,10 +291,6 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                             ? realSession.title()
                             : "Buổi " + generatedCount;
 
-                    /*
-                     * startAt/endAt/startTime/endTime là giờ học theo weekly schedule.
-                     * checkinOpenAt/checkinCloseAt mới là giờ mở/đóng điểm danh thật.
-                     */
                     String attendanceStatus = realSession == null
                             ? "ABSENT"
                             : normalizeAttendanceStatus(realSession.attendanceStatus());
@@ -429,16 +419,12 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 actorUserId.toString(),
                 groupId.toString(),
                 java.sql.Date.valueOf(sessionDate),
-
                 Timestamp.from(plannedStartAt),
                 SESSION_MATCH_TOLERANCE_SECONDS,
-
                 Timestamp.from(plannedEndAt),
                 Timestamp.from(plannedStartAt),
-
                 Timestamp.from(plannedEndAt),
                 Timestamp.from(plannedStartAt),
-
                 Timestamp.from(plannedStartAt)
         );
 
@@ -480,6 +466,18 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             return timestamp.toInstant();
         }
 
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.atZone(APP_ZONE).toInstant();
+        }
+
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toInstant();
+        }
+
+        if (value instanceof ZonedDateTime zonedDateTime) {
+            return zonedDateTime.toInstant();
+        }
+
         if (value instanceof java.sql.Date date) {
             return date.toLocalDate().atStartOfDay(APP_ZONE).toInstant();
         }
@@ -488,7 +486,15 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             return date.toInstant();
         }
 
-        return Timestamp.valueOf(value.toString()).toInstant();
+        String text = value.toString().trim();
+
+        try {
+            return Instant.parse(text);
+        } catch (DateTimeParseException ignored) {
+            return LocalDateTime.parse(text)
+                    .atZone(APP_ZONE)
+                    .toInstant();
+        }
     }
 
     private void requireGroupExists(UUID groupId) {
