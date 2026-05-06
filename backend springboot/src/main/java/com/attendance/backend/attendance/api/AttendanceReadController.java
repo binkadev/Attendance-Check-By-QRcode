@@ -2,11 +2,13 @@ package com.attendance.backend.attendance.api;
 
 import com.attendance.backend.attendance.dto.PageMyAttendanceHistoryResponse;
 import com.attendance.backend.attendance.dto.UpcomingSessionsTimelineResponse;
+import com.attendance.backend.attendance.dto.AttendanceSummaryResponse;
 import com.attendance.backend.attendance.service.AttendanceReadService;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.security.UserPrincipal;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -26,6 +28,27 @@ public class AttendanceReadController {
 
     public AttendanceReadController(AttendanceReadService attendanceReadService) {
         this.attendanceReadService = attendanceReadService;
+    }
+
+    @GetMapping("/me/attendance/summary")
+    public AttendanceSummaryResponse getMyAttendanceSummary(
+            @AuthenticationPrincipal UserPrincipal me,
+            @RequestParam(required = false)
+            @Size(max = 30, message = "semester must be <= 30 characters")
+            String semester,
+            @RequestParam(required = false)
+            @Size(max = 30, message = "academicYear must be <= 30 characters")
+            String academicYear
+    ) {
+        if (me == null) {
+            throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
+        }
+
+        return attendanceReadService.getMyAttendanceSummary(
+                me.getUserId(),
+                semester,
+                academicYear
+        );
     }
 
     @GetMapping("/me/sessions/upcoming")

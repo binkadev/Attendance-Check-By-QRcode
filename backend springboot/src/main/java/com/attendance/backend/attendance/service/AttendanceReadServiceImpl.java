@@ -2,6 +2,7 @@ package com.attendance.backend.attendance.service;
 
 import com.attendance.backend.attendance.dto.MyAttendanceHistoryItemResponse;
 import com.attendance.backend.attendance.dto.PageMyAttendanceHistoryResponse;
+import com.attendance.backend.attendance.dto.AttendanceSummaryResponse;
 import com.attendance.backend.attendance.dto.UpcomingSessionResponse;
 import com.attendance.backend.attendance.dto.UpcomingSessionsTimelineResponse;
 import com.attendance.backend.attendance.repository.AttendanceReadQueryRepository;
@@ -128,6 +129,148 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
 
     @Override
     @Transactional(readOnly = true)
+    public AttendanceSummaryResponse getMyAttendanceSummary(
+            UUID actorUserId,
+            String semester,
+            String academicYear
+    ) {
+        String semesterFilter = blankToNull(semester);
+        String academicYearFilter = blankToNull(academicYear);
+
+        AttendanceSummaryCounts counts = jdbcTemplate.queryForObject(
+                """
+                SELECT
+                    COUNT(DISTINCT g.id) AS total_classes,
+                    COUNT(s.id) AS closed_session_count,
+    
+                    SUM(
+                        CASE
+                            WHEN s.id IS NULL THEN 0
+                            WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'PRESENT' THEN 1
+                            ELSE 0
+                        END
+                    ) AS present_count,
+    
+                    SUM(
+                        CASE
+                            WHEN s.id IS NULL THEN 0
+                            WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'LATE' THEN 1
+                            ELSE 0
+                        END
+                    ) AS late_count,
+    
+                    SUM(
+                        CASE
+                            WHEN s.id IS NULL THEN 0
+                            WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'ABSENT' THEN 1
+                            ELSE 0
+                        END
+                    ) AS absent_count,
+    
+                    SUM(
+                        CASE
+                            WHEN s.id IS NULL THEN 0
+                            WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'EXCUSED' THEN 1
+                            ELSE 0
+                        END
+                    ) AS excused_count
+                FROM class_groups g
+                JOIN group_members gm
+                  ON gm.group_id = g.id
+                 AND gm.user_id = UUID_TO_BIN(?, 1)
+                 AND gm.member_status = 'APPROVED'
+                 AND gm.role = 'MEMBER'
+                LEFT JOIN attendance_sessions s
+                  ON s.group_id = g.id
+                 AND s.deleted_at IS NULL
+                 AND s.status = 'CLOSED'
+                LEFT JOIN session_attendance sa
+                  ON sa.session_id = s.id
+                 AND sa.user_id = gm.user_id
+                WHERE g.deleted_at IS NULL
+                  AND g.status = 'ACTIVE'
+                  AND (? IS NULL OR g.semester = ?)
+                  AND (? IS NULL OR g.academic_year = ?)
+                """,
+                (rs, rowNum) -> new AttendanceSummaryCounts(
+                        rs.getLong("total_classes"),
+                        rs.getLong("closed_session_count"),
+                        rs.getLong("present_count"),
+                        rs.getLong("late_count"),
+                        rs.getLong("absent_count"),
+                        rs.getLong("excused_count")
+                ),
+                actorUserId.toString(),
+                semesterFilter,
+                semesterFilter,
+                academicYearFilter,
+                academicYearFilter
+        );
+
+        if (counts == null) {
+            counts = new AttendanceSummaryCounts(0, 0, 0, 0, 0, 0);
+        }
+
+        long totalSessions = counts.closedSessionCount();
+
+        double presentPercent = percent(counts.presentCount(), totalSessions);
+        double latePercent = percent(counts.lateCount(), totalSessions);
+        double absentPercent = percent(counts.absentCount(), totalSessions);
+        double excusedPercent = percent(counts.excusedCount(), totalSessions);
+
+        /*
+         * UI đang hiển thị Overall Rate theo số PRESENT thật.
+         * Ví dụ ảnh: Present 42, Late 3, Absent 1 => 42 / 46 = 91.3%.
+         * Vì vậy không gộp LATE vào attendancePercent.
+         */
+        double attendancePercent = presentPercent;
+        double absencePercent = absentPercent;
+
+        boolean eligibleExam = totalSessions == 0 || absencePercent <= 20.0;
+
+        String message;
+        if (totalSessions == 0) {
+            message = "Chưa có dữ liệu điểm danh";
+        } else if (eligibleExam) {
+            message = "Đủ điều kiện dự thi";
+        } else {
+            message = "Có nguy cơ không đủ điều kiện dự thi";
+        }
+
+        return new AttendanceSummaryResponse(
+                semesterFilter,
+                academicYearFilter,
+                summaryLabel(semesterFilter, academicYearFilter),
+
+                counts.totalClasses(),
+                counts.closedSessionCount(),
+                counts.closedSessionCount(),
+
+                counts.presentCount(),
+                counts.lateCount(),
+                counts.absentCount(),
+                counts.excusedCount(),
+
+                attendancePercent,
+                absencePercent,
+
+                eligibleExam,
+                message,
+
+                warningLevel(absencePercent, totalSessions),
+                riskLevel(absencePercent, totalSessions),
+
+                new AttendanceSummaryResponse.Breakdown(
+                        presentPercent,
+                        latePercent,
+                        absentPercent,
+                        excusedPercent
+                )
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PageMyAttendanceHistoryResponse listMyAttendancesInGroup(
             UUID actorUserId,
             UUID groupId,
@@ -236,6 +379,74 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 ),
                 actorUserId.toString()
         );
+    }
+
+    private String blankToNull(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+
+        return value.trim();
+    }
+
+    private double percent(long count, long total) {
+        if (total <= 0) {
+            return 0.0;
+        }
+
+        return roundOne((count * 100.0) / total);
+    }
+
+    private double roundOne(double value) {
+        return Math.round(value * 10.0) / 10.0;
+    }
+
+    private String summaryLabel(String semester, String academicYear) {
+        if (hasText(semester) && hasText(academicYear)) {
+            return semester + " (" + academicYear + ")";
+        }
+
+        if (hasText(semester)) {
+            return semester;
+        }
+
+        if (hasText(academicYear)) {
+            return academicYear;
+        }
+
+        return "Tất cả học kỳ";
+    }
+
+    private String warningLevel(double absencePercent, long totalSessions) {
+        if (totalSessions <= 0) {
+            return "NONE";
+        }
+
+        if (absencePercent > 20.0) {
+            return "CRITICAL_20";
+        }
+
+        if (absencePercent >= 15.0) {
+            return "WARNING_15";
+        }
+
+        return "NONE";
+    }
+
+    private String riskLevel(double absencePercent, long totalSessions) {
+        if (totalSessions <= 0) {
+            return "LOW";
+        }
+
+        if (absencePercent > 20.0) {
+            return "HIGH";
+        }
+
+        if (absencePercent >= 15.0) {
+            return "MEDIUM";
+        }
+
+        return "LOW";
     }
 
     private List<PlannedOccurrence> generateUpcomingOccurrences(
@@ -602,6 +813,16 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             Instant checkInAt,
             Instant checkinOpenAt,
             Instant checkinCloseAt
+    ) {
+    }
+
+    private record AttendanceSummaryCounts(
+            long totalClasses,
+            long closedSessionCount,
+            long presentCount,
+            long lateCount,
+            long absentCount,
+            long excusedCount
     ) {
     }
 }
