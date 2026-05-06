@@ -58,18 +58,6 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /**
-     * App-facing upcoming sessions.
-     *
-     * Source chính:
-     * - class_groups.start_date
-     * - class_groups.total_sessions
-     * - group_weekly_schedules
-     *
-     * attendance_sessions chỉ là phiên điểm danh thật đã được mở/tạo.
-     * Vì vậy nếu chưa có attendance_sessions, API vẫn phải trả lịch học kế hoạch
-     * với sessionId = null.
-     */
     @Override
     @Transactional(readOnly = true)
     public UpcomingSessionsTimelineResponse listUpcomingSessions(UUID actorUserId, int limit) {
@@ -93,7 +81,7 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 continue;
             }
 
-            planned.addAll(generateUpcomingOccurrences(group, schedules, today, safeLimit));
+            planned.addAll(generateUpcomingOccurrences(actorUserId, group, schedules, today, safeLimit));
         }
 
         List<PlannedOccurrence> sorted = planned.stream()
@@ -115,10 +103,8 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                 .toList();
 
         /*
-         * Mobile timeline rule:
-         * - TODAY section should not consume the UPCOMING limit.
-         * - If today has classes, tomorrow/upcoming classes must still be returned.
-         * - limit applies to UPCOMING items only.
+         * TODAY không ăn mất limit của UPCOMING.
+         * Nếu hôm nay có nhiều lớp, lớp ngày mai vẫn phải trả về trong section UPCOMING.
          */
         if (upcomingItems.size() > safeLimit) {
             upcomingItems = upcomingItems.subList(0, safeLimit);
@@ -253,6 +239,7 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
     }
 
     private List<PlannedOccurrence> generateUpcomingOccurrences(
+            UUID actorUserId,
             GroupScheduleSource group,
             List<GroupWeeklySchedule> schedules,
             LocalDate today,
@@ -279,65 +266,66 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
 
                 generatedCount++;
 
-                Instant startAt = cursor
+                Instant plannedStartAt = cursor
                         .atTime(schedule.startTime())
                         .atZone(APP_ZONE)
                         .toInstant();
 
-                Instant endAt = cursor
+                Instant plannedEndAt = cursor
                         .atTime(schedule.endTime())
                         .atZone(APP_ZONE)
                         .toInstant();
 
                 /*
-                 * Với app mobile:
+                 * Mobile timeline:
                  * - Hôm nay vẫn phải hiện dù giờ học đã bắt đầu hoặc đã qua.
-                 * - Các ngày sau hôm nay vẫn hiện bình thường.
-                 * - Chỉ loại các ngày trước hôm nay.
+                 * - Ngày tương lai vẫn hiện bình thường.
+                 * - Ngày trước hôm nay thì bỏ qua.
                  */
                 if (!cursor.isBefore(today)) {
                     RealSessionMatch realSession = findMatchingRealSession(
+                            actorUserId,
                             group.groupId(),
                             cursor,
-                            startAt
+                            plannedStartAt,
+                            plannedEndAt
                     );
 
-                    UUID sessionId = realSession == null ? null : realSession.sessionId();
+                    UUID attendanceSessionId = realSession == null ? null : realSession.sessionId();
 
                     String sessionName = realSession != null && hasText(realSession.title())
                             ? realSession.title()
                             : "Buổi " + generatedCount;
 
-                    Instant effectiveStartAt = realSession != null && realSession.startAt() != null
-                            ? realSession.startAt()
-                            : startAt;
-
-                    Instant effectiveEndAt = realSession != null && realSession.endAt() != null
-                            ? realSession.endAt()
-                            : endAt;
+                    /*
+                     * startAt/endAt/startTime/endTime là giờ học theo weekly schedule.
+                     * checkinOpenAt/checkinCloseAt mới là giờ mở/đóng điểm danh thật.
+                     */
+                    String attendanceStatus = realSession == null
+                            ? "ABSENT"
+                            : normalizeAttendanceStatus(realSession.attendanceStatus());
 
                     result.add(new PlannedOccurrence(
-                            sessionId,
-                            realSession == null ? null : realSession.status(),
+                            attendanceSessionId,
+                            attendanceStatus,
+                            attendanceStatusLabel(attendanceStatus),
+                            checkedIn(attendanceStatus),
+                            realSession == null ? null : realSession.checkInAt(),
                             realSession == null ? null : realSession.checkinOpenAt(),
                             realSession == null ? null : realSession.checkinCloseAt(),
                             group.groupId(),
                             sessionName,
                             generatedCount,
-                            effectiveStartAt,
-                            effectiveEndAt,
+                            plannedStartAt,
+                            plannedEndAt,
                             cursor,
-                            effectiveStartAt.atZone(APP_ZONE).toLocalTime(),
-                            effectiveEndAt.atZone(APP_ZONE).toLocalTime(),
+                            schedule.startTime(),
+                            schedule.endTime(),
                             group.room(),
                             group.groupName(),
                             group.lecturerName()
                     ));
 
-                    /*
-                     * Không cần generate quá nhiều cho từng group.
-                     * List cuối còn sort toàn cục và limit lại.
-                     */
                     if (result.size() >= targetLimit) {
                         return result;
                     }
@@ -381,9 +369,11 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
     }
 
     private RealSessionMatch findMatchingRealSession(
+            UUID actorUserId,
             UUID groupId,
             LocalDate sessionDate,
-            Instant plannedStartAt
+            Instant plannedStartAt,
+            Instant plannedEndAt
     ) {
         List<RealSessionMatch> rows = jdbcTemplate.query(
                 """
@@ -392,17 +382,35 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                     s.title AS title,
                     s.start_at AS start_at,
                     s.end_at AS end_at,
-                    s.status AS status,
+                    s.status AS session_status,
                     s.checkin_open_at AS checkin_open_at,
-                    s.checkin_close_at AS checkin_close_at
+                    s.checkin_close_at AS checkin_close_at,
+                    COALESCE(sa.attendance_status, 'ABSENT') AS attendance_status,
+                    sa.check_in_at AS check_in_at
                 FROM attendance_sessions s
+                LEFT JOIN session_attendance sa
+                  ON sa.session_id = s.id
+                 AND sa.user_id = UUID_TO_BIN(?, 1)
                 WHERE s.group_id = UUID_TO_BIN(?, 1)
                   AND s.deleted_at IS NULL
                   AND s.status <> 'CANCELLED'
                   AND s.session_date = ?
-                  AND ABS(TIMESTAMPDIFF(SECOND, s.start_at, ?)) <= ?
+                  AND (
+                        ABS(TIMESTAMPDIFF(SECOND, s.start_at, ?)) <= ?
+                        OR (
+                            s.start_at <= ?
+                            AND COALESCE(s.end_at, s.checkin_close_at, s.start_at) >= ?
+                        )
+                        OR sa.user_id IS NOT NULL
+                      )
                 ORDER BY
+                    CASE WHEN sa.user_id IS NOT NULL THEN 0 ELSE 1 END,
                     CASE WHEN s.status = 'OPEN' THEN 0 ELSE 1 END,
+                    CASE
+                        WHEN s.start_at <= ?
+                         AND COALESCE(s.end_at, s.checkin_close_at, s.start_at) >= ?
+                        THEN 0 ELSE 1
+                    END,
                     ABS(TIMESTAMPDIFF(SECOND, s.start_at, ?)) ASC,
                     s.created_at DESC
                 LIMIT 1
@@ -412,14 +420,25 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
                         rs.getString("title"),
                         toInstant(rs.getObject("start_at")),
                         toInstant(rs.getObject("end_at")),
-                        rs.getString("status"),
+                        rs.getString("session_status"),
+                        rs.getString("attendance_status"),
+                        toInstant(rs.getObject("check_in_at")),
                         toInstant(rs.getObject("checkin_open_at")),
                         toInstant(rs.getObject("checkin_close_at"))
                 ),
+                actorUserId.toString(),
                 groupId.toString(),
                 java.sql.Date.valueOf(sessionDate),
+
                 Timestamp.from(plannedStartAt),
                 SESSION_MATCH_TOLERANCE_SECONDS,
+
+                Timestamp.from(plannedEndAt),
+                Timestamp.from(plannedStartAt),
+
+                Timestamp.from(plannedEndAt),
+                Timestamp.from(plannedStartAt),
+
                 Timestamp.from(plannedStartAt)
         );
 
@@ -428,8 +447,11 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
 
     private UpcomingSessionResponse toUpcomingSessionResponse(PlannedOccurrence occurrence) {
         return new UpcomingSessionResponse(
-                occurrence.sessionId(),
+                occurrence.attendanceSessionId(),
                 occurrence.attendanceStatus(),
+                occurrence.attendanceStatusLabel(),
+                occurrence.checkedIn(),
+                occurrence.checkInAt(),
                 occurrence.checkinOpenAt(),
                 occurrence.checkinCloseAt(),
                 occurrence.groupId(),
@@ -496,6 +518,27 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
         }
     }
 
+    private String normalizeAttendanceStatus(String status) {
+        if (!hasText(status)) {
+            return "ABSENT";
+        }
+
+        return status.trim().toUpperCase();
+    }
+
+    private boolean checkedIn(String attendanceStatus) {
+        return "PRESENT".equals(attendanceStatus) || "LATE".equals(attendanceStatus);
+    }
+
+    private String attendanceStatusLabel(String attendanceStatus) {
+        return switch (attendanceStatus) {
+            case "PRESENT", "LATE" -> "Đã điểm danh";
+            case "EXCUSED" -> "Có phép";
+            case "ABSENT" -> "Chưa điểm danh";
+            default -> "Chưa điểm danh";
+        };
+    }
+
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
     }
@@ -522,8 +565,11 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
     }
 
     private record PlannedOccurrence(
-            UUID sessionId,
+            UUID attendanceSessionId,
             String attendanceStatus,
+            String attendanceStatusLabel,
+            Boolean checkedIn,
+            Instant checkInAt,
             Instant checkinOpenAt,
             Instant checkinCloseAt,
             UUID groupId,
@@ -545,7 +591,9 @@ public class AttendanceReadServiceImpl implements AttendanceReadService {
             String title,
             Instant startAt,
             Instant endAt,
-            String status,
+            String sessionStatus,
+            String attendanceStatus,
+            Instant checkInAt,
             Instant checkinOpenAt,
             Instant checkinCloseAt
     ) {
