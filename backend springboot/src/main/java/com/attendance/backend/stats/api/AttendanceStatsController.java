@@ -7,9 +7,14 @@ import com.attendance.backend.stats.dto.GroupAttendanceSummaryPageResponse;
 import com.attendance.backend.stats.service.AttendanceStatsService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
@@ -26,13 +31,23 @@ public class AttendanceStatsController {
 
     @GetMapping("/me/attendance/summary")
     public AttendanceSummaryResponse getMyAttendanceSummary(
-            @AuthenticationPrincipal UserPrincipal principal
+            @AuthenticationPrincipal UserPrincipal me,
+            @RequestParam(required = false)
+            @Size(max = 30, message = "semester must be <= 30 characters")
+            String semester,
+            @RequestParam(required = false)
+            @Size(max = 30, message = "academicYear must be <= 30 characters")
+            String academicYear
     ) {
-        if (principal == null || principal.getUserId() == null) {
-            throw ApiException.unauthorized("UNAUTHORIZED", "Unauthorized");
+        if (me == null || me.getUserId() == null) {
+            throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
         }
 
-        return attendanceStatsService.getMySummary(principal.getUserId());
+        return attendanceStatsService.getMyAttendanceSummary(
+                me.getUserId(),
+                semester,
+                academicYear
+        );
     }
 
     @GetMapping("/groups/{groupId}/attendance/summary")

@@ -25,8 +25,24 @@ public class AttendanceStatsService {
 
     @Transactional(readOnly = true)
     public AttendanceSummaryResponse getMySummary(UUID userId) {
+        return getMyAttendanceSummary(userId, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AttendanceSummaryResponse getMyAttendanceSummary(
+            UUID userId,
+            String semester,
+            String academicYear
+    ) {
+        String semesterFilter = blankToNull(semester);
+        String academicYearFilter = blankToNull(academicYear);
+
         AttendanceStatsQueryRepository.StudentSummaryRow row =
-                attendanceStatsQueryRepository.findStudentSummary(userId);
+                attendanceStatsQueryRepository.findStudentSummary(
+                        userId,
+                        semesterFilter,
+                        academicYearFilter
+                );
 
         return toAttendanceSummaryResponse(
                 row.totalSessions(),
@@ -140,9 +156,11 @@ public class AttendanceStatsService {
         if (absencePercent.compareTo(BigDecimal.valueOf(20)) >= 0) {
             return AttendanceSummaryResponse.WarningLevel.CRITICAL_20;
         }
+
         if (absencePercent.compareTo(BigDecimal.valueOf(15)) >= 0) {
             return AttendanceSummaryResponse.WarningLevel.WARNING_15;
         }
+
         return AttendanceSummaryResponse.WarningLevel.NONE;
     }
 
@@ -150,9 +168,19 @@ public class AttendanceStatsService {
         if (absencePercent.compareTo(BigDecimal.valueOf(20)) >= 0) {
             return AttendanceSummaryResponse.RiskLevel.HIGH;
         }
+
         if (absencePercent.compareTo(BigDecimal.valueOf(15)) >= 0) {
             return AttendanceSummaryResponse.RiskLevel.MEDIUM;
         }
+
         return AttendanceSummaryResponse.RiskLevel.LOW;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+
+        return value.trim();
     }
 }

@@ -2,13 +2,12 @@ package com.attendance.backend.stats.repository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,23 +21,37 @@ public class AttendanceStatsQueryRepositoryImpl implements AttendanceStatsQueryR
     }
 
     @Override
-    public StudentSummaryRow findStudentSummary(UUID userId) {
+    public StudentSummaryRow findStudentSummary(UUID userId, String semester, String academicYear) {
         String sql = """
-                select
-                    count(*) as total_sessions,
-                    coalesce(sum(case when sa.attendance_status = 'PRESENT' then 1 else 0 end), 0) as present_count,
-                    coalesce(sum(case when sa.attendance_status = 'LATE' then 1 else 0 end), 0) as late_count,
-                    coalesce(sum(case when sa.attendance_status = 'ABSENT' then 1 else 0 end), 0) as absent_count,
-                    coalesce(sum(case when sa.attendance_status = 'EXCUSED' then 1 else 0 end), 0) as excused_count
-                from session_attendance sa
-                join attendance_sessions s
-                  on s.id = sa.session_id
-                where sa.user_id = UUID_TO_BIN(:userId, 1)
-                  and s.status = 'CLOSED'
+                SELECT
+                    COUNT(s.id) AS total_sessions,
+                    COALESCE(SUM(CASE WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'PRESENT' THEN 1 ELSE 0 END), 0) AS present_count,
+                    COALESCE(SUM(CASE WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'LATE' THEN 1 ELSE 0 END), 0) AS late_count,
+                    COALESCE(SUM(CASE WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'ABSENT' THEN 1 ELSE 0 END), 0) AS absent_count,
+                    COALESCE(SUM(CASE WHEN COALESCE(sa.attendance_status, 'ABSENT') = 'EXCUSED' THEN 1 ELSE 0 END), 0) AS excused_count
+                FROM class_groups g
+                JOIN group_members gm
+                  ON gm.group_id = g.id
+                 AND gm.user_id = UUID_TO_BIN(:userId, 1)
+                 AND gm.member_status = 'APPROVED'
+                 AND gm.role = 'MEMBER'
+                JOIN attendance_sessions s
+                  ON s.group_id = g.id
+                 AND s.deleted_at IS NULL
+                 AND s.status = 'CLOSED'
+                LEFT JOIN session_attendance sa
+                  ON sa.session_id = s.id
+                 AND sa.user_id = gm.user_id
+                WHERE g.deleted_at IS NULL
+                  AND g.status = 'ACTIVE'
+                  AND (:semester IS NULL OR g.semester = :semester)
+                  AND (:academicYear IS NULL OR g.academic_year = :academicYear)
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("userId", userId.toString());
+                .addValue("userId", userId.toString())
+                .addValue("semester", blankToNull(semester))
+                .addValue("academicYear", blankToNull(academicYear));
 
         return jdbc.queryForObject(sql, params, studentSummaryRowMapper());
     }
@@ -46,73 +59,79 @@ public class AttendanceStatsQueryRepositoryImpl implements AttendanceStatsQueryR
     @Override
     public Page<GroupSummaryRow> findGroupSummaryPage(UUID groupId, int page, int size) {
         String dataSql = """
-                select
-                    bin_to_uuid(gm.user_id, 1) as user_id,
-                    u.full_name as full_name,
-                    u.email as email,
-                    coalesce(sumx.total_sessions, 0) as total_sessions,
-                    coalesce(sumx.present_count, 0) as present_count,
-                    coalesce(sumx.late_count, 0) as late_count,
-                    coalesce(sumx.absent_count, 0) as absent_count,
-                    coalesce(sumx.excused_count, 0) as excused_count
-                from group_members gm
-                join users u
-                  on u.id = gm.user_id
-                 and u.deleted_at is null
-                left join (
-                    select
-                        sa.user_id as user_id,
-                        count(*) as total_sessions,
-                        coalesce(sum(case when sa.attendance_status = 'PRESENT' then 1 else 0 end), 0) as present_count,
-                        coalesce(sum(case when sa.attendance_status = 'LATE' then 1 else 0 end), 0) as late_count,
-                        coalesce(sum(case when sa.attendance_status = 'ABSENT' then 1 else 0 end), 0) as absent_count,
-                        coalesce(sum(case when sa.attendance_status = 'EXCUSED' then 1 else 0 end), 0) as excused_count
-                    from session_attendance sa
-                    join attendance_sessions s
-                      on s.id = sa.session_id
-                    where s.group_id = UUID_TO_BIN(:groupId, 1)
-                      and s.status = 'CLOSED'
-                    group by sa.user_id
+                SELECT
+                    BIN_TO_UUID(gm.user_id, 1) AS user_id,
+                    u.full_name AS full_name,
+                    u.email AS email,
+                    COALESCE(sumx.total_sessions, 0) AS total_sessions,
+                    COALESCE(sumx.present_count, 0) AS present_count,
+                    COALESCE(sumx.late_count, 0) AS late_count,
+                    COALESCE(sumx.absent_count, 0) AS absent_count,
+                    COALESCE(sumx.excused_count, 0) AS excused_count
+                FROM group_members gm
+                JOIN users u
+                  ON u.id = gm.user_id
+                 AND u.deleted_at IS NULL
+                LEFT JOIN (
+                    SELECT
+                        sa.user_id AS user_id,
+                        COUNT(*) AS total_sessions,
+                        COALESCE(SUM(CASE WHEN sa.attendance_status = 'PRESENT' THEN 1 ELSE 0 END), 0) AS present_count,
+                        COALESCE(SUM(CASE WHEN sa.attendance_status = 'LATE' THEN 1 ELSE 0 END), 0) AS late_count,
+                        COALESCE(SUM(CASE WHEN sa.attendance_status = 'ABSENT' THEN 1 ELSE 0 END), 0) AS absent_count,
+                        COALESCE(SUM(CASE WHEN sa.attendance_status = 'EXCUSED' THEN 1 ELSE 0 END), 0) AS excused_count
+                    FROM session_attendance sa
+                    JOIN attendance_sessions s
+                      ON s.id = sa.session_id
+                    WHERE s.group_id = UUID_TO_BIN(:groupId, 1)
+                      AND s.deleted_at IS NULL
+                      AND s.status = 'CLOSED'
+                    GROUP BY sa.user_id
                 ) sumx
-                  on sumx.user_id = gm.user_id
-                where gm.group_id = UUID_TO_BIN(:groupId, 1)
-                  and gm.member_status = 'APPROVED'
-                order by u.full_name asc, u.email asc, bin_to_uuid(gm.user_id, 1) asc
-                limit :limit offset :offset
+                  ON sumx.user_id = gm.user_id
+                WHERE gm.group_id = UUID_TO_BIN(:groupId, 1)
+                  AND gm.member_status = 'APPROVED'
+                ORDER BY u.full_name ASC, u.email ASC, BIN_TO_UUID(gm.user_id, 1) ASC
+                LIMIT :limit OFFSET :offset
                 """;
 
         String countSql = """
-                select count(*)
-                from group_members gm
-                join users u
-                  on u.id = gm.user_id
-                 and u.deleted_at is null
-                where gm.group_id = UUID_TO_BIN(:groupId, 1)
-                  and gm.member_status = 'APPROVED'
+                SELECT COUNT(*)
+                FROM group_members gm
+                JOIN users u
+                  ON u.id = gm.user_id
+                 AND u.deleted_at IS NULL
+                WHERE gm.group_id = UUID_TO_BIN(:groupId, 1)
+                  AND gm.member_status = 'APPROVED'
                 """;
 
-        int offset = page * size;
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+        int offset = safePage * safeSize;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("groupId", groupId.toString())
-                .addValue("limit", size)
+                .addValue("limit", safeSize)
                 .addValue("offset", offset);
 
         List<GroupSummaryRow> items = jdbc.query(dataSql, params, groupSummaryRowMapper());
         Long totalElements = jdbc.queryForObject(countSql, params, Long.class);
         long safeTotalElements = totalElements == null ? 0L : totalElements;
-        int totalPages = size == 0 ? 0 : (int) Math.ceil((double) safeTotalElements / size);
 
-        return new PageImpl<>(items, org.springframework.data.domain.PageRequest.of(page, size), safeTotalElements);
+        return new PageImpl<>(
+                items,
+                PageRequest.of(safePage, safeSize),
+                safeTotalElements
+        );
     }
 
     @Override
     public boolean groupExists(UUID groupId) {
         String sql = """
-                select count(*)
-                from class_groups g
-                where g.id = UUID_TO_BIN(:groupId, 1)
-                  and g.deleted_at is null
+                SELECT COUNT(*)
+                FROM class_groups g
+                WHERE g.id = UUID_TO_BIN(:groupId, 1)
+                  AND g.deleted_at IS NULL
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -125,12 +144,12 @@ public class AttendanceStatsQueryRepositoryImpl implements AttendanceStatsQueryR
     @Override
     public boolean isOwnerOrCoHost(UUID groupId, UUID userId) {
         String sql = """
-                select count(*)
-                from group_members gm
-                where gm.group_id = UUID_TO_BIN(:groupId, 1)
-                  and gm.user_id = UUID_TO_BIN(:userId, 1)
-                  and gm.member_status = 'APPROVED'
-                  and gm.role in ('OWNER', 'CO_HOST')
+                SELECT COUNT(*)
+                FROM group_members gm
+                WHERE gm.group_id = UUID_TO_BIN(:groupId, 1)
+                  AND gm.user_id = UUID_TO_BIN(:userId, 1)
+                  AND gm.member_status = 'APPROVED'
+                  AND gm.role IN ('OWNER', 'CO_HOST')
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -162,5 +181,13 @@ public class AttendanceStatsQueryRepositoryImpl implements AttendanceStatsQueryR
                 rs.getLong("absent_count"),
                 rs.getLong("excused_count")
         );
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+
+        return value.trim();
     }
 }

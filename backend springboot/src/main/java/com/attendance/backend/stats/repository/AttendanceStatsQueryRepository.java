@@ -6,7 +6,11 @@ import java.util.UUID;
 
 public interface AttendanceStatsQueryRepository {
 
-    StudentSummaryRow findStudentSummary(UUID userId);
+    default StudentSummaryRow findStudentSummary(UUID userId) {
+        return findStudentSummary(userId, null, null);
+    }
+
+    StudentSummaryRow findStudentSummary(UUID userId, String semester, String academicYear);
 
     Page<GroupSummaryRow> findGroupSummaryPage(UUID groupId, int page, int size);
 
