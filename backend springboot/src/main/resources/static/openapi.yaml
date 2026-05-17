@@ -2661,6 +2661,26 @@ components:
         criticalAbsentCount:
           type: integer
           nullable: true
+        requireLocation:
+          type: boolean
+          default: false
+        locationLat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+        locationLng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+        allowedRadiusMeter:
+          type: integer
+          minimum: 10
+          maximum: 10000
+          default: 150
         excusedHandling:
           type: string
           example: EXCLUDE_FROM_DENOMINATOR
@@ -2723,6 +2743,26 @@ components:
           type: integer
           minimum: 1
           nullable: true
+        requireLocation:
+          type: boolean
+          default: false
+        locationLat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+        locationLng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+        allowedRadiusMeter:
+          type: integer
+          minimum: 10
+          maximum: 10000
+          default: 150
       required:
         - lateWeight
         - warningBelowRate
@@ -2751,6 +2791,26 @@ components:
         criticalAbsentCount:
           type: integer
           nullable: true
+        requireLocation:
+          type: boolean
+          default: false
+        locationLat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+        locationLng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+        allowedRadiusMeter:
+          type: integer
+          minimum: 10
+          maximum: 10000
+          default: 150
         excusedHandling:
           type: string
           example: EXCLUDE_FROM_DENOMINATOR
@@ -4168,9 +4228,11 @@ components:
         - expiresAt
     QrCheckinRequest:
       type: object
+      additionalProperties: false
       properties:
         token:
           type: string
+          description: QR token in format <tokenId>.<secret>
         deviceId:
           type: string
           minLength: 8
@@ -4180,9 +4242,17 @@ components:
         geoLat:
           type: number
           format: double
+          minimum: -90
+          maximum: 90
+          nullable: true
+          description: Current device latitude. Required only when class attendance policy enables location verification.
         geoLng:
           type: number
           format: double
+          minimum: -180
+          maximum: 180
+          nullable: true
+          description: Current device longitude. Required only when class attendance policy enables location verification.
       required:
         - token
         - deviceId
@@ -4713,10 +4783,12 @@ components:
     FraudIncidentType:
       type: string
       enum:
+        - REPEATED_FAILED_QR_TOKEN
+        - WRONG_SESSION_QR_TOKEN
+        - EXPIRED_QR_TOKEN
+        - REPEATED_OUT_OF_RANGE
+        - IP_BURST_MULTI_ATTEMPT
         - SHARED_DEVICE_MULTI_ACCOUNT
-        - IP_BURST
-        - TOKEN_REPLAY
-        - REPEATED_QR_FAILURE
 
     FraudIncidentSortBy:
       type: string

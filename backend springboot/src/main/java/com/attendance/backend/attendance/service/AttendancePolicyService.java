@@ -95,6 +95,10 @@ public class AttendancePolicyService {
         policy.criticalBelowRate = normalizeNullablePercent(cmd.criticalBelowRate());
         policy.warningAbsentCount = cmd.warningAbsentCount();
         policy.criticalAbsentCount = cmd.criticalAbsentCount();
+        policy.requireLocation = cmd.requireLocation();
+        policy.locationLat = normalizeNullableLatitude(cmd.locationLat());
+        policy.locationLng = normalizeNullableLongitude(cmd.locationLng());
+        policy.allowedRadiusMeter = normalizeAllowedRadiusMeter(cmd.allowedRadiusMeter());
         policy.updatedByUserId = actorUserId;
 
         attendancePolicyRepository.save(policy);
@@ -274,6 +278,10 @@ public class AttendancePolicyService {
                 canonicalizeResolvedPercent(policy.criticalBelowRate, AttendancePolicySource.GROUP_POLICY, "criticalBelowRate", true),
                 canonicalizeResolvedAbsentCount(policy.warningAbsentCount, AttendancePolicySource.GROUP_POLICY, "warningAbsentCount", true),
                 canonicalizeResolvedAbsentCount(policy.criticalAbsentCount, AttendancePolicySource.GROUP_POLICY, "criticalAbsentCount", true),
+                Boolean.TRUE.equals(policy.requireLocation),
+                canonicalizeResolvedLatitude(policy.locationLat, AttendancePolicySource.GROUP_POLICY, "locationLat", true),
+                canonicalizeResolvedLongitude(policy.locationLng, AttendancePolicySource.GROUP_POLICY, "locationLng", true),
+                canonicalizeResolvedAllowedRadius(policy.allowedRadiusMeter, AttendancePolicySource.GROUP_POLICY, "allowedRadiusMeter"),
                 policy.createdAt,
                 policy.createdByUserId,
                 policy.updatedAt,
@@ -289,6 +297,10 @@ public class AttendancePolicyService {
                 canonicalizeResolvedPercent(defaults.getCriticalBelowRate(), AttendancePolicySource.SYSTEM_DEFAULT, "criticalBelowRate", true),
                 canonicalizeResolvedAbsentCount(defaults.getWarningAbsentCount(), AttendancePolicySource.SYSTEM_DEFAULT, "warningAbsentCount", true),
                 canonicalizeResolvedAbsentCount(defaults.getCriticalAbsentCount(), AttendancePolicySource.SYSTEM_DEFAULT, "criticalAbsentCount", true),
+                false,
+                null,
+                null,
+                150,
                 null,
                 null,
                 null,
@@ -305,6 +317,10 @@ public class AttendancePolicyService {
                 effectivePolicy.criticalBelowRate(),
                 effectivePolicy.warningAbsentCount(),
                 effectivePolicy.criticalAbsentCount(),
+                effectivePolicy.requireLocation(),
+                effectivePolicy.locationLat(),
+                effectivePolicy.locationLng(),
+                effectivePolicy.allowedRadiusMeter(),
                 EXCUSED_HANDLING,
                 SESSION_SCOPE,
                 MEMBERSHIP_SCOPE,
@@ -342,6 +358,14 @@ public class AttendancePolicyService {
                     "Resolved attendance policy is invalid: criticalAbsentCount must be greater than warningAbsentCount"
             );
         }
+
+        validateLocationFields(
+                policy.requireLocation(),
+                policy.locationLat(),
+                policy.locationLng(),
+                policy.allowedRadiusMeter(),
+                "Resolved attendance policy"
+        );
     }
 
     private AttendanceCounts aggregateCountsForUser(UUID groupId, UUID userId, Instant membershipEffectiveAt) {
@@ -630,6 +654,8 @@ public class AttendancePolicyService {
             );
         }
 
+        validateLocationCommand(cmd);
+
         if (lateWeight.compareTo(BigDecimal.ZERO) < 0 || lateWeight.compareTo(BigDecimal.ONE) > 0) {
             throw ApiException.unprocessable(
                     "ATTENDANCE_POLICY_LATE_WEIGHT_INVALID",
@@ -669,6 +695,87 @@ public class AttendancePolicyService {
             );
         }
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void validateLocationCommand(UpsertPolicyCommand cmd) {
+        boolean requireLocation = Boolean.TRUE.equals(cmd.requireLocation());
+        BigDecimal locationLat = normalizeNullableLatitude(cmd.locationLat());
+        BigDecimal locationLng = normalizeNullableLongitude(cmd.locationLng());
+        Integer allowedRadiusMeter = normalizeAllowedRadiusMeter(cmd.allowedRadiusMeter());
+
+        validateLocationFields(
+                requireLocation,
+                locationLat,
+                locationLng,
+                allowedRadiusMeter,
+                "Attendance policy"
+        );
+    }
+
+    private void validateLocationFields(
+            boolean requireLocation,
+            BigDecimal locationLat,
+            BigDecimal locationLng,
+            Integer allowedRadiusMeter,
+            String subject
+    ) {
+        boolean hasLat = locationLat != null;
+        boolean hasLng = locationLng != null;
+
+        if (hasLat != hasLng) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_LOCATION_PAIR_INVALID",
+                    subject + " locationLat and locationLng must be provided together"
+            );
+        }
+
+        if (requireLocation && (!hasLat || !hasLng)) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_LOCATION_REQUIRED_TARGET_INVALID",
+                    subject + " requires locationLat and locationLng when requireLocation is true"
+            );
+        }
+
+        if (allowedRadiusMeter == null || allowedRadiusMeter < 10 || allowedRadiusMeter > 10000) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_ALLOWED_RADIUS_INVALID",
+                    subject + " allowedRadiusMeter must be between 10 and 10000"
+            );
+        }
+    }
+
+    private BigDecimal normalizeNullableLatitude(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value.compareTo(BigDecimal.valueOf(-90)) < 0 || value.compareTo(BigDecimal.valueOf(90)) > 0) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_LOCATION_LAT_INVALID",
+                    "locationLat must be between -90 and 90"
+            );
+        }
+
+        return value.setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal normalizeNullableLongitude(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value.compareTo(BigDecimal.valueOf(-180)) < 0 || value.compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_LOCATION_LNG_INVALID",
+                    "locationLng must be between -180 and 180"
+            );
+        }
+
+        return value.setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private Integer normalizeAllowedRadiusMeter(Integer value) {
+        return value == null ? 150 : value;
     }
 
     private BigDecimal canonicalizeResolvedWeight(
@@ -719,6 +826,54 @@ public class AttendancePolicyService {
             throw new IllegalStateException("Resolved attendance policy " + source + " has invalid " + fieldName);
         }
         return value;
+    }
+
+    private BigDecimal canonicalizeResolvedLatitude(
+            BigDecimal value,
+            AttendancePolicySource source,
+            String fieldName,
+            boolean nullable
+    ) {
+        if (value == null) {
+            if (nullable) {
+                return null;
+            }
+            throw new IllegalStateException("Resolved attendance policy " + source + " is missing " + fieldName);
+        }
+        if (value.compareTo(BigDecimal.valueOf(-90)) < 0 || value.compareTo(BigDecimal.valueOf(90)) > 0) {
+            throw new IllegalStateException("Resolved attendance policy " + source + " has invalid " + fieldName);
+        }
+        return value.setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal canonicalizeResolvedLongitude(
+            BigDecimal value,
+            AttendancePolicySource source,
+            String fieldName,
+            boolean nullable
+    ) {
+        if (value == null) {
+            if (nullable) {
+                return null;
+            }
+            throw new IllegalStateException("Resolved attendance policy " + source + " is missing " + fieldName);
+        }
+        if (value.compareTo(BigDecimal.valueOf(-180)) < 0 || value.compareTo(BigDecimal.valueOf(180)) > 0) {
+            throw new IllegalStateException("Resolved attendance policy " + source + " has invalid " + fieldName);
+        }
+        return value.setScale(7, RoundingMode.HALF_UP);
+    }
+
+    private Integer canonicalizeResolvedAllowedRadius(
+            Integer value,
+            AttendancePolicySource source,
+            String fieldName
+    ) {
+        Integer normalized = value == null ? 150 : value;
+        if (normalized < 10 || normalized > 10000) {
+            throw new IllegalStateException("Resolved attendance policy " + source + " has invalid " + fieldName);
+        }
+        return normalized;
     }
 
     private String normalizeKeyword(String q) {
@@ -779,7 +934,11 @@ public class AttendancePolicyService {
             BigDecimal warningBelowRate,
             BigDecimal criticalBelowRate,
             Integer warningAbsentCount,
-            Integer criticalAbsentCount
+            Integer criticalAbsentCount,
+            Boolean requireLocation,
+            BigDecimal locationLat,
+            BigDecimal locationLng,
+            Integer allowedRadiusMeter
     ) {
     }
 
@@ -790,6 +949,10 @@ public class AttendancePolicyService {
             BigDecimal criticalBelowRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            boolean requireLocation,
+            BigDecimal locationLat,
+            BigDecimal locationLng,
+            Integer allowedRadiusMeter,
             Instant createdAt,
             UUID createdByUserId,
             Instant updatedAt,
@@ -805,6 +968,10 @@ public class AttendancePolicyService {
             BigDecimal criticalBelowRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            boolean requireLocation,
+            BigDecimal locationLat,
+            BigDecimal locationLng,
+            Integer allowedRadiusMeter,
             String excusedHandling,
             String sessionScope,
             String membershipScope,

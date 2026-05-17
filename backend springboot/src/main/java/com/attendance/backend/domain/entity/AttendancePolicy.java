@@ -47,6 +47,18 @@ public class AttendancePolicy {
     @Column(name = "critical_absent_count")
     public Integer criticalAbsentCount;
 
+    @Column(name = "require_location", nullable = false)
+    public Boolean requireLocation = false;
+
+    @Column(name = "location_lat", precision = 10, scale = 7)
+    public BigDecimal locationLat;
+
+    @Column(name = "location_lng", precision = 10, scale = 7)
+    public BigDecimal locationLng;
+
+    @Column(name = "allowed_radius_meter", nullable = false)
+    public Integer allowedRadiusMeter = 150;
+
     @Column(name = "created_by_user_id", columnDefinition = "BINARY(16)", nullable = false)
     @Convert(converter = UuidBinary16SwapConverter.class)
     public UUID createdByUserId;

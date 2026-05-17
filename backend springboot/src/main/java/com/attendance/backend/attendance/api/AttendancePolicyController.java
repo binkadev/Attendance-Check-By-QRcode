@@ -56,7 +56,11 @@ public class AttendancePolicyController {
                         req.warningBelowRate(),
                         req.criticalBelowRate(),
                         req.warningAbsentCount(),
-                        req.criticalAbsentCount()
+                        req.criticalAbsentCount(),
+                        req.requireLocation(),
+                        req.locationLat(),
+                        req.locationLng(),
+                        req.allowedRadiusMeter()
                 )
         ));
     }
@@ -86,6 +90,10 @@ public class AttendancePolicyController {
                 v.criticalBelowRate(),
                 v.warningAbsentCount(),
                 v.criticalAbsentCount(),
+                v.requireLocation(),
+                v.locationLat(),
+                v.locationLng(),
+                v.allowedRadiusMeter(),
                 v.excusedHandling(),
                 v.sessionScope(),
                 v.membershipScope(),
@@ -134,7 +142,20 @@ public class AttendancePolicyController {
             Integer warningAbsentCount,
 
             @Positive
-            Integer criticalAbsentCount
+            Integer criticalAbsentCount,
+
+            Boolean requireLocation,
+
+            @DecimalMin("-90.0")
+            @DecimalMax("90.0")
+            BigDecimal locationLat,
+
+            @DecimalMin("-180.0")
+            @DecimalMax("180.0")
+            BigDecimal locationLng,
+
+            @Min(10)
+            Integer allowedRadiusMeter
     ) {
     }
 
@@ -146,6 +167,10 @@ public class AttendancePolicyController {
             BigDecimal criticalBelowRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            boolean requireLocation,
+            BigDecimal locationLat,
+            BigDecimal locationLng,
+            Integer allowedRadiusMeter,
             String excusedHandling,
             String sessionScope,
             String membershipScope,

@@ -30,13 +30,12 @@ public class AttendanceQrController {
     public ResponseEntity<QrCheckinResponse> checkinQr(
             @PathVariable UUID sessionId,
             @AuthenticationPrincipal UserPrincipal me,
-            @RequestBody(required = false) QrCheckinRequest body,
+            @RequestBody QrCheckinRequest body,
             HttpServletRequest request
     ) {
         if (me == null) {
             throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
         }
-
         if (body == null || body.token() == null || body.token().isBlank()) {
             throw ApiException.badRequest("QR_TOKEN_REQUIRED", "token is required");
         }

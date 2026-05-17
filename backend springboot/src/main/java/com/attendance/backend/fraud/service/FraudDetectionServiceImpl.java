@@ -35,11 +35,11 @@ public class FraudDetectionServiceImpl implements FraudDetectionService {
     private static final int OUT_OF_RANGE_THRESHOLD = 3;
     private static final int OUT_OF_RANGE_WINDOW_SECONDS = 15 * 60;
 
-    private static final int IP_TOTAL_THRESHOLD = 15;
-    private static final int IP_FAIL_THRESHOLD = 8;
+    private static final int IP_TOTAL_THRESHOLD = 5;
+    private static final int IP_FAIL_THRESHOLD = 3;
     private static final int IP_WINDOW_SECONDS = 5 * 60;
 
-    private static final int SHARED_DEVICE_THRESHOLD = 3;
+    private static final int SHARED_DEVICE_THRESHOLD = 2;
     private static final int SHARED_DEVICE_WINDOW_SECONDS = 24 * 60 * 60;
 
     private final CheckinAttemptLogRepository checkinAttemptLogRepository;
@@ -340,7 +340,7 @@ public class FraudDetectionServiceImpl implements FraudDetectionService {
                         "ruleWindowSeconds", SHARED_DEVICE_WINDOW_SECONDS,
                         "distinctUserCount", aggregate.distinctUserCount(),
                         "sampleDeviceIds", List.of(context.deviceId()),
-                        "notes", List.of("Threshold starts at 3 to reduce legitimate shared-device noise")
+                        "notes", List.of("Threshold starts at 2 because same physical device across multiple accounts must be reviewed")
                 )
         );
     }

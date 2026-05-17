@@ -40,6 +40,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -91,6 +92,18 @@ public class AttendanceCheckinService {
      */
     @Transactional
     public QrCheckinResult qrCheckin(QrCheckinCommand cmd) {
+        if (cmd == null) {
+            throw ApiException.badRequest("CHECKIN_REQUEST_REQUIRED", "Check-in request is required");
+        }
+
+        if (cmd.sessionId() == null) {
+            throw ApiException.badRequest("SESSION_ID_REQUIRED", "sessionId is required");
+        }
+
+        if (cmd.userId() == null) {
+            throw ApiException.badRequest("USER_ID_REQUIRED", "userId is required");
+        }
+
         final Instant now = Instant.now(clock);
 
         AttendanceSession session = attendanceSessionRepository.findByIdForShare(cmd.sessionId())
@@ -139,6 +152,17 @@ public class AttendanceCheckinService {
 
             lateThreshold = openAt.plus(Duration.ofMinutes(session.getLateAfterMinutes()));
             computed = now.isAfter(lateThreshold) ? AttendanceStatus.LATE : AttendanceStatus.PRESENT;
+
+            CheckinLocationPolicy locationPolicy = loadLocationPolicy(session.getGroupId());
+            LocationCheck locationCheck = validateAndComputeLocation(locationPolicy, cmd);
+            cmd = withDistanceMeter(cmd, locationCheck.distanceMeter());
+
+            if (locationCheck.outOfRange()) {
+                throw ApiException.conflict(
+                        "CHECKIN_OUT_OF_RANGE",
+                        "Check-in location is outside the allowed radius"
+                );
+            }
 
             /*
              * Scanner mobile có thể gọi API nhiều lần rất nhanh.
@@ -254,6 +278,20 @@ public class AttendanceCheckinService {
 
             if (sharedDeviceEvidence.otherUserIds() != null) {
                 payload.put("sharedDeviceOtherUserIds", sharedDeviceEvidence.otherUserIds());
+            }
+
+            payload.put("locationPolicyRequired", locationPolicy.requireLocation());
+            if (locationCheck.distanceMeter() != null) {
+                payload.put("computedDistanceMeter", locationCheck.distanceMeter());
+            }
+            if (locationCheck.allowedRadiusMeter() != null) {
+                payload.put("allowedRadiusMeter", locationCheck.allowedRadiusMeter());
+            }
+            if (locationCheck.targetLat() != null) {
+                payload.put("targetLat", locationCheck.targetLat());
+            }
+            if (locationCheck.targetLng() != null) {
+                payload.put("targetLng", locationCheck.targetLng());
             }
 
             payload.put("openAt", openAt.toString());
@@ -567,7 +605,8 @@ public class AttendanceCheckinService {
         String code = ex.getCode().trim().toUpperCase();
 
         return switch (code) {
-            case "DEVICE_ID_REQUIRED", "DEVICE_ID_INVALID" -> CheckinFailureCode.UNKNOWN;
+            case "CHECKIN_OUT_OF_RANGE" -> CheckinFailureCode.OUT_OF_RANGE;
+            case "DEVICE_ID_REQUIRED", "DEVICE_ID_INVALID", "GEO_LOCATION_REQUIRED", "GEO_LOCATION_INVALID" -> CheckinFailureCode.UNKNOWN;
 
             case "QR_TOKEN_INVALID" -> CheckinFailureCode.TOKEN_INVALID;
             case "QR_TOKEN_INVALID_FORMAT", "QR_TOKEN_REQUIRED" -> CheckinFailureCode.TOKEN_MALFORMED;
@@ -849,11 +888,8 @@ public class AttendanceCheckinService {
         return sb.toString();
     }
 
-    private QrCheckinCommand normalizeQrCheckinCommand(QrCheckinCommand cmd) {
-        if (cmd == null) {
-            throw ApiException.badRequest("CHECKIN_REQUEST_REQUIRED", "Check-in request is required");
-        }
 
+    private QrCheckinCommand normalizeQrCheckinCommand(QrCheckinCommand cmd) {
         String deviceId = normalizeRequiredDeviceId(cmd.deviceId());
 
         return new QrCheckinCommand(
@@ -869,6 +905,20 @@ public class AttendanceCheckinService {
         );
     }
 
+    private QrCheckinCommand withDistanceMeter(QrCheckinCommand cmd, Integer distanceMeter) {
+        return new QrCheckinCommand(
+                cmd.sessionId(),
+                cmd.userId(),
+                cmd.token(),
+                cmd.deviceId(),
+                cmd.ipAddress(),
+                cmd.userAgent(),
+                cmd.geoLat(),
+                cmd.geoLng(),
+                distanceMeter
+        );
+    }
+
     private String normalizeRequiredDeviceId(String deviceId) {
         if (deviceId == null || deviceId.trim().isEmpty()) {
             throw ApiException.badRequest("DEVICE_ID_REQUIRED", "deviceId is required for QR check-in");
@@ -880,10 +930,6 @@ public class AttendanceCheckinService {
             throw ApiException.badRequest("DEVICE_ID_INVALID", "deviceId length must be <= 120");
         }
 
-        /*
-         * device_id column uses ascii_bin.
-         * Keep deviceId ASCII-safe and deterministic for fraud matching.
-         */
         if (!normalized.matches("^[A-Za-z0-9._:-]{8,120}$")) {
             throw ApiException.badRequest(
                     "DEVICE_ID_INVALID",
@@ -894,21 +940,146 @@ public class AttendanceCheckinService {
         return normalized;
     }
 
+    private CheckinLocationPolicy loadLocationPolicy(UUID groupId) {
+        List<?> rows = entityManager.createNativeQuery("""
+                SELECT
+                    require_location,
+                    location_lat,
+                    location_lng,
+                    allowed_radius_meter
+                FROM attendance_policies
+                WHERE group_id = UUID_TO_BIN(:groupId, 1)
+                LIMIT 1
+                """)
+                .setParameter("groupId", groupId.toString())
+                .getResultList();
+
+        if (rows.isEmpty()) {
+            return CheckinLocationPolicy.defaultPolicy();
+        }
+
+        Object[] row = (Object[]) rows.get(0);
+        boolean requireLocation = row[0] != null && ((Number) row[0]).intValue() == 1;
+        BigDecimal locationLat = row[1] == null ? null : toBigDecimal(row[1]);
+        BigDecimal locationLng = row[2] == null ? null : toBigDecimal(row[2]);
+        Integer allowedRadiusMeter = row[3] == null ? 150 : ((Number) row[3]).intValue();
+
+        return new CheckinLocationPolicy(
+                requireLocation,
+                locationLat,
+                locationLng,
+                allowedRadiusMeter
+        );
+    }
+
+    private LocationCheck validateAndComputeLocation(CheckinLocationPolicy policy, QrCheckinCommand cmd) {
+        boolean hasLat = cmd.geoLat() != null;
+        boolean hasLng = cmd.geoLng() != null;
+
+        if (hasLat != hasLng) {
+            throw ApiException.badRequest(
+                    "GEO_LOCATION_INVALID",
+                    "geoLat and geoLng must be provided together"
+            );
+        }
+
+        if (hasLat && (!isValidLatitude(cmd.geoLat()) || !isValidLongitude(cmd.geoLng()))) {
+            throw ApiException.badRequest(
+                    "GEO_LOCATION_INVALID",
+                    "geoLat or geoLng is out of valid range"
+            );
+        }
+
+        if (policy.requireLocation() && (!hasLat || !hasLng)) {
+            throw ApiException.badRequest(
+                    "GEO_LOCATION_REQUIRED",
+                    "geoLat and geoLng are required for this class"
+            );
+        }
+
+        if (policy.locationLat() == null || policy.locationLng() == null || !hasLat || !hasLng) {
+            return new LocationCheck(
+                    null,
+                    policy.allowedRadiusMeter(),
+                    false,
+                    policy.locationLat(),
+                    policy.locationLng()
+            );
+        }
+
+        int distanceMeter = calculateDistanceMeters(
+                cmd.geoLat(),
+                cmd.geoLng(),
+                policy.locationLat(),
+                policy.locationLng()
+        );
+
+        boolean outOfRange = policy.requireLocation()
+                && policy.allowedRadiusMeter() != null
+                && distanceMeter > policy.allowedRadiusMeter();
+
+        return new LocationCheck(
+                distanceMeter,
+                policy.allowedRadiusMeter(),
+                outOfRange,
+                policy.locationLat(),
+                policy.locationLng()
+        );
+    }
+
+    private boolean isValidLatitude(BigDecimal value) {
+        return value.compareTo(BigDecimal.valueOf(-90)) >= 0
+                && value.compareTo(BigDecimal.valueOf(90)) <= 0;
+    }
+
+    private boolean isValidLongitude(BigDecimal value) {
+        return value.compareTo(BigDecimal.valueOf(-180)) >= 0
+                && value.compareTo(BigDecimal.valueOf(180)) <= 0;
+    }
+
+    private int calculateDistanceMeters(
+            BigDecimal fromLat,
+            BigDecimal fromLng,
+            BigDecimal toLat,
+            BigDecimal toLng
+    ) {
+        final double earthRadiusMeters = 6371000.0;
+
+        double lat1 = Math.toRadians(fromLat.doubleValue());
+        double lat2 = Math.toRadians(toLat.doubleValue());
+        double deltaLat = Math.toRadians(toLat.doubleValue() - fromLat.doubleValue());
+        double deltaLng = Math.toRadians(toLng.doubleValue() - fromLng.doubleValue());
+
+        double a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2)
+                + Math.cos(lat1) * Math.cos(lat2)
+                * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return (int) Math.round(earthRadiusMeters * c);
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        return new BigDecimal(String.valueOf(value));
+    }
+
     private SharedDeviceEvidence findSharedDeviceEvidence(UUID sessionId, UUID currentUserId, String deviceId) {
         Object raw = entityManager.createNativeQuery("""
-            SELECT
-                COUNT(DISTINCT sa.user_id) AS other_user_count,
-                GROUP_CONCAT(
-                    DISTINCT BIN_TO_UUID(sa.user_id, 1)
-                    ORDER BY BIN_TO_UUID(sa.user_id, 1)
-                    SEPARATOR ','
-                ) AS other_user_ids
-            FROM session_attendance sa
-            WHERE sa.session_id = UUID_TO_BIN(:sessionId, 1)
-              AND sa.user_id <> UUID_TO_BIN(:currentUserId, 1)
-              AND sa.device_id = :deviceId
-              AND sa.check_in_at IS NOT NULL
-            """)
+                SELECT
+                    COUNT(DISTINCT sa.user_id) AS other_user_count,
+                    GROUP_CONCAT(
+                        DISTINCT BIN_TO_UUID(sa.user_id, 1)
+                        ORDER BY BIN_TO_UUID(sa.user_id, 1)
+                        SEPARATOR ','
+                    ) AS other_user_ids
+                FROM session_attendance sa
+                WHERE sa.session_id = UUID_TO_BIN(:sessionId, 1)
+                  AND sa.user_id <> UUID_TO_BIN(:currentUserId, 1)
+                  AND sa.device_id = :deviceId
+                  AND sa.check_in_at IS NOT NULL
+                """)
                 .setParameter("sessionId", sessionId.toString())
                 .setParameter("currentUserId", currentUserId.toString())
                 .setParameter("deviceId", deviceId)
@@ -928,14 +1099,14 @@ public class AttendanceCheckinService {
             Instant now
     ) {
         entityManager.createNativeQuery("""
-            UPDATE session_attendance sa
-            SET sa.suspicious_flag = 1,
-                sa.suspicious_reason = :suspiciousReason,
-                sa.updated_at = :updatedAt
-            WHERE sa.session_id = UUID_TO_BIN(:sessionId, 1)
-              AND sa.device_id = :deviceId
-              AND sa.check_in_at IS NOT NULL
-            """)
+                UPDATE session_attendance sa
+                SET sa.suspicious_flag = 1,
+                    sa.suspicious_reason = :suspiciousReason,
+                    sa.updated_at = :updatedAt
+                WHERE sa.session_id = UUID_TO_BIN(:sessionId, 1)
+                  AND sa.device_id = :deviceId
+                  AND sa.check_in_at IS NOT NULL
+                """)
                 .setParameter("suspiciousReason", suspiciousReason)
                 .setParameter("updatedAt", Timestamp.from(now))
                 .setParameter("sessionId", sessionId.toString())
@@ -954,58 +1125,58 @@ public class AttendanceCheckinService {
         String dedupKey = toHex(sha256("SHARED_DEVICE_MULTI_ACCOUNT:" + sessionId + ":" + deviceId));
 
         entityManager.createNativeQuery("""
-            INSERT INTO fraud_incidents (
-                id,
-                group_id,
-                session_id,
-                user_id,
-                type,
-                severity,
-                status,
-                dedup_key,
-                first_detected_at,
-                last_detected_at,
-                occurrence_count,
-                evidence_json
-            )
-            VALUES (
-                UUID_TO_BIN(:id, 1),
-                UUID_TO_BIN(:groupId, 1),
-                UUID_TO_BIN(:sessionId, 1),
-                UUID_TO_BIN(:userId, 1),
-                'SHARED_DEVICE_MULTI_ACCOUNT',
-                'MEDIUM',
-                'OPEN',
-                :dedupKey,
-                :detectedAt,
-                :detectedAt,
-                1,
-                JSON_OBJECT(
-                    'deviceId', :deviceId,
-                    'currentUserId', :currentUserId,
-                    'otherUserCount', :otherUserCount,
-                    'otherUserIds', :otherUserIds,
-                    'reason', 'Same device checked in for multiple users in the same session'
+                INSERT INTO fraud_incidents (
+                    id,
+                    group_id,
+                    session_id,
+                    user_id,
+                    type,
+                    severity,
+                    status,
+                    dedup_key,
+                    first_detected_at,
+                    last_detected_at,
+                    occurrence_count,
+                    evidence_json
                 )
-            )
-            ON DUPLICATE KEY UPDATE
-                last_detected_at = VALUES(last_detected_at),
-                occurrence_count = occurrence_count + 1,
-                evidence_json = VALUES(evidence_json),
-                status = CASE
-                    WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN 'OPEN'
-                    ELSE status
-                END,
-                resolved_at = CASE
-                    WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN NULL
-                    ELSE resolved_at
-                END,
-                resolution_note = CASE
-                    WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN NULL
-                    ELSE resolution_note
-                END,
-                updated_at = CURRENT_TIMESTAMP(3)
-            """)
+                VALUES (
+                    UUID_TO_BIN(:id, 1),
+                    UUID_TO_BIN(:groupId, 1),
+                    UUID_TO_BIN(:sessionId, 1),
+                    UUID_TO_BIN(:userId, 1),
+                    'SHARED_DEVICE_MULTI_ACCOUNT',
+                    'MEDIUM',
+                    'OPEN',
+                    :dedupKey,
+                    :detectedAt,
+                    :detectedAt,
+                    1,
+                    JSON_OBJECT(
+                        'deviceId', :deviceId,
+                        'currentUserId', :currentUserId,
+                        'otherUserCount', :otherUserCount,
+                        'otherUserIds', :otherUserIds,
+                        'reason', 'Same device checked in for multiple users in the same session'
+                    )
+                )
+                ON DUPLICATE KEY UPDATE
+                    last_detected_at = VALUES(last_detected_at),
+                    occurrence_count = occurrence_count + 1,
+                    evidence_json = VALUES(evidence_json),
+                    resolved_at = CASE
+                        WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN NULL
+                        ELSE resolved_at
+                    END,
+                    resolution_note = CASE
+                        WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN NULL
+                        ELSE resolution_note
+                    END,
+                    status = CASE
+                        WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN 'OPEN'
+                        ELSE status
+                    END,
+                    updated_at = CURRENT_TIMESTAMP(3)
+                """)
                 .setParameter("id", UUID.randomUUID().toString())
                 .setParameter("groupId", groupId.toString())
                 .setParameter("sessionId", sessionId.toString())
@@ -1053,6 +1224,27 @@ public class AttendanceCheckinService {
             AttendanceStatus attendanceStatus,
             Instant checkInAt,
             String qrTokenId
+    ) {
+    }
+
+
+    private record CheckinLocationPolicy(
+            boolean requireLocation,
+            BigDecimal locationLat,
+            BigDecimal locationLng,
+            Integer allowedRadiusMeter
+    ) {
+        static CheckinLocationPolicy defaultPolicy() {
+            return new CheckinLocationPolicy(false, null, null, 150);
+        }
+    }
+
+    private record LocationCheck(
+            Integer distanceMeter,
+            Integer allowedRadiusMeter,
+            boolean outOfRange,
+            BigDecimal targetLat,
+            BigDecimal targetLng
     ) {
     }
 
