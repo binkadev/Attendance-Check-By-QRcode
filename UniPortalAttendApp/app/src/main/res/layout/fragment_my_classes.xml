@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingBottom="90dp"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- HEADER -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lớp học của tôi"
+                android:textColor="#0A2540"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:layout_centerVertical="true"/>
+            <ImageView
+                android:id="@+id/imgAvatar"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentEnd="true"
+                android:background="@drawable/bg_icon_circle_gray"
+                android:padding="8dp"
+                android:src="@drawable/ic_person"
+                app:tint="#6B7280" />
+        </RelativeLayout>
+
+        <!-- THANH TÌM KIẾM -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_pill_gray"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_search"
+                app:tint="#6B7280"/>
+            <EditText
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@null"
+                android:hint="Tìm kiếm lớp học, mã môn..."
+                android:textSize="14sp"
+                android:textColor="#0A2540"
+                android:textColorHint="#9CA3AF"
+                android:layout_marginStart="8dp"
+                android:inputType="text"/>
+        </LinearLayout>
+
+        <!-- FILTER TABS -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btnFilterSemester"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Học kỳ 1 - 2023  ▼"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:background="@drawable/bg_chip_active"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="8dp"
+                    android:layout_marginEnd="8dp"/>
+
+                <TextView
+                    android:id="@+id/btnTabJoined"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Đã tham gia"
+                    android:textColor="#0A2540"
+                    android:textSize="12sp"
+                    android:background="@drawable/bg_chip_inactive"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="8dp"
+                    android:layout_marginEnd="8dp"/>
+
+                <TextView
+                    android:id="@+id/btnTabUnattended"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Chưa điểm danh"
+                    android:textColor="#0A2540"
+                    android:textSize="12sp"
+                    android:background="@drawable/bg_chip_inactive"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="8dp"/>
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#F3F4F6"
+            android:layout_marginTop="20dp"/>
+
+        <!-- DASHBOARD (MẶC ĐỊNH HIỂN THỊ) -->
+        <LinearLayout
+            android:id="@+id/layoutDashboard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- THẺ HỌC KỲ HIỆN TẠI -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#FEF2F2"
+                app:strokeWidth="1dp"
+                app:strokeColor="#FECDD3">
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="16dp">
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="HỌC KỲ HIỆN TẠI"
+                            android:textColor="#A6192E"
+                            android:textSize="10sp"
+                            android:textStyle="bold"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Học kỳ 1 - Năm học 2023-2024"
+                            android:textColor="#0A2540"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:layout_marginTop="4dp"/>
+                    </LinearLayout>
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_calendar_red"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        android:background="@drawable/bg_icon_circle"
+                        android:padding="6dp"/>
+                </RelativeLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- TIÊU ĐỀ: HÔM NAY -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="16dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="HÔM NAY"
+                    android:textColor="#0A2540"
+                    android:textSize="14sp"
+                    android:textStyle="bold"/>
+                <TextView
+                    android:id="@+id/tvTodayCount"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:background="@drawable/bg_badge_circle_red"
+                    android:layout_marginStart="8dp"/>
+            </LinearLayout>
+
+            <!-- DANH SÁCH LỚP HÔM NAY TỪ API -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvTodayClasses"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- THÔNG BÁO NẾU HÔM NAY KHÔNG CÓ LỊCH -->
+            <TextView
+                android:id="@+id/tvEmptyToday"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tuyệt vời! Bạn không có môn học nào hôm nay."
+                android:textColor="#9CA3AF"
+                android:textSize="12sp"
+                android:gravity="center"
+                android:visibility="gone"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- TIÊU ĐỀ: NGÀY MAI -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="LỊCH HỌC SẮP TỚI (NGÀY MAI)"
+                android:textColor="#0A2540"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- DANH SÁCH LỚP NGÀY MAI TỪ API -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvTomorrowClasses"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- THÔNG BÁO NẾU NGÀY MAI KHÔNG CÓ LỊCH -->
+            <TextView
+                android:id="@+id/tvEmptyTomorrow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Chưa có lịch học cho ngày mai."
+                android:textColor="#9CA3AF"
+                android:textSize="12sp"
+                android:gravity="center"
+                android:visibility="gone"
+                android:layout_marginBottom="16dp"/>
+
+        </LinearLayout>
+
+        <!-- DANH SÁCH TẤT CẢ LỚP (HIỆN KHI BẤM TAB KHÁC) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvClasses"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:nestedScrollingEnabled="false"
+            android:clipToPadding="false"
+            android:paddingBottom="20dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
+
+
+<!--<?xml version="1.0" encoding="utf-8"?>-->
+<!--<androidx.core.widget.NestedScrollView-->
+<!--    xmlns:android="http://schemas.android.com/apk/res/android"-->
+<!--    xmlns:app="http://schemas.android.com/apk/res-auto"-->
+<!--    android:layout_width="match_parent"-->
+<!--    android:layout_height="match_parent"-->
+<!--    android:paddingBottom="90dp"-->
+<!--    android:clipToPadding="false">-->
+
+<!--    <LinearLayout-->
+<!--        android:layout_width="match_parent"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:orientation="vertical"-->
+<!--        android:padding="20dp">-->
+
+<!--        <RelativeLayout-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="wrap_content">-->
+<!--            <TextView-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:text="Lớp học của tôi"-->
+<!--                android:textColor="#0A2540"-->
+<!--                android:textSize="22sp"-->
+<!--                android:textStyle="bold"-->
+<!--                android:layout_centerVertical="true"/>-->
+<!--            <ImageView-->
+<!--                android:id="@+id/imgAvatar"-->
+<!--                android:layout_width="40dp"-->
+<!--                android:layout_height="40dp"-->
+<!--                android:layout_alignParentEnd="true"-->
+<!--                android:background="@drawable/bg_icon_circle_gray"-->
+<!--                android:padding="8dp"-->
+<!--                android:src="@drawable/ic_person"-->
+<!--                app:tint="#6B7280" />-->
+<!--        </RelativeLayout>-->
+
+<!--        <LinearLayout-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="48dp"-->
+<!--            android:layout_marginTop="20dp"-->
+<!--            android:background="@drawable/bg_pill_gray"-->
+<!--            android:gravity="center_vertical"-->
+<!--            android:orientation="horizontal"-->
+<!--            android:paddingHorizontal="16dp">-->
+<!--            <ImageView-->
+<!--                android:layout_width="20dp"-->
+<!--                android:layout_height="20dp"-->
+<!--                android:src="@drawable/ic_search"-->
+<!--                app:tint="#6B7280"/>-->
+<!--            <EditText-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:background="@null"-->
+<!--                android:hint="Tìm kiếm lớp học, mã môn..."-->
+<!--                android:textSize="14sp"-->
+<!--                android:textColor="#0A2540"-->
+<!--                android:textColorHint="#9CA3AF"-->
+<!--                android:layout_marginStart="8dp"-->
+<!--                android:inputType="text"/>-->
+<!--        </LinearLayout>-->
+
+<!--        <HorizontalScrollView-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_marginTop="16dp"-->
+<!--            android:scrollbars="none">-->
+<!--            <LinearLayout-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:orientation="horizontal">-->
+
+<!--                <TextView-->
+<!--                    android:id="@+id/btnFilterSemester"-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="Học kỳ 1 - 2023  ▼"-->
+<!--                    android:textColor="#FFFFFF"-->
+<!--                    android:textSize="12sp"-->
+<!--                    android:background="@drawable/bg_chip_active"-->
+<!--                    android:paddingHorizontal="16dp"-->
+<!--                    android:paddingVertical="8dp"-->
+<!--                    android:layout_marginEnd="8dp"/>-->
+
+<!--                <TextView-->
+<!--                    android:id="@+id/btnTabJoined"-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="Đã tham gia"-->
+<!--                    android:textColor="#0A2540"-->
+<!--                    android:textSize="12sp"-->
+<!--                    android:background="@drawable/bg_chip_inactive"-->
+<!--                    android:paddingHorizontal="16dp"-->
+<!--                    android:paddingVertical="8dp"-->
+<!--                    android:layout_marginEnd="8dp"/>-->
+
+<!--                <TextView-->
+<!--                    android:id="@+id/btnTabUnattended"-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="Chưa điểm danh"-->
+<!--                    android:textColor="#0A2540"-->
+<!--                    android:textSize="12sp"-->
+<!--                    android:background="@drawable/bg_chip_inactive"-->
+<!--                    android:paddingHorizontal="16dp"-->
+<!--                    android:paddingVertical="8dp"/>-->
+<!--            </LinearLayout>-->
+<!--        </HorizontalScrollView>-->
+
+<!--        <View-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="1dp"-->
+<!--            android:background="#F3F4F6"-->
+<!--            android:layout_marginTop="20dp"/>-->
+
+<!--        <LinearLayout-->
+<!--            android:id="@+id/layoutDashboard"-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:orientation="vertical">-->
+
+<!--            <com.google.android.material.card.MaterialCardView-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:layout_marginTop="24dp"-->
+<!--                app:cardCornerRadius="12dp"-->
+<!--                app:cardElevation="0dp"-->
+<!--                app:cardBackgroundColor="#FEF2F2"-->
+<!--                app:strokeWidth="1dp"-->
+<!--                app:strokeColor="#FECDD3">-->
+<!--                <RelativeLayout-->
+<!--                    android:layout_width="match_parent"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:padding="16dp">-->
+<!--                    <LinearLayout-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:orientation="vertical">-->
+<!--                        <TextView-->
+<!--                            android:layout_width="wrap_content"-->
+<!--                            android:layout_height="wrap_content"-->
+<!--                            android:text="HỌC KỲ HIỆN TẠI"-->
+<!--                            android:textColor="#A6192E"-->
+<!--                            android:textSize="10sp"-->
+<!--                            android:textStyle="bold"/>-->
+<!--                        <TextView-->
+<!--                            android:layout_width="wrap_content"-->
+<!--                            android:layout_height="wrap_content"-->
+<!--                            android:text="Học kỳ 1 - Năm học 2023-2024"-->
+<!--                            android:textColor="#0A2540"-->
+<!--                            android:textSize="14sp"-->
+<!--                            android:textStyle="bold"-->
+<!--                            android:layout_marginTop="4dp"/>-->
+<!--                    </LinearLayout>-->
+<!--                    <ImageView-->
+<!--                        android:layout_width="32dp"-->
+<!--                        android:layout_height="32dp"-->
+<!--                        android:src="@drawable/ic_calendar_red"-->
+<!--                        android:layout_alignParentEnd="true"-->
+<!--                        android:layout_centerVertical="true"-->
+<!--                        android:background="@drawable/bg_icon_circle"-->
+<!--                        android:padding="6dp"/>-->
+<!--                </RelativeLayout>-->
+<!--            </com.google.android.material.card.MaterialCardView>-->
+
+<!--            <LinearLayout-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:orientation="horizontal"-->
+<!--                android:gravity="center_vertical"-->
+<!--                android:layout_marginTop="32dp"-->
+<!--                android:layout_marginBottom="16dp">-->
+<!--                <TextView-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="HÔM NAY"-->
+<!--                    android:textColor="#0A2540"-->
+<!--                    android:textSize="14sp"-->
+<!--                    android:textStyle="bold"/>-->
+<!--                <TextView-->
+<!--                    android:layout_width="20dp"-->
+<!--                    android:layout_height="20dp"-->
+<!--                    android:text="2"-->
+<!--                    android:textColor="#FFFFFF"-->
+<!--                    android:textSize="10sp"-->
+<!--                    android:textStyle="bold"-->
+<!--                    android:gravity="center"-->
+<!--                    android:background="@drawable/bg_badge_circle_red"-->
+<!--                    android:layout_marginStart="8dp"/>-->
+<!--            </LinearLayout>-->
+
+<!--            <com.google.android.material.card.MaterialCardView-->
+<!--                android:id="@+id/cardMath"-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:layout_marginBottom="16dp"-->
+<!--                app:cardCornerRadius="16dp"-->
+<!--                app:cardElevation="0dp"-->
+<!--                app:strokeWidth="1dp"-->
+<!--                app:strokeColor="#F3F4F6">-->
+<!--                <LinearLayout-->
+<!--                    android:layout_width="match_parent"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:orientation="horizontal">-->
+<!--                    <View android:layout_width="4dp" android:layout_height="match_parent" android:background="#A6192E"/>-->
+<!--                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">-->
+<!--                        <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="MAT101 • Nhóm 01" android:textColor="#6B7280" android:textSize="12sp"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Chưa điểm danh" android:textColor="#A6192E" android:textSize="10sp" android:textStyle="bold" android:background="@drawable/bg_badge_red_light" android:paddingHorizontal="8dp" android:paddingVertical="4dp" android:layout_alignParentEnd="true"/>-->
+<!--                        </RelativeLayout>-->
+<!--                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Toán Cao Cấp" android:textColor="#0A2540" android:textStyle="bold" android:textSize="16sp" android:layout_marginTop="4dp"/>-->
+<!--                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="12dp" android:gravity="center_vertical">-->
+<!--                            <ImageView android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/ic_time" app:tint="#9CA3AF"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="08:00 - 09:30" android:textColor="#4B5563" android:textSize="12sp" android:layout_marginStart="8dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp" android:gravity="center_vertical">-->
+<!--                            <ImageView android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/ic_location" app:tint="#9CA3AF"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Phòng 302-A" android:textColor="#4B5563" android:textSize="12sp" android:layout_marginStart="8dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#F3F4F6" android:layout_marginVertical="12dp"/>-->
+<!--                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">-->
+<!--                            <ImageView android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/ic_teacher" app:tint="#9CA3AF"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="PGS.TS Trần Văn B" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginStart="8dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                    </LinearLayout>-->
+<!--                </LinearLayout>-->
+<!--            </com.google.android.material.card.MaterialCardView>-->
+
+<!--            <com.google.android.material.card.MaterialCardView-->
+<!--                android:id="@+id/cardPhysics"-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                app:cardCornerRadius="16dp"-->
+<!--                app:cardElevation="0dp"-->
+<!--                app:strokeWidth="1dp"-->
+<!--                app:strokeColor="#F3F4F6">-->
+<!--                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">-->
+<!--                    <View android:layout_width="4dp" android:layout_height="match_parent" android:background="#10B981"/>-->
+<!--                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">-->
+<!--                        <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="PHY102 • Nhóm 03" android:textColor="#6B7280" android:textSize="12sp"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="✓ Đã điểm danh" android:textColor="#10B981" android:textSize="10sp" android:textStyle="bold" android:background="@drawable/bg_badge_green_light" android:paddingHorizontal="8dp" android:paddingVertical="4dp" android:layout_alignParentEnd="true"/>-->
+<!--                        </RelativeLayout>-->
+<!--                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Vật Lý Đại Cương" android:textColor="#0A2540" android:textStyle="bold" android:textSize="16sp" android:layout_marginTop="4dp"/>-->
+<!--                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="12dp" android:gravity="center_vertical">-->
+<!--                            <ImageView android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/ic_time" app:tint="#9CA3AF"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="10:00 - 11:30" android:textColor="#4B5563" android:textSize="12sp" android:layout_marginStart="8dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp" android:gravity="center_vertical">-->
+<!--                            <ImageView android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/ic_location" app:tint="#9CA3AF"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Phòng 105-B" android:textColor="#4B5563" android:textSize="12sp" android:layout_marginStart="8dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#F3F4F6" android:layout_marginVertical="12dp"/>-->
+<!--                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">-->
+<!--                            <ImageView android:layout_width="14dp" android:layout_height="14dp" android:src="@drawable/ic_teacher" app:tint="#9CA3AF"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TS. Lê Thị C" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginStart="8dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                    </LinearLayout>-->
+<!--                </LinearLayout>-->
+<!--            </com.google.android.material.card.MaterialCardView>-->
+
+<!--            <TextView-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:text="LỊCH HỌC SẮP TỚI (NGÀY MAI)"-->
+<!--                android:textColor="#0A2540"-->
+<!--                android:textSize="14sp"-->
+<!--                android:textStyle="bold"-->
+<!--                android:layout_marginTop="32dp"-->
+<!--                android:layout_marginBottom="16dp"/>-->
+
+<!--            <com.google.android.material.card.MaterialCardView-->
+<!--                android:id="@+id/cardWeb"-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:layout_marginBottom="12dp"-->
+<!--                app:cardCornerRadius="16dp"-->
+<!--                app:cardElevation="0dp"-->
+<!--                app:cardBackgroundColor="#F9FAFB">-->
+<!--                <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp">-->
+<!--                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">-->
+<!--                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Lập Trình Web" android:textColor="#0A2540" android:textStyle="bold" android:textSize="14sp"/>-->
+<!--                        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">-->
+<!--                            <ImageView android:layout_width="12dp" android:layout_height="12dp" android:src="@drawable/ic_time" app:tint="#6B7280"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="08:00" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginStart="4dp"/>-->
+<!--                            <ImageView android:layout_width="12dp" android:layout_height="12dp" android:src="@drawable/ic_location" app:tint="#6B7280" android:layout_marginStart="16dp"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Lab 2" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginStart="4dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                    </LinearLayout>-->
+<!--                    <ImageView android:layout_width="28dp" android:layout_height="28dp" android:src="@drawable/ic_arrow_right" android:background="@drawable/bg_icon_circle" android:padding="6dp" app:tint="#9CA3AF" android:layout_alignParentEnd="true" android:layout_centerVertical="true"/>-->
+<!--                </RelativeLayout>-->
+<!--            </com.google.android.material.card.MaterialCardView>-->
+
+<!--            <com.google.android.material.card.MaterialCardView-->
+<!--                android:id="@+id/cardDatabase"-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                app:cardCornerRadius="16dp"-->
+<!--                app:cardElevation="0dp"-->
+<!--                app:cardBackgroundColor="#F9FAFB">-->
+<!--                <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp">-->
+<!--                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">-->
+<!--                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Cơ Sở Dữ Liệu" android:textColor="#0A2540" android:textStyle="bold" android:textSize="14sp"/>-->
+<!--                        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">-->
+<!--                            <ImageView android:layout_width="12dp" android:layout_height="12dp" android:src="@drawable/ic_time" app:tint="#6B7280"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="13:30" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginStart="4dp"/>-->
+<!--                            <ImageView android:layout_width="12dp" android:layout_height="12dp" android:src="@drawable/ic_location" app:tint="#6B7280" android:layout_marginStart="16dp"/>-->
+<!--                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Phòng 201-D" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginStart="4dp"/>-->
+<!--                        </LinearLayout>-->
+<!--                    </LinearLayout>-->
+<!--                    <ImageView android:layout_width="28dp" android:layout_height="28dp" android:src="@drawable/ic_arrow_right" android:background="@drawable/bg_icon_circle" android:padding="6dp" app:tint="#9CA3AF" android:layout_alignParentEnd="true" android:layout_centerVertical="true"/>-->
+<!--                </RelativeLayout>-->
+<!--            </com.google.android.material.card.MaterialCardView>-->
+
+<!--        </LinearLayout>-->
+<!--        <androidx.recyclerview.widget.RecyclerView-->
+<!--            android:id="@+id/rvClasses"-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:layout_marginTop="16dp"-->
+<!--            android:nestedScrollingEnabled="false"-->
+<!--            android:clipToPadding="false"-->
+<!--            android:paddingBottom="20dp"-->
+<!--            android:visibility="gone" />-->
+
+<!--    </LinearLayout>-->
+<!--</androidx.core.widget.NestedScrollView>-->

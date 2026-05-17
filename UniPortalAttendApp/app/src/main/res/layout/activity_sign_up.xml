@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="32dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:id="@+id/btnBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_back"
+                android:padding="8dp"
+                app:tint="#0A2540"
+                android:background="?attr/selectableItemBackgroundBorderless"/>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_school_cap" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="UniPortal"
+                    android:textColor="#0A2540"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"/>
+            </LinearLayout>
+        </RelativeLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tạo tài khoản mới"
+            android:textColor="#0A2540"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:layout_marginTop="32dp"
+            android:layout_gravity="center_horizontal"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Vui lòng điền thông tin sinh viên để tiếp tục"
+            android:textColor="#64748B"
+            android:textSize="14sp"
+            android:layout_marginTop="8dp"
+            android:layout_gravity="center_horizontal"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="32dp">
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Họ và tên" android:textColor="#0F172A" android:textStyle="bold" android:textSize="14sp" android:layout_marginBottom="8dp"/>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:background="@drawable/bg_input_gray" android:gravity="center_vertical" android:paddingHorizontal="16dp">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_person" app:tint="#94A3B8"/>
+                <EditText android:id="@+id/edtFullName" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@null" android:hint="Nguyễn Văn A" android:textSize="15sp" android:layout_marginStart="12dp" android:inputType="textPersonName"/>
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mã số sinh viên" android:textColor="#0F172A" android:textStyle="bold" android:textSize="14sp" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:background="@drawable/bg_input_gray" android:gravity="center_vertical" android:paddingHorizontal="16dp">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_badge" app:tint="#94A3B8"/>
+                <EditText android:id="@+id/edtStudentID" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@null" android:hint="N22DCCNxxx" android:textSize="15sp" android:layout_marginStart="12dp" android:inputType="textCapCharacters"/>
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Email sinh viên" android:textColor="#0F172A" android:textStyle="bold" android:textSize="14sp" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:background="@drawable/bg_input_gray" android:gravity="center_vertical" android:paddingHorizontal="16dp">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_email" app:tint="#94A3B8"/>
+                <EditText android:id="@+id/edtEmail" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@null" android:hint="student@ptit.edu.vn" android:textSize="15sp" android:layout_marginStart="12dp" android:inputType="textEmailAddress"/>
+            </LinearLayout>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mật khẩu" android:textColor="#0F172A" android:textStyle="bold" android:textSize="14sp" android:layout_marginTop="16dp" android:layout_marginBottom="8dp"/>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:background="@drawable/bg_input_gray" android:gravity="center_vertical" android:paddingHorizontal="16dp">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_lock" app:tint="#94A3B8"/>
+                <EditText android:id="@+id/edtPassword" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:background="@null" android:hint="••••••••" android:textSize="15sp" android:layout_marginStart="12dp" android:inputType="textPassword"/>
+                <ImageView android:id="@+id/btnTogglePass" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_eye" app:tint="#94A3B8"/>
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSignUp"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="32dp"
+            android:text="Đăng ký"
+            android:textAllCaps="false"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:cornerRadius="16dp"
+            app:backgroundTint="#A6192E"
+            app:elevation="4dp"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Đã có tài khoản?"
+                android:textColor="#64748B"
+                android:textSize="14sp"/>
+            <TextView
+                android:id="@+id/tvLogin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" Đăng nhập ngay"
+                android:textColor="#A6192E"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:padding="4dp"/>
+        </LinearLayout>
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
