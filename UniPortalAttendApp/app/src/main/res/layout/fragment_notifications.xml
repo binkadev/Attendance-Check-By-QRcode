@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F9FAFB"
+    android:paddingBottom="90dp"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#FFFFFF"
+            android:paddingTop="20dp"
+            android:paddingBottom="12dp">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="20dp"
+                android:layout_marginBottom="20dp">
+
+                <ImageView
+                    android:id="@+id/btnBack"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@android:color/transparent"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_back"
+                    app:tint="#0A2540"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Thông báo"
+                    android:textColor="#0A2540"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:layout_centerInParent="true"/>
+
+                <ImageView
+                    android:id="@+id/btnMarkAllReadTop"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@android:color/transparent"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_check_double"
+                    app:tint="#0A2540"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"/>
+            </RelativeLayout>
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none"
+                android:paddingHorizontal="20dp"
+                android:clipToPadding="false">
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Tất cả"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp"
+                        android:background="@drawable/bg_chip_active"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="8dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Điểm danh"
+                        android:textColor="#6B7280"
+                        android:textSize="14sp"
+                        android:background="@drawable/bg_chip_inactive"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="8dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Lịch học"
+                        android:textColor="#6B7280"
+                        android:textSize="14sp"
+                        android:background="@drawable/bg_chip_inactive"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="8dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Hệ thống"
+                        android:textColor="#6B7280"
+                        android:textSize="14sp"
+                        android:background="@drawable/bg_chip_inactive"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="8dp"/>
+                </LinearLayout>
+            </HorizontalScrollView>
+        </LinearLayout>
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="20dp"
+            android:paddingVertical="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3 thông báo chưa đọc"
+                android:textColor="#6B7280"
+                android:textSize="14sp"
+                android:layout_centerVertical="true"/>
+
+            <TextView
+                android:id="@+id/btnMarkAllReadText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Đánh dấu đã đọc tất cả"
+                android:textColor="#A6192E"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"/>
+        </RelativeLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#FFFFFF"
+                app:strokeWidth="1dp"
+                app:strokeColor="#F3F4F6">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:layout_width="4dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginVertical="16dp"
+                        android:background="#A6192E"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:padding="16dp">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:src="@drawable/ic_person_check"
+                            android:background="@drawable/bg_circle_green_light"
+                            android:padding="10dp"
+                            app:tint="#10B981"/>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginStart="12dp">
+                            <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Điểm danh thành công" android:textColor="#0A2540" android:textStyle="bold" android:textSize="14sp" android:layout_toStartOf="@id/tvTime1" android:layout_alignParentStart="true"/>
+                                <TextView android:id="@+id/tvTime1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Vừa xong" android:textColor="#A6192E" android:textSize="12sp" android:layout_alignParentEnd="true"/>
+                            </RelativeLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bạn đã được ghi nhận có mặt tại lớp Kỹ thuật phần mềm (SE102.N11) lúc 09:15 AM." android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="4dp" android:lineSpacingExtra="2dp"/>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#FFFFFF"
+                app:strokeWidth="1dp"
+                app:strokeColor="#F3F4F6">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <View android:layout_width="4dp" android:layout_height="match_parent" android:layout_marginVertical="16dp" android:background="#A6192E"/>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="16dp">
+                        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_calendar" android:background="@drawable/bg_circle_orange_light" android:padding="10dp" app:tint="#F59E0B"/>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginStart="12dp">
+                            <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Thay đổi phòng học" android:textColor="#0A2540" android:textStyle="bold" android:textSize="14sp" android:layout_alignParentStart="true"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2 giờ trước" android:textColor="#A6192E" android:textSize="12sp" android:layout_alignParentEnd="true"/>
+                            </RelativeLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Môn Cơ sở dữ liệu chiều nay chuyển từ phòng A1.102 sang phòng B2.304. Vui lòng..." android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="4dp" android:maxLines="2" android:ellipsize="end"/>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#FFFFFF"
+                app:strokeWidth="1dp"
+                app:strokeColor="#F3F4F6">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <View android:layout_width="4dp" android:layout_height="match_parent" android:layout_marginVertical="16dp" android:background="@android:color/transparent"/>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="16dp">
+                        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_announcement" android:background="@drawable/bg_icon_circle_blue" android:padding="10dp" app:tint="#3B82F6"/>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginStart="12dp">
+                            <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Thông báo nghỉ lễ" android:textColor="#0A2540" android:textStyle="bold" android:textSize="14sp" android:layout_alignParentStart="true"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Hôm qua" android:textColor="#9CA3AF" android:textSize="12sp" android:layout_alignParentEnd="true"/>
+                            </RelativeLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Toàn trường sẽ nghỉ lễ Giỗ tổ Hùng Vương vào thứ 5 tuần này (10/03 AL). Các lớp học..." android:textColor="#9CA3AF" android:textSize="12sp" android:layout_marginTop="4dp" android:maxLines="2" android:ellipsize="end"/>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="#FFFFFF"
+                app:strokeWidth="1dp"
+                app:strokeColor="#F3F4F6">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <View android:layout_width="4dp" android:layout_height="match_parent" android:layout_marginVertical="16dp" android:background="@android:color/transparent"/>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="16dp">
+                        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_warning" android:background="@drawable/bg_circle_red_light_solid" android:padding="10dp" app:tint="#EF4444"/>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginStart="12dp">
+                            <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Cảnh báo vắng mặt" android:textColor="#0A2540" android:textStyle="bold" android:textSize="14sp" android:layout_alignParentStart="true"/>
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="22/04" android:textColor="#9CA3AF" android:textSize="12sp" android:layout_alignParentEnd="true"/>
+                            </RelativeLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bạn đã vắng mặt 2 buổi môn Mạng máy tính. Nếu vắng thêm 1 buổi, bạn sẽ bị cấm thi the..." android:textColor="#9CA3AF" android:textSize="12sp" android:layout_marginTop="4dp" android:maxLines="2" android:ellipsize="end"/>
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- THÊM RECYCLERVIEW NÀY VÀO NGAY DƯỚI CARD THỨ 4 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Thông báo mới từ Server"
+                android:textColor="#0A2540"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="12dp"/>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvNotifications"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:clipToPadding="false"/>
+
+        </LinearLayout>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
