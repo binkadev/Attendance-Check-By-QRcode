@@ -4714,11 +4714,6 @@ components:
       type: string
       enum:
         - SHARED_DEVICE_MULTI_ACCOUNT
-        - IP_BURST_MULTI_ATTEMPT
-        - REPEATED_OUT_OF_RANGE
-        - REPEATED_FAILED_QR_TOKEN
-        - WRONG_SESSION_QR_TOKEN
-        - EXPIRED_QR_TOKEN
         - IP_BURST
         - TOKEN_REPLAY
         - REPEATED_QR_FAILURE
@@ -4755,81 +4750,39 @@ components:
 
     FraudIncidentEvidenceSummaryResponse:
       type: object
+      description: Compact evidence summary tailored to the incident type. Null and empty fields are omitted by the API.
       properties:
         occurrenceCount:
           type: integer
           format: int32
           nullable: true
-        threshold:
-          type: integer
-          format: int32
-          nullable: true
-        ruleWindowSeconds:
-          type: integer
-          format: int32
-          nullable: true
-        distinctUserCount:
-          type: integer
-          format: int32
-          nullable: true
-        distinctDeviceCount:
-          type: integer
-          format: int32
-          nullable: true
-        distinctIpCount:
-          type: integer
-          format: int32
-          nullable: true
-        lastFailureCode:
+        reason:
           type: string
           nullable: true
-        maxDistanceMeter:
-          type: integer
-          format: int32
+        deviceId:
+          type: string
           nullable: true
-        sampleAttemptIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-        sampleUserIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-        sampleIpAddresses:
-          type: array
-          items:
-            type: string
-        sampleDeviceIds:
-          type: array
-          items:
-            type: string
-        notes:
-          type: array
-          items:
-            type: string
         ipAddress:
           type: string
           nullable: true
         userAgent:
           type: string
           nullable: true
-        deviceId:
-          type: string
+        distinctUserCount:
+          type: integer
+          format: int32
           nullable: true
-        location:
-          type: string
+        involvedUserIds:
+          type: array
           nullable: true
-          description: Combined location string for UI display, for example "21.037, 105.783".
-        geoLat:
-          type: number
-          format: double
+          items:
+            type: string
+            format: uuid
+        involvedUsers:
+          type: array
           nullable: true
-        geoLng:
-          type: number
-          format: double
-          nullable: true
+          items:
+            $ref: '#/components/schemas/FraudIncidentStudentResponse'
         distanceMeter:
           type: integer
           format: int32
@@ -4838,26 +4791,32 @@ components:
           type: integer
           format: int32
           nullable: true
-        otherUserCount:
-          type: integer
-          format: int32
+        location:
           nullable: true
-        otherUserIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-        reason:
+          $ref: '#/components/schemas/FraudIncidentLocationResponse'
+        lastFailureCode:
           type: string
+          nullable: true
+
+    FraudIncidentLocationResponse:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+          nullable: true
+        lng:
+          type: number
+          format: double
           nullable: true
 
     FraudIncidentStudentResponse:
       type: object
-      nullable: true
       properties:
         id:
           type: string
           format: uuid
+          nullable: true
         studentCode:
           type: string
           nullable: true
@@ -4897,15 +4856,13 @@ components:
         displayStatus:
           type: string
           nullable: true
-          description: UI-friendly status alias. OPEN is returned as PENDING for frontend display compatibility.
+          description: UI-friendly status alias. OPEN is returned as PENDING.
         title:
           type: string
           nullable: true
-          example: Trùng ID thiết bị
         description:
           type: string
           nullable: true
-          example: Thiết bị PHONE-ABC được dùng để điểm danh cho 2 sinh viên khác nhau
         confidence:
           type: integer
           format: int32
@@ -4913,6 +4870,7 @@ components:
           maximum: 100
           nullable: true
         student:
+          nullable: true
           $ref: '#/components/schemas/FraudIncidentStudentResponse'
         firstDetectedAt:
           type: string

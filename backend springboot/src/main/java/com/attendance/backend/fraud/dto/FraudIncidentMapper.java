@@ -10,8 +10,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -89,6 +92,170 @@ public class FraudIncidentMapper {
         }
     }
 
+    private FraudIncidentEvidenceSummaryResponse toEvidenceSummary(FraudIncident incident, JsonNode evidence) {
+        String type = typeName(incident);
+        Integer occurrenceCount = firstNonNull(
+                incident.getOccurrenceCount(),
+                firstInt(evidence, "occurrenceCount", "totalAttempts")
+        );
+
+        String reason = reasonOf(incident, evidence);
+
+        return switch (type) {
+            case "SHARED_DEVICE_MULTI_ACCOUNT" -> sharedDeviceEvidence(incident, evidence, occurrenceCount, reason);
+            case "REPEATED_OUT_OF_RANGE" -> outOfRangeEvidence(evidence, occurrenceCount, reason);
+            case "IP_BURST_MULTI_ATTEMPT", "IP_BURST" -> ipBurstEvidence(incident, evidence, occurrenceCount, reason);
+            case "REPEATED_FAILED_QR_TOKEN", "REPEATED_QR_FAILURE", "WRONG_SESSION_QR_TOKEN", "EXPIRED_QR_TOKEN", "TOKEN_REPLAY" ->
+                    qrTokenEvidence(incident, evidence, occurrenceCount, reason);
+            default -> defaultEvidence(incident, evidence, occurrenceCount, reason);
+        };
+    }
+
+    private FraudIncidentEvidenceSummaryResponse sharedDeviceEvidence(
+            FraudIncident incident,
+            JsonNode evidence,
+            Integer occurrenceCount,
+            String reason
+    ) {
+        String deviceId = firstText(evidence, "deviceId", "device_id", "sampleDeviceIds", "deviceIds");
+        List<UUID> involvedUserIds = involvedUserIds(incident.getUserId(), evidence);
+        Integer distinctUserCount = firstNonNull(
+                firstInt(evidence, "distinctUserCount"),
+                plusOne(firstInt(evidence, "otherUserCount"))
+        );
+
+        if (distinctUserCount == null && involvedUserIds != null && !involvedUserIds.isEmpty()) {
+            distinctUserCount = involvedUserIds.size();
+        }
+
+        if (distinctUserCount == null) {
+            distinctUserCount = Math.max(2, firstNonNull(occurrenceCount, 2));
+        }
+
+        return new FraudIncidentEvidenceSummaryResponse(
+                occurrenceCount,
+                reason,
+                deviceId,
+                null,
+                null,
+                distinctUserCount,
+                nullIfEmpty(involvedUserIds),
+                toStudents(involvedUserIds),
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private FraudIncidentEvidenceSummaryResponse outOfRangeEvidence(
+            JsonNode evidence,
+            Integer occurrenceCount,
+            String reason
+    ) {
+        Integer distanceMeter = firstInt(evidence, "distanceMeter", "distance", "maxDistanceMeter");
+        Integer allowedRadiusMeter = firstInt(evidence, "allowedRadiusMeter", "allowedRadius", "radiusMeter");
+        FraudIncidentLocationResponse location = locationOf(evidence);
+
+        return new FraudIncidentEvidenceSummaryResponse(
+                occurrenceCount,
+                reason,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                distanceMeter,
+                allowedRadiusMeter,
+                location,
+                null
+        );
+    }
+
+    private FraudIncidentEvidenceSummaryResponse ipBurstEvidence(
+            FraudIncident incident,
+            JsonNode evidence,
+            Integer occurrenceCount,
+            String reason
+    ) {
+        String ipAddress = firstText(evidence, "ipAddress", "ip_address", "sourceIp", "sampleIpAddresses", "ipAddresses");
+        String userAgent = firstText(evidence, "userAgent", "user_agent");
+        List<UUID> involvedUserIds = involvedUserIds(incident.getUserId(), evidence);
+        Integer distinctUserCount = firstNonNull(firstInt(evidence, "distinctUserCount"), sizeOf(involvedUserIds));
+
+        return new FraudIncidentEvidenceSummaryResponse(
+                occurrenceCount,
+                reason,
+                null,
+                ipAddress,
+                userAgent,
+                distinctUserCount,
+                nullIfEmpty(involvedUserIds),
+                toStudents(involvedUserIds),
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private FraudIncidentEvidenceSummaryResponse qrTokenEvidence(
+            FraudIncident incident,
+            JsonNode evidence,
+            Integer occurrenceCount,
+            String reason
+    ) {
+        String ipAddress = firstText(evidence, "ipAddress", "ip_address", "sourceIp", "sampleIpAddresses", "ipAddresses");
+        String userAgent = firstText(evidence, "userAgent", "user_agent");
+        String deviceId = firstText(evidence, "deviceId", "device_id", "sampleDeviceIds", "deviceIds");
+        String lastFailureCode = firstText(evidence, "lastFailureCode", "dominantFailureCode", "failureCode");
+        List<UUID> involvedUserIds = involvedUserIds(incident.getUserId(), evidence);
+
+        return new FraudIncidentEvidenceSummaryResponse(
+                occurrenceCount,
+                reason,
+                deviceId,
+                ipAddress,
+                userAgent,
+                null,
+                nullIfEmpty(involvedUserIds),
+                toStudents(involvedUserIds),
+                null,
+                null,
+                null,
+                lastFailureCode
+        );
+    }
+
+    private FraudIncidentEvidenceSummaryResponse defaultEvidence(
+            FraudIncident incident,
+            JsonNode evidence,
+            Integer occurrenceCount,
+            String reason
+    ) {
+        String deviceId = firstText(evidence, "deviceId", "device_id", "sampleDeviceIds", "deviceIds");
+        String ipAddress = firstText(evidence, "ipAddress", "ip_address", "sourceIp", "sampleIpAddresses", "ipAddresses");
+        String userAgent = firstText(evidence, "userAgent", "user_agent");
+        String lastFailureCode = firstText(evidence, "lastFailureCode", "dominantFailureCode", "failureCode");
+        List<UUID> involvedUserIds = involvedUserIds(incident.getUserId(), evidence);
+
+        return new FraudIncidentEvidenceSummaryResponse(
+                occurrenceCount,
+                reason,
+                deviceId,
+                ipAddress,
+                userAgent,
+                firstInt(evidence, "distinctUserCount"),
+                nullIfEmpty(involvedUserIds),
+                toStudents(involvedUserIds),
+                firstInt(evidence, "distanceMeter", "distance", "maxDistanceMeter"),
+                firstInt(evidence, "allowedRadiusMeter", "allowedRadius", "radiusMeter"),
+                locationOf(evidence),
+                lastFailureCode
+        );
+    }
+
     private FraudIncidentStudentResponse toStudent(UUID userId) {
         if (userId == null) {
             return null;
@@ -115,72 +282,118 @@ public class FraudIncidentMapper {
         );
     }
 
-    private FraudIncidentEvidenceSummaryResponse toEvidenceSummary(FraudIncident incident, JsonNode evidence) {
-        String ipAddress = firstText(evidence, "ipAddress", "ip_address", "sourceIp");
-        String userAgent = firstText(evidence, "userAgent", "user_agent");
-        String deviceId = firstText(evidence, "deviceId", "device_id");
-
-        Double geoLat = firstDouble(evidence, "geoLat", "lat", "latitude");
-        Double geoLng = firstDouble(evidence, "geoLng", "lng", "longitude");
-        String location = buildLocation(geoLat, geoLng);
-
-        Integer distanceMeter = firstInt(evidence, "distanceMeter", "distance", "maxDistanceMeter");
-        Integer allowedRadiusMeter = firstInt(evidence, "allowedRadiusMeter", "allowedRadius", "radiusMeter");
-        Integer otherUserCount = firstInt(evidence, "otherUserCount");
-        List<UUID> otherUserIds = uuidList(evidence, "otherUserIds");
-
-        Integer occurrenceCount = firstNonNull(
-                incident.getOccurrenceCount(),
-                firstInt(evidence, "occurrenceCount", "totalAttempts")
-        );
-
-        Integer threshold = firstInt(evidence, "threshold");
-        Integer ruleWindowSeconds = firstInt(evidence, "ruleWindowSeconds", "windowSeconds");
-
-        Integer distinctUserCount = firstInt(evidence, "distinctUserCount");
-        Integer distinctDeviceCount = firstInt(evidence, "distinctDeviceCount");
-        Integer distinctIpCount = firstInt(evidence, "distinctIpCount");
-
-        String lastFailureCode = firstText(evidence, "lastFailureCode", "dominantFailureCode", "failureCode");
-        Integer maxDistanceMeter = firstInt(evidence, "maxDistanceMeter", "distanceMeter");
-
-        List<UUID> sampleAttemptIds = uuidList(evidence, "sampleAttemptIds", "relatedAttemptIds", "attemptIds");
-        List<UUID> sampleUserIds = uuidList(evidence, "sampleUserIds", "relatedUserIds", "userIds");
-        List<String> sampleIpAddresses = stringList(evidence, "sampleIpAddresses", "ipAddresses");
-        List<String> sampleDeviceIds = stringList(evidence, "sampleDeviceIds", "deviceIds");
-
-        String reason = firstText(evidence, "reason", "message", "description");
-        List<String> notes = stringList(evidence, "notes");
-        if (notes.isEmpty() && reason != null) {
-            notes = List.of(reason);
+    private List<FraudIncidentStudentResponse> toStudents(List<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return null;
         }
 
-        return new FraudIncidentEvidenceSummaryResponse(
-                occurrenceCount,
-                threshold,
-                ruleWindowSeconds,
-                distinctUserCount,
-                distinctDeviceCount,
-                distinctIpCount,
-                lastFailureCode,
-                maxDistanceMeter,
-                sampleAttemptIds,
-                sampleUserIds,
-                sampleIpAddresses,
-                sampleDeviceIds,
-                notes,
-                ipAddress,
-                userAgent,
-                deviceId,
-                location,
-                geoLat,
-                geoLng,
-                distanceMeter,
-                allowedRadiusMeter,
-                otherUserCount,
-                otherUserIds,
-                reason
-        );
+        List<FraudIncidentStudentResponse> students = userIds.stream()
+                .map(this::toStudent)
+                .filter(student -> student != null && student.id() != null)
+                .toList();
+
+        return students.isEmpty() ? null : students;
+    }
+
+    private List<UUID> involvedUserIds(UUID primaryUserId, JsonNode evidence) {
+        Set<UUID> values = new LinkedHashSet<>();
+
+        if (primaryUserId != null) {
+            values.add(primaryUserId);
+        }
+
+        addUuidValues(values, evidence, "involvedUserIds", "involvedUsers", "otherUserIds", "sampleUserIds", "relatedUserIds", "userIds", "currentUserId");
+
+        if (values.isEmpty()) {
+            return null;
+        }
+
+        return new ArrayList<>(values);
+    }
+
+    private void addUuidValues(Set<UUID> values, JsonNode root, String... keys) {
+        for (String key : keys) {
+            JsonNode node = root.get(key);
+            if (node == null || node.isNull()) {
+                continue;
+            }
+
+            if (node.isArray()) {
+                for (JsonNode item : node) {
+                    if (item.isObject()) {
+                        addUuid(values, firstText(item, "id", "userId"));
+                    } else {
+                        addUuid(values, item.asText(null));
+                    }
+                }
+            } else if (node.isObject()) {
+                addUuid(values, firstText(node, "id", "userId"));
+            } else {
+                String text = node.asText(null);
+                if (text != null) {
+                    for (String part : text.split(",")) {
+                        addUuid(values, part.trim());
+                    }
+                }
+            }
+        }
+    }
+
+    private void addUuid(Set<UUID> values, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+
+        try {
+            values.add(UUID.fromString(raw.trim()));
+        } catch (IllegalArgumentException ignored) {
+            // Keep response generation resilient even if older evidence_json contains non-UUID values.
+        }
+    }
+
+    private FraudIncidentLocationResponse locationOf(JsonNode evidence) {
+        BigDecimal lat = firstDecimal(evidence, "geoLat", "lat", "latitude");
+        BigDecimal lng = firstDecimal(evidence, "geoLng", "lng", "longitude");
+
+        JsonNode location = evidence.get("location");
+        if (location != null && !location.isNull()) {
+            if (location.isObject()) {
+                lat = firstNonNull(lat, firstDecimal(location, "lat", "latitude", "geoLat"));
+                lng = firstNonNull(lng, firstDecimal(location, "lng", "longitude", "geoLng"));
+            } else if (location.isTextual()) {
+                BigDecimal[] parsed = parseLocationText(location.asText());
+                if (parsed != null) {
+                    lat = firstNonNull(lat, parsed[0]);
+                    lng = firstNonNull(lng, parsed[1]);
+                }
+            }
+        }
+
+        if (lat == null || lng == null) {
+            return null;
+        }
+
+        return new FraudIncidentLocationResponse(lat, lng);
+    }
+
+    private BigDecimal[] parseLocationText(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+
+        String[] parts = text.split(",");
+        if (parts.length != 2) {
+            return null;
+        }
+
+        try {
+            return new BigDecimal[]{
+                    new BigDecimal(parts[0].trim()),
+                    new BigDecimal(parts[1].trim())
+            };
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private String titleOf(FraudIncident incident) {
@@ -204,7 +417,7 @@ public class FraudIncidentMapper {
         return switch (type) {
             case "SHARED_DEVICE_MULTI_ACCOUNT" -> {
                 String deviceId = valueOrUnknown(evidence.deviceId(), "thiết bị không xác định");
-                int studentCount = estimateSharedDeviceStudentCount(incident, evidence);
+                int studentCount = estimateSharedDeviceStudentCount(evidence);
                 yield "Thiết bị " + deviceId + " được dùng để điểm danh cho "
                         + studentCount + " sinh viên khác nhau";
             }
@@ -215,15 +428,15 @@ public class FraudIncidentMapper {
                         + valueOrUnknown(count, "nhiều") + " tài khoản trong thời gian ngắn";
             }
             case "REPEATED_OUT_OF_RANGE" -> {
-                Integer distance = firstNonNull(evidence.distanceMeter(), evidence.maxDistanceMeter());
+                Integer distance = evidence.distanceMeter();
                 Integer radius = evidence.allowedRadiusMeter();
                 if (distance != null && radius != null) {
-                    yield "Tọa độ quét cách lớp học " + distance + "m, vượt bán kính cho phép " + radius + "m";
+                    yield "Vị trí điểm danh cách lớp học " + distance + "m, vượt bán kính cho phép " + radius + "m";
                 }
                 if (distance != null) {
-                    yield "Tọa độ quét cách lớp học " + distance + "m";
+                    yield "Vị trí điểm danh cách lớp học " + distance + "m";
                 }
-                yield "Tọa độ quét nằm ngoài phạm vi cho phép của lớp học";
+                yield "Vị trí điểm danh nằm ngoài phạm vi cho phép của lớp học";
             }
             case "REPEATED_FAILED_QR_TOKEN", "REPEATED_QR_FAILURE" -> {
                 Integer count = evidence.occurrenceCount();
@@ -235,6 +448,26 @@ public class FraudIncidentMapper {
             case "EXPIRED_QR_TOKEN" -> "Người dùng nhiều lần sử dụng QR token đã hết hạn";
             case "TOKEN_REPLAY" -> "QR token có dấu hiệu bị dùng lại bất thường";
             default -> "Hệ thống phát hiện một dấu hiệu điểm danh bất thường cần được kiểm tra";
+        };
+    }
+
+    private String reasonOf(FraudIncident incident, JsonNode evidence) {
+        String explicitReason = firstText(evidence, "reason", "message", "description");
+        if (explicitReason != null) {
+            return explicitReason;
+        }
+
+        String type = typeName(incident);
+
+        return switch (type) {
+            case "SHARED_DEVICE_MULTI_ACCOUNT" -> "Phát hiện một thiết bị điểm danh cho nhiều tài khoản";
+            case "IP_BURST_MULTI_ATTEMPT", "IP_BURST" -> "Nhiều tài khoản điểm danh từ cùng một địa chỉ IP trong thời gian ngắn";
+            case "REPEATED_OUT_OF_RANGE" -> "Vị trí điểm danh nằm ngoài bán kính cho phép nhiều lần";
+            case "REPEATED_FAILED_QR_TOKEN", "REPEATED_QR_FAILURE" -> "Người dùng quét QR thất bại nhiều lần";
+            case "WRONG_SESSION_QR_TOKEN" -> "QR token không thuộc phiên điểm danh hiện tại";
+            case "EXPIRED_QR_TOKEN" -> "QR token đã hết hạn";
+            case "TOKEN_REPLAY" -> "QR token bị dùng lại bất thường";
+            default -> "Hệ thống phát hiện dấu hiệu điểm danh bất thường";
         };
     }
 
@@ -293,22 +526,103 @@ public class FraudIncidentMapper {
         };
     }
 
-    private int estimateSharedDeviceStudentCount(FraudIncident incident, FraudIncidentEvidenceSummaryResponse evidence) {
-        Integer otherUserCount = evidence.otherUserCount();
-        if (otherUserCount != null && otherUserCount >= 1) {
-            return otherUserCount + 1;
-        }
-
+    private int estimateSharedDeviceStudentCount(FraudIncidentEvidenceSummaryResponse evidence) {
         Integer distinctUserCount = evidence.distinctUserCount();
         if (distinctUserCount != null && distinctUserCount >= 2) {
             return distinctUserCount;
         }
 
-        if (evidence.otherUserIds() != null && !evidence.otherUserIds().isEmpty()) {
-            return evidence.otherUserIds().size() + 1;
+        if (evidence.involvedUserIds() != null && !evidence.involvedUserIds().isEmpty()) {
+            return Math.max(2, evidence.involvedUserIds().size());
         }
 
-        return Math.max(2, firstNonNull(incident.getOccurrenceCount(), 2));
+        return Math.max(2, firstNonNull(evidence.occurrenceCount(), 2));
+    }
+
+    private String firstText(JsonNode root, String... keys) {
+        for (String key : keys) {
+            JsonNode node = root.get(key);
+            String value = textValue(node);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String textValue(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                String value = textValue(item);
+                if (value != null) {
+                    return value;
+                }
+            }
+            return null;
+        }
+
+        if (node.isObject()) {
+            return firstText(node, "value", "id", "deviceId", "ipAddress", "reason", "name");
+        }
+
+        String value = node.asText(null);
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private Integer firstInt(JsonNode root, String... keys) {
+        for (String key : keys) {
+            JsonNode node = root.get(key);
+            if (node == null || node.isNull()) {
+                continue;
+            }
+
+            if (node.isInt() || node.canConvertToInt()) {
+                return node.asInt();
+            }
+
+            if (node.isTextual()) {
+                try {
+                    return Integer.parseInt(node.asText().trim());
+                } catch (NumberFormatException ignored) {
+                    // Continue trying other keys.
+                }
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal firstDecimal(JsonNode root, String... keys) {
+        for (String key : keys) {
+            JsonNode node = root.get(key);
+            if (node == null || node.isNull()) {
+                continue;
+            }
+
+            if (node.isNumber()) {
+                return node.decimalValue();
+            }
+
+            if (node.isTextual()) {
+                try {
+                    return new BigDecimal(node.asText().trim());
+                } catch (NumberFormatException ignored) {
+                    // Continue trying other keys.
+                }
+            }
+        }
+        return null;
+    }
+
+    private Integer plusOne(Integer value) {
+        return value == null ? null : value + 1;
+    }
+
+    private Integer sizeOf(List<?> values) {
+        return values == null || values.isEmpty() ? null : values.size();
     }
 
     private String typeName(FraudIncident incident) {
@@ -317,121 +631,6 @@ public class FraudIncidentMapper {
 
     private String severityName(FraudIncidentSeverity severity) {
         return severity == null ? "" : severity.name();
-    }
-
-    private String buildLocation(Double geoLat, Double geoLng) {
-        if (geoLat == null || geoLng == null) {
-            return null;
-        }
-        return geoLat + ", " + geoLng;
-    }
-
-    private String firstText(JsonNode root, String... keys) {
-        for (String key : keys) {
-            JsonNode node = root.get(key);
-            if (node != null && !node.isNull()) {
-                String value = node.asText(null);
-                if (value != null && !value.isBlank()) {
-                    return value;
-                }
-            }
-        }
-        return null;
-    }
-
-    private Integer firstInt(JsonNode root, String... keys) {
-        for (String key : keys) {
-            JsonNode node = root.get(key);
-            if (node != null && !node.isNull() && node.canConvertToInt()) {
-                return node.asInt();
-            }
-        }
-        return null;
-    }
-
-    private Double firstDouble(JsonNode root, String... keys) {
-        for (String key : keys) {
-            JsonNode node = root.get(key);
-            if (node != null && !node.isNull() && node.isNumber()) {
-                return node.asDouble();
-            }
-        }
-        return null;
-    }
-
-    private List<UUID> uuidList(JsonNode root, String... keys) {
-        List<UUID> values = new ArrayList<>();
-
-        for (String key : keys) {
-            JsonNode node = root.get(key);
-            if (node == null || node.isNull()) {
-                continue;
-            }
-
-            if (node.isArray()) {
-                for (JsonNode item : node) {
-                    addUuid(values, item.asText(null));
-                }
-            } else {
-                String text = node.asText(null);
-                if (text != null) {
-                    for (String part : text.split(",")) {
-                        addUuid(values, part.trim());
-                    }
-                }
-            }
-
-            if (!values.isEmpty()) {
-                return values;
-            }
-        }
-
-        return values;
-    }
-
-    private List<String> stringList(JsonNode root, String... keys) {
-        List<String> values = new ArrayList<>();
-
-        for (String key : keys) {
-            JsonNode node = root.get(key);
-            if (node == null || node.isNull()) {
-                continue;
-            }
-
-            if (node.isArray()) {
-                for (JsonNode item : node) {
-                    addString(values, item.asText(null));
-                }
-            } else {
-                addString(values, node.asText(null));
-            }
-
-            if (!values.isEmpty()) {
-                return values;
-            }
-        }
-
-        return values;
-    }
-
-    private void addUuid(List<UUID> values, String raw) {
-        if (raw == null || raw.isBlank()) {
-            return;
-        }
-
-        try {
-            values.add(UUID.fromString(raw.trim()));
-        } catch (IllegalArgumentException ignored) {
-            // Keep response generation resilient even if older evidence_json contains non-UUID values.
-        }
-    }
-
-    private void addString(List<String> values, String raw) {
-        if (raw == null || raw.isBlank()) {
-            return;
-        }
-
-        values.add(raw.trim());
     }
 
     private <T> T firstNonNull(T first, T second) {
@@ -444,5 +643,9 @@ public class FraudIncidentMapper {
 
     private String valueOrUnknown(Object value, String fallback) {
         return value == null ? fallback : String.valueOf(value);
+    }
+
+    private <T> List<T> nullIfEmpty(List<T> values) {
+        return values == null || values.isEmpty() ? null : values;
     }
 }
