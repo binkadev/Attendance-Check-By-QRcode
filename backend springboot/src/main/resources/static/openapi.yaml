@@ -2661,26 +2661,6 @@ components:
         criticalAbsentCount:
           type: integer
           nullable: true
-        requireLocation:
-          type: boolean
-          default: false
-        locationLat:
-          type: number
-          format: double
-          minimum: -90
-          maximum: 90
-          nullable: true
-        locationLng:
-          type: number
-          format: double
-          minimum: -180
-          maximum: 180
-          nullable: true
-        allowedRadiusMeter:
-          type: integer
-          minimum: 10
-          maximum: 10000
-          default: 150
         excusedHandling:
           type: string
           example: EXCLUDE_FROM_DENOMINATOR
@@ -2743,26 +2723,6 @@ components:
           type: integer
           minimum: 1
           nullable: true
-        requireLocation:
-          type: boolean
-          default: false
-        locationLat:
-          type: number
-          format: double
-          minimum: -90
-          maximum: 90
-          nullable: true
-        locationLng:
-          type: number
-          format: double
-          minimum: -180
-          maximum: 180
-          nullable: true
-        allowedRadiusMeter:
-          type: integer
-          minimum: 10
-          maximum: 10000
-          default: 150
       required:
         - lateWeight
         - warningBelowRate
@@ -2791,26 +2751,6 @@ components:
         criticalAbsentCount:
           type: integer
           nullable: true
-        requireLocation:
-          type: boolean
-          default: false
-        locationLat:
-          type: number
-          format: double
-          minimum: -90
-          maximum: 90
-          nullable: true
-        locationLng:
-          type: number
-          format: double
-          minimum: -180
-          maximum: 180
-          nullable: true
-        allowedRadiusMeter:
-          type: integer
-          minimum: 10
-          maximum: 10000
-          default: 150
         excusedHandling:
           type: string
           example: EXCLUDE_FROM_DENOMINATOR
@@ -4228,11 +4168,9 @@ components:
         - expiresAt
     QrCheckinRequest:
       type: object
-      additionalProperties: false
       properties:
         token:
           type: string
-          description: QR token in format <tokenId>.<secret>
         deviceId:
           type: string
           minLength: 8
@@ -4242,17 +4180,9 @@ components:
         geoLat:
           type: number
           format: double
-          minimum: -90
-          maximum: 90
-          nullable: true
-          description: Current device latitude. Required only when class attendance policy enables location verification.
         geoLng:
           type: number
           format: double
-          minimum: -180
-          maximum: 180
-          nullable: true
-          description: Current device longitude. Required only when class attendance policy enables location verification.
       required:
         - token
         - deviceId
@@ -4783,12 +4713,15 @@ components:
     FraudIncidentType:
       type: string
       enum:
+        - SHARED_DEVICE_MULTI_ACCOUNT
+        - IP_BURST_MULTI_ATTEMPT
+        - REPEATED_OUT_OF_RANGE
         - REPEATED_FAILED_QR_TOKEN
         - WRONG_SESSION_QR_TOKEN
         - EXPIRED_QR_TOKEN
-        - REPEATED_OUT_OF_RANGE
-        - IP_BURST_MULTI_ATTEMPT
-        - SHARED_DEVICE_MULTI_ACCOUNT
+        - IP_BURST
+        - TOKEN_REPLAY
+        - REPEATED_QR_FAILURE
 
     FraudIncidentSortBy:
       type: string
@@ -4823,47 +4756,52 @@ components:
     FraudIncidentEvidenceSummaryResponse:
       type: object
       properties:
-        totalAttempts:
+        occurrenceCount:
           type: integer
-          format: int64
-        failAttempts:
+          format: int32
+          nullable: true
+        threshold:
           type: integer
-          format: int64
-        distanceMeter:
+          format: int32
+          nullable: true
+        ruleWindowSeconds:
           type: integer
           format: int32
           nullable: true
         distinctUserCount:
           type: integer
-          format: int64
-        distinctIpCount:
-          type: integer
-          format: int64
+          format: int32
+          nullable: true
         distinctDeviceCount:
           type: integer
-          format: int64
-        dominantFailureCode:
+          format: int32
+          nullable: true
+        distinctIpCount:
+          type: integer
+          format: int32
+          nullable: true
+        lastFailureCode:
           type: string
           nullable: true
-        windowSeconds:
+        maxDistanceMeter:
           type: integer
-          format: int64
+          format: int32
           nullable: true
-        relatedAttemptIds:
+        sampleAttemptIds:
           type: array
           items:
             type: string
             format: uuid
-        relatedUserIds:
+        sampleUserIds:
           type: array
           items:
             type: string
             format: uuid
-        ipAddresses:
+        sampleIpAddresses:
           type: array
           items:
             type: string
-        deviceIds:
+        sampleDeviceIds:
           type: array
           items:
             type: string
@@ -4871,6 +4809,67 @@ components:
           type: array
           items:
             type: string
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        deviceId:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+          description: Combined location string for UI display, for example "21.037, 105.783".
+        geoLat:
+          type: number
+          format: double
+          nullable: true
+        geoLng:
+          type: number
+          format: double
+          nullable: true
+        distanceMeter:
+          type: integer
+          format: int32
+          nullable: true
+        allowedRadiusMeter:
+          type: integer
+          format: int32
+          nullable: true
+        otherUserCount:
+          type: integer
+          format: int32
+          nullable: true
+        otherUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        reason:
+          type: string
+          nullable: true
+
+    FraudIncidentStudentResponse:
+      type: object
+      nullable: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        studentCode:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
 
     FraudIncidentResponse:
       type: object
@@ -4895,6 +4894,26 @@ components:
           $ref: '#/components/schemas/FraudIncidentSeverity'
         status:
           $ref: '#/components/schemas/FraudIncidentStatus'
+        displayStatus:
+          type: string
+          nullable: true
+          description: UI-friendly status alias. OPEN is returned as PENDING for frontend display compatibility.
+        title:
+          type: string
+          nullable: true
+          example: Trùng ID thiết bị
+        description:
+          type: string
+          nullable: true
+          example: Thiết bị PHONE-ABC được dùng để điểm danh cho 2 sinh viên khác nhau
+        confidence:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+          nullable: true
+        student:
+          $ref: '#/components/schemas/FraudIncidentStudentResponse'
         firstDetectedAt:
           type: string
           format: date-time
