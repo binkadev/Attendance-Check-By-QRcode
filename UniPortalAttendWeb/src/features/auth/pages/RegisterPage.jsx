@@ -87,18 +87,16 @@ export default function RegisterPage() {
         deviceId: getOrCreateDeviceId()
       };
 
-      const res = await authApi.register(payload);
-      
-      toast.success('Đăng ký thành công!', { id: loadingToast });
-      
-      if (res.accessToken) {
-        localStorage.setItem('accessToken', res.accessToken);
-        localStorage.setItem('refreshToken', res.refreshToken);
-        localStorage.setItem('user', JSON.stringify(res.user));
-      }
+      await authApi.register(payload);
 
+      // Bảo mật: Không tự động đăng nhập sau khi đăng ký.
+      // Người dùng phải tự đăng nhập để xác thực danh tính.
+      toast.success('Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.', { 
+        id: loadingToast, 
+        duration: 3000 
+      });
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate('/login');
       }, 1500);
 
     } catch (error) {
