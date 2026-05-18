@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Search, Bell, Plus, MoreVertical, MapPin, ChevronDown, ChevronLeft, 
-  ChevronRight, Users, Loader2, Calendar, Clock, BookOpen, 
-  Building2, UserCheck, School, GraduationCap, AlertTriangle, 
-  TrendingUp, TrendingDown, Minus, Eye, Filter, X
+  Search, Plus, MoreVertical, MapPin, ChevronDown, ChevronLeft, 
+  ChevronRight, Users, BookOpen, UserCheck, AlertTriangle, 
+  TrendingUp, TrendingDown, Minus, Eye, Filter, X, Edit2, Trash2, Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { classApi } from '../../../api/classApi';
@@ -12,6 +11,7 @@ import toast from 'react-hot-toast';
 
 // SORT OPTIONS - Mặc định sort theo mới nhất
 const SORT_OPTIONS = [
+  { label: 'Sắp diễn ra', sortBy: 'upcoming', sortDir: 'asc' },
   { label: 'Mới nhất', sortBy: 'createdAt', sortDir: 'desc' },
   { label: 'Cũ nhất', sortBy: 'createdAt', sortDir: 'asc' },
   { label: 'Tên lớp (A-Z)', sortBy: 'groupName', sortDir: 'asc' },
@@ -35,8 +35,24 @@ const formatDate = (dateString) => {
   return { label: date.toLocaleDateString('vi-VN', { month: 'numeric', day: 'numeric' }), isToday: false };
 };
 
-const ClassCard = ({ data }) => {
+const ClassCard = ({ data, onEdit, onDelete }) => {
   const navigate = useNavigate();
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMenu]);
   
   if (!data) return null;
 
@@ -59,11 +75,11 @@ const ClassCard = ({ data }) => {
   const lecturer = data.lecturerName || null;
   const semesterLabel = data.semester ? (data.semester === 'HK1' ? 'Kỳ 1' : data.semester === 'HK2' ? 'Kỳ 2' : 'Kỳ Hè') : null;
   
-  // Attendance rate (từ API hoặc mặc định)
-  const attendanceRate = data.attendanceRate ?? (data.approvedStudentCount > 0 ? Math.floor(Math.random() * 30) + 65 : 0);
+  // Attendance rate (từ API hoặc mặc định là 0)
+  const attendanceRate = data.attendanceRate ?? 0;
   
   // Trend (giả lập nếu API không có)
-  const trendValue = data.trendValue ?? ((Math.random() * 10 - 5).toFixed(1));
+  const trendValue = data.trendValue ?? '0';
   const trendIcon = parseFloat(trendValue) > 0 ? <TrendingUp size={12} /> : parseFloat(trendValue) < 0 ? <TrendingDown size={12} /> : <Minus size={12} />;
   const trendColor = parseFloat(trendValue) > 0 ? 'text-emerald-600' : parseFloat(trendValue) < 0 ? 'text-red-600' : 'text-gray-500';
   
@@ -91,9 +107,44 @@ const ClassCard = ({ data }) => {
               </span>
             )}
           </div>
-          <button className="text-gray-400 hover:text-gray-600 transition-colors">
-            <MoreVertical size={16} />
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
+              className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-all cursor-pointer animate-in fade-in"
+            >
+              <MoreVertical size={16} />
+            </button>
+            
+            {showMenu && (
+              <div className="absolute right-0 mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-20">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                    onEdit(data);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Edit2 size={13} className="text-gray-400" />
+                  Sửa lớp học
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                    onDelete(data.groupId, data.groupName || data.name);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Trash2 size={13} className="text-red-500" />
+                  Xóa lớp học
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         <h3 className="text-lg font-bold text-gray-900 mb-1 leading-tight line-clamp-2">
@@ -265,7 +316,7 @@ const FilterBar = ({ semesters, activeFilter, onFilterChange, onClear }) => {
           
           {Object.entries(groupedSemesters).map(([year, sems]) => (
             <div key={year} className="flex gap-1">
-              {sems.map((sem, idx) => {
+              {sems.map((sem) => {
                 const isActive = activeFilter.semester === sem.semester && activeFilter.academicYear === sem.academicYear;
                 const semesterLabel = sem.semester === 'HK1' ? 'Kỳ 1' : sem.semester === 'HK2' ? 'Kỳ 2' : 'Kỳ Hè';
                 
@@ -314,10 +365,26 @@ export default function ClassManagementLayout() {
   const [totalElements, setTotalElements] = useState(0);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSort, setActiveSort] = useState(SORT_OPTIONS[0]);// mac dinh cho sort theo lop moi nhat
+  const [activeSort, setActiveSort] = useState(SORT_OPTIONS[1]);// mac dinh cho sort theo lop moi nhat
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const sortRef = useRef(null);
+
+  const [editingClass, setEditingClass] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const handleDeleteClass = async (groupId, groupName) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa lớp học "${groupName}" không? Hành động này sẽ xóa vĩnh viễn lớp học và toàn bộ lịch sử điểm danh của lớp.`)) {
+      try {
+        await classApi.deleteGroup(groupId);
+        toast.success("Xóa lớp học thành công!");
+        setRefreshTrigger(prev => prev + 1);
+      } catch (error) {
+        console.error("Lỗi khi xóa lớp:", error);
+        toast.error(error.message || "Không thể xóa lớp học.");
+      }
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => { 
@@ -341,8 +408,8 @@ export default function ClassManagementLayout() {
       try {
         const res = await classApi.getSemesters();
         setSemesters(Array.isArray(res) ? res : []);
-      } catch (err) {
-        console.error("Failed to load semesters");
+      } catch (error) {
+        console.error("Failed to load semesters", error);
         // Fallback data nếu API lỗi
         setSemesters([
           { semester: 'HK1', academicYear: '2024-2025', label: 'Kỳ 1 2024-2025' },
@@ -359,20 +426,223 @@ export default function ClassManagementLayout() {
     const loadClasses = async () => {
       setIsLoading(true);
       try {
+        // Lấy lịch học sắp tới toàn cục của giảng viên một lần duy nhất để tối ưu cuộc gọi API
+        const upcomingRes = await classApi.getUpcomingSessions(50).catch(() => null);
+        const upcomingSessions = [];
+        if (upcomingRes && upcomingRes.sections) {
+          upcomingRes.sections.forEach(section => {
+            if (section.items) {
+              upcomingSessions.push(...section.items);
+            }
+          });
+        }
+
         const res = await classApi.getTeachingClasses({ 
-          page, 
-          size, 
+          page: 0, 
+          size: 200, // Lấy toàn bộ lớp học của giảng viên trong kỳ để phân trang và sắp xếp chính xác ở client
           semester: activeFilter.semester, 
           academicYear: activeFilter.academicYear, 
           q: searchQuery, 
-          sortBy: activeSort.sortBy, 
-          sortDir: activeSort.sortDir 
+          sortBy: activeSort.sortBy === 'upcoming' ? 'createdAt' : activeSort.sortBy, 
+          sortDir: activeSort.sortBy === 'upcoming' ? 'desc' : activeSort.sortDir 
         });
         
         const apiItems = res?.items || [];
-        setClasses(apiItems);
-        setTotalElements(res?.totalElements || 0);
-        setTotalPages(res?.totalPages || 0);
+        
+        // Gọi các API chi tiết trong parallel để hiển thị dữ liệu thật cho từng card lớp học
+        const enrichedItems = await Promise.all(apiItems.map(async (cls) => {
+          try {
+            const classId = cls.groupId || cls.id;
+            
+            const [fraudRes, absenceRes, sessionsRes] = await Promise.all([
+              classApi.getFraudIncidents(classId).catch(() => null),
+              classApi.getAbsenceRequests(classId).catch(() => null),
+              classApi.getGroupSessions(classId).catch(() => null)
+            ]);
+
+            // 1. Tỷ lệ điểm danh của phiên mới nhất và độ tăng/giảm so với phiên trước
+            let attendanceRate = 0;
+            let trendValue = '0';
+            
+            const sessions = sessionsRes?.items || sessionsRes || [];
+            if (sessions.length > 0) {
+              // Sắp xếp các phiên điểm danh từ mới nhất đến cũ nhất
+              const sortedSessions = [...sessions].sort(
+                (a, b) => new Date(b.checkinOpenAt || b.createdAt) - new Date(a.checkinOpenAt || a.createdAt)
+              );
+              
+              const latestSess = sortedSessions[0];
+              const finalTotal = cls.approvedStudentCount || latestSess.total || 0;
+              
+              if (finalTotal > 0) {
+                // Đếm chính xác số sinh viên điểm danh của phiên mới nhất
+                let latestCheckIns = latestSess.checkIns ?? latestSess.checkinCount ?? 0;
+                try {
+                  const latestEventsRes = await classApi.getAttendanceEvents(latestSess.id, 200).catch(() => null);
+                  if (latestEventsRes) {
+                    const allEvents = Array.isArray(latestEventsRes) ? latestEventsRes : (latestEventsRes.items || []);
+                    const latestStatusMap = new Map();
+                    const sorted = [...allEvents].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                    sorted.forEach(e => latestStatusMap.set(String(e.userId), e.newStatus));
+                    let count = 0;
+                    latestStatusMap.forEach(status => {
+                      if (status === 'PRESENT' || status === 'LATE') count++;
+                    });
+                    latestCheckIns = count;
+                  }
+                } catch (e) {
+                  console.error("Failed to fetch latest events for attendance rate", e);
+                }
+
+                attendanceRate = Math.round((latestCheckIns / finalTotal) * 100);
+                
+                if (sortedSessions.length > 1) {
+                  const prevSess = sortedSessions[1];
+                  let prevCheckIns = prevSess.checkIns ?? prevSess.checkinCount ?? 0;
+                  try {
+                    const prevEventsRes = await classApi.getAttendanceEvents(prevSess.id, 200).catch(() => null);
+                    if (prevEventsRes) {
+                      const allEvents = Array.isArray(prevEventsRes) ? prevEventsRes : (prevEventsRes.items || []);
+                      const latestStatusMap = new Map();
+                      const sorted = [...allEvents].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                      sorted.forEach(e => latestStatusMap.set(String(e.userId), e.newStatus));
+                      let count = 0;
+                      latestStatusMap.forEach(status => {
+                        if (status === 'PRESENT' || status === 'LATE') count++;
+                      });
+                      prevCheckIns = count;
+                    }
+                  } catch (e) {
+                    console.error("Failed to fetch prev events for attendance rate", e);
+                  }
+
+                  const prevRate = Math.round((prevCheckIns / finalTotal) * 100);
+                  const diff = attendanceRate - prevRate;
+                  trendValue = diff > 0 ? `+${diff}` : `${diff}`;
+                }
+              }
+            }
+
+            // 2. Số lượng sự cố gian lận (OPEN hoặc PENDING)
+            const frauds = fraudRes?.items || fraudRes || [];
+            const incidents = frauds.filter(f => f.status === 'OPEN' || f.status === 'PENDING').length;
+
+            // 3. Số lượng đơn xin nghỉ phép (PENDING)
+            const absencesList = absenceRes?.items || absenceRes || [];
+            const absences = absencesList.filter(a => a.status === 'PENDING').length;
+
+            // 4. Tìm buổi học tiếp theo từ timeline hoặc danh sách phiên (checkinOpenAt/startAt)
+            let startTime = cls.startTime || null;
+            let endTime = cls.endTime || null;
+            let room = cls.room || null;
+
+            const now = new Date();
+            let upcomingSession = null;
+
+            // Kiểm tra trong danh sách timeline của giảng viên trước
+            const myUpcoming = upcomingSessions.filter(
+              s => String(s.groupId) === String(classId)
+            );
+
+            if (myUpcoming.length > 0) {
+              upcomingSession = myUpcoming
+                .filter(s => {
+                  if (!s.startAt) return false;
+                  // Tính thời gian kết thúc của ca học để kiểm tra xem đã kết thúc chưa
+                  const sEnd = s.endAt ? new Date(s.endAt) : new Date(new Date(s.startAt).getTime() + 150 * 60 * 1000);
+                  return sEnd > now;
+                })
+                .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))[0];
+            }
+
+            // Nếu không tìm thấy trong timeline sắp tới, tìm trong sessions của group
+            if (!upcomingSession && sessions.length > 0) {
+              upcomingSession = sessions
+                .filter(s => {
+                  const sStart = s.startAt || s.checkinOpenAt;
+                  if (!sStart) return false;
+                  const sEnd = s.endAt || s.checkinCloseAt || new Date(new Date(sStart).getTime() + 150 * 60 * 1000);
+                  return new Date(sEnd) > now;
+                })
+                .sort((a, b) => {
+                  const aStart = a.startAt || a.checkinOpenAt;
+                  const bStart = b.startAt || b.checkinOpenAt;
+                  return new Date(aStart) - new Date(bStart);
+                })[0];
+            }
+
+            if (upcomingSession) {
+              startTime = upcomingSession.startAt || upcomingSession.checkinOpenAt;
+              endTime = upcomingSession.endAt || upcomingSession.checkinCloseAt;
+              if (upcomingSession.room) {
+                room = upcomingSession.room;
+              }
+            }
+
+            return {
+              ...cls,
+              attendanceRate,
+              trendValue,
+              incidents,
+              absences,
+              startTime,
+              endTime,
+              room
+            };
+          } catch (e) {
+            console.error("Error enriching class item", e);
+            return cls;
+          }
+        }));
+
+        if (activeSort.sortBy === 'upcoming') {
+          const nowTime = new Date().getTime();
+          enrichedItems.sort((a, b) => {
+            if (!a.startTime && !b.startTime) return 0;
+            if (!a.startTime) return 1;
+            if (!b.startTime) return -1;
+
+            const aStart = new Date(a.startTime).getTime();
+            const bStart = new Date(b.startTime).getTime();
+
+            // Tính thời gian kết thúc (mặc định 2.5 tiếng nếu không có)
+            const aEnd = a.endTime ? new Date(a.endTime).getTime() : aStart + 150 * 60 * 1000;
+            const bEnd = b.endTime ? new Date(b.endTime).getTime() : bStart + 150 * 60 * 1000;
+
+            // Phân nhóm độ ưu tiên:
+            // Nhóm 0: Lớp Đang diễn ra (start <= now && end > now)
+            // Nhóm 1: Lớp Sắp diễn ra (start > now)
+            // Nhóm 2: Lớp Đã diễn ra trong quá khứ (end <= now)
+            const getPriority = (start, end) => {
+              if (start <= nowTime && end > nowTime) return 0; // Đang diễn ra
+              if (start > nowTime) return 1; // Sắp diễn ra
+              return 2; // Đã kết thúc
+            };
+
+            const priorityA = getPriority(aStart, aEnd);
+            const priorityB = getPriority(bStart, bEnd);
+
+            if (priorityA !== priorityB) {
+              return priorityA - priorityB;
+            }
+
+            // Nếu cùng nhóm "Đang diễn ra" hoặc cùng "Đã kết thúc", xếp theo start time tăng dần
+            if (priorityA === 0 || priorityA === 2) {
+              return aStart - bStart;
+            }
+
+            // Nếu cùng nhóm "Sắp diễn ra", xếp theo start time tăng dần (lớp nào sắp diễn ra sớm hơn/gần hiện tại nhất lên trước)
+            return aStart - bStart;
+          });
+        }
+
+        const pageSize = 6;
+        setTotalElements(enrichedItems.length);
+        setTotalPages(Math.ceil(enrichedItems.length / pageSize));
+
+        // Phân trang ở client-side trên toàn bộ danh sách lớp đã sắp xếp
+        const paginatedItems = enrichedItems.slice(page * pageSize, (page + 1) * pageSize);
+        setClasses(paginatedItems);
       } catch (error) { 
         console.error("Error loading classes:", error);
         setClasses([]);
@@ -383,7 +653,7 @@ export default function ClassManagementLayout() {
       }
     };
     loadClasses();
-  }, [page, activeFilter, searchQuery, activeSort]);
+  }, [page, size, activeFilter, searchQuery, activeSort, refreshTrigger]);
 
   const handleFilterChange = (filter) => {
     setActiveFilter(filter);
@@ -484,7 +754,12 @@ export default function ClassManagementLayout() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {classes.map((cls) => (
-                  <ClassCard key={cls.groupId} data={cls} />
+                  <ClassCard 
+                    key={cls.groupId} 
+                    data={cls} 
+                    onEdit={setEditingClass}
+                    onDelete={handleDeleteClass}
+                  />
                 ))}
               </div>
               
@@ -588,9 +863,247 @@ export default function ClassManagementLayout() {
           )}
         </div>
       </main>
+
+      {editingClass && (
+        <EditClassModal 
+          classData={editingClass} 
+          onClose={() => setEditingClass(null)} 
+          onSuccess={() => {
+            setEditingClass(null);
+            setRefreshTrigger(prev => prev + 1);
+          }}
+        />
+      )}
     </div>
   );
 }
+
+// ==================== EDIT CLASS MODAL COMPONENT ====================
+const EditClassModal = ({ classData, onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    courseCode: '',
+    classCode: '',
+    room: '',
+    campus: '',
+    startDate: '',
+    totalSessions: 15,
+    maxAllowedAbsences: 3,
+  });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const fetchDetail = async () => {
+      try {
+        const detail = await classApi.getClassDetail(classData.groupId);
+        setFormData({
+          name: detail.name || detail.groupName || '',
+          courseCode: detail.courseCode || '',
+          classCode: detail.classCode || '',
+          room: detail.room || '',
+          campus: detail.campus || '',
+          startDate: detail.startDate ? detail.startDate.split('T')[0] : '',
+          totalSessions: detail.totalSessions || 15,
+          maxAllowedAbsences: detail.maxAllowedAbsences || 3,
+        });
+      } catch (error) {
+        console.error("Lỗi khi tải chi tiết lớp học để sửa:", error);
+        toast.error("Không thể tải thông tin chi tiết lớp học.");
+        onClose();
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (classData?.groupId) {
+      fetchDetail();
+    }
+  }, [classData, onClose]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.name || !formData.courseCode) {
+      toast.error("Vui lòng nhập Tên lớp và Mã học phần!");
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      const payload = {
+        name: formData.name,
+        courseCode: formData.courseCode,
+        classCode: formData.classCode,
+        room: formData.room,
+        campus: formData.campus,
+        startDate: formData.startDate,
+        totalSessions: parseInt(formData.totalSessions),
+        maxAllowedAbsences: parseInt(formData.maxAllowedAbsences),
+      };
+      await classApi.updateGroup(classData.groupId, payload);
+      toast.success("Cập nhật thông tin lớp học thành công!");
+      onSuccess();
+    } catch (error) {
+      console.error("Lỗi khi cập nhật lớp:", error);
+      toast.error(error.message || "Không thể cập nhật lớp học.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl flex flex-col items-center">
+          <Loader2 className="animate-spin text-red-600 mb-2" size={32} />
+          <p className="text-sm font-medium text-gray-500 animate-pulse">Đang tải thông tin lớp học...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/45 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-250">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/70">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Sửa thông tin lớp học</h3>
+            <p className="text-[11px] text-gray-500 font-medium">Cập nhật thông tin chi tiết lớp học của bạn</p>
+          </div>
+          <button 
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-150 transition-all cursor-pointer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 flex-1 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Tên lớp học <span className="text-red-500">*</span></label>
+            <input 
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all placeholder:text-gray-400 font-medium"
+              placeholder="Ví dụ: Cấu trúc dữ liệu & Giải thuật"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Mã học phần <span className="text-red-500">*</span></label>
+              <input 
+                type="text"
+                required
+                value={formData.courseCode}
+                onChange={(e) => setFormData({ ...formData, courseCode: e.target.value })}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all placeholder:text-gray-400 font-bold text-gray-800"
+                placeholder="Ví dụ: INT1306"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Mã lớp / Group</label>
+              <input 
+                type="text"
+                value={formData.classCode}
+                onChange={(e) => setFormData({ ...formData, classCode: e.target.value })}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all placeholder:text-gray-400 font-bold text-gray-800"
+                placeholder="Ví dụ: D20CQCN01"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Phòng học</label>
+              <input 
+                type="text"
+                value={formData.room}
+                onChange={(e) => setFormData({ ...formData, room: e.target.value })}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all placeholder:text-gray-400 font-medium"
+                placeholder="Ví dụ: A2-302"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Cơ sở / Campus</label>
+              <input 
+                type="text"
+                value={formData.campus}
+                onChange={(e) => setFormData({ ...formData, campus: e.target.value })}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all placeholder:text-gray-400 font-medium"
+                placeholder="Ví dụ: Hà Đông"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Ngày bắt đầu học</label>
+            <input 
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+              className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all font-semibold text-gray-800"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Tổng số buổi</label>
+              <input 
+                type="number"
+                min="1"
+                max="60"
+                value={formData.totalSessions}
+                onChange={(e) => setFormData({ ...formData, totalSessions: e.target.value })}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all font-semibold"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Số buổi được vắng</label>
+              <input 
+                type="number"
+                min="0"
+                max="20"
+                value={formData.maxAllowedAbsences}
+                onChange={(e) => setFormData({ ...formData, maxAllowedAbsences: e.target.value })}
+                className="w-full px-3.5 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600 transition-all font-semibold"
+              />
+            </div>
+          </div>
+        </form>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-150 flex justify-end gap-3 bg-gray-50/70">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-250 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            Hủy bỏ
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="animate-spin" size={13} />
+                Đang lưu...
+              </>
+            ) : (
+              'Lưu thay đổi'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 

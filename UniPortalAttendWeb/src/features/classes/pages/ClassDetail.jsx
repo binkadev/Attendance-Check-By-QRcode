@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import Sidebar from '../../../components/layout/Sidebar';
 import { 
-  Bell, LayoutDashboard, Users, Clock, ShieldAlert, 
+  Bell, Users, Clock, 
   CalendarX, MapPin, Calendar, AlertTriangle, ChevronRight, 
   Loader2, QrCode, CalendarDays, BookOpen
 } from 'lucide-react';
@@ -45,7 +45,9 @@ export default function ClassDetail() {
 
   useEffect(() => {
     if (location.state?.activeTab) {
-      setActiveTab(location.state.activeTab);
+      Promise.resolve().then(() => {
+        setActiveTab(location.state.activeTab);
+      });
     }
   }, [location.state?.activeTab]);
 
@@ -69,6 +71,18 @@ export default function ClassDetail() {
   // States cho đồng hồ đếm ngược
   const [openSession, setOpenSession] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState('--:--');
+  const [nextSessionDate, setNextSessionDate] = useState('');
+
+  useEffect(() => {
+    console.log("Dynamic attendance count:", latestAttendance);
+  }, [latestAttendance]);
+
+  useEffect(() => {
+    const nextDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN');
+    Promise.resolve().then(() => {
+      setNextSessionDate(nextDate);
+    });
+  }, []);
 
   // GỌI API LẤY THÔNG TIN TỔNG QUAN LỚP HỌC
   useEffect(() => {
@@ -87,7 +101,7 @@ export default function ClassDetail() {
         const res = await classApi.getClassDetail(classId);
         setClassDetail(res);
       } catch (error) {
-        console.error("Lỗi lấy chi tiết lớp");
+        console.error("Lỗi lấy chi tiết lớp", error);
         toast.error("Không thể tải thông tin lớp học.");
       } finally {
         setIsLoadingDetail(false);
@@ -143,6 +157,7 @@ export default function ClassDetail() {
             });
             setLatestAttendance(validCount);
           } catch (e) {
+            console.error("Lỗi lấy sự kiện điểm danh:", e);
             setLatestAttendance(latestSession.checkIns || latestSession.checkinCount || 0);
           }
         }
@@ -177,11 +192,12 @@ export default function ClassDetail() {
               });
               setLatestAttendance(validCount);
             } catch (e) {
+              console.error("Lỗi lấy sự kiện điểm danh polling:", e);
               setLatestAttendance(latestSession.checkIns || latestSession.checkinCount || 0);
             }
           }
         } catch (error) {
-          // Bỏ qua lỗi polling ngầm
+          console.warn("Lỗi polling stats:", error);
         }
       }, 5000);
 
@@ -192,7 +208,9 @@ export default function ClassDetail() {
   // LẤY OPEN SESSION - CHẠY LUÔN, KHÔNG PHỤ THUỘC VÀO TAB
   useEffect(() => {
     if (!classId || classId.startsWith('mock-')) {
-      setTimeRemaining('--:--');
+      Promise.resolve().then(() => {
+        setTimeRemaining(prev => prev === '--:--' ? prev : '--:--');
+      });
       return;
     }
 
@@ -201,7 +219,7 @@ export default function ClassDetail() {
         const session = await classApi.getOpenSession(classId);
         setOpenSession(session);
       } catch (error) {
-        // getOpenSession đã xử lý im lặng, không cần làm gì
+        console.warn("Lỗi getOpenSession:", error);
       }
     };
 
@@ -214,7 +232,9 @@ export default function ClassDetail() {
   // ĐỒNG HỒ ĐẾM NGƯỢC - CHẠY LUÔN DỰA TRÊN openSession
   useEffect(() => {
     if (!openSession?.checkinCloseAt) {
-      setTimeRemaining('--:--');
+      Promise.resolve().then(() => {
+        setTimeRemaining(prev => prev === '--:--' ? prev : '--:--');
+      });
       return;
     }
 
@@ -370,14 +390,31 @@ export default function ClassDetail() {
                            : classDetail?.schedule || 'THỨ HAI 17:00-22:30'}
                        </span>
                      </span>
+                     {classDetail?.startDate && (
+                       <>
+                         <span className="hidden sm:block w-px h-3.5 bg-gray-300"></span>
+                         <span className="flex items-center gap-1.5">
+                           <Calendar size={15} className="text-teal-500"/>
+                           <span className="font-bold text-gray-800">
+                             Dự kiến: {(() => {
+                               const start = new Date(classDetail.startDate);
+                               const total = classDetail.totalSessions || 15;
+                               const end = new Date(start.getTime() + (total - 1) * 7 * 24 * 60 * 60 * 1000);
+                               const f = (d) => d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                               return `${f(start)} - ${f(end)}`;
+                             })()}
+                           </span>
+                         </span>
+                       </>
+                     )}
                      <span className="hidden sm:block w-px h-3.5 bg-gray-300"></span>
 
-                     <span className="flex items-center gap-1.5">
-                       <CalendarDays size={15} className="text-emerald-500"/>
-                       <span className="font-bold text-gray-800">
-                         Tiếp theo: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}
-                       </span>
-                     </span>
+                      <span className="flex items-center gap-1.5">
+                        <CalendarDays size={15} className="text-emerald-500"/>
+                        <span className="font-bold text-gray-800">
+                          Tiếp theo: {nextSessionDate || '---'}
+                        </span>
+                      </span>
                    </div>
                  </div>
                </div>
@@ -445,14 +482,31 @@ export default function ClassDetail() {
                               : classDetail?.schedule || 'THỨ HAI 17:00-22:30'}
                           </span>
                         </span>
+                        {classDetail?.startDate && (
+                          <>
+                            <span className="hidden sm:block w-px h-3.5 bg-gray-300"></span>
+                            <span className="flex items-center gap-1.5">
+                              <Calendar size={15} className="text-teal-500"/>
+                              <span className="font-bold text-gray-800">
+                                Dự kiến: {(() => {
+                                  const start = new Date(classDetail.startDate);
+                                  const total = classDetail.totalSessions || 15;
+                                  const end = new Date(start.getTime() + (total - 1) * 7 * 24 * 60 * 60 * 1000);
+                                  const f = (d) => d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                  return `${f(start)} - ${f(end)}`;
+                                })()}
+                              </span>
+                            </span>
+                          </>
+                        )}
                         <span className="hidden sm:block w-px h-3.5 bg-gray-300"></span>
 
-                        <span className="flex items-center gap-1.5">
-                          <CalendarDays size={15} className="text-emerald-500"/>
-                          <span className="font-bold text-gray-800">
-                            Tiếp theo: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN')}
-                          </span>
-                        </span>
+                         <span className="flex items-center gap-1.5">
+                           <CalendarDays size={15} className="text-emerald-500"/>
+                           <span className="font-bold text-gray-800">
+                             Tiếp theo: {nextSessionDate || '---'}
+                           </span>
+                         </span>
                       </div>
                     </div>
                   </div>

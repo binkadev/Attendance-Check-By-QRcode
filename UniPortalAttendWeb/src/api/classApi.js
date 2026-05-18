@@ -183,6 +183,40 @@ export const classApi = {
     }
   },
 
+  /**
+   * Cập nhật lớp học (chỉ giảng viên)
+   */
+  updateGroup: async (groupId, payload) => {
+    try {
+      const response = await fetch(`${BASE_URL_GROUPS}/${groupId}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Update group error:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Xóa lớp học (chỉ giảng viên)
+   */
+  deleteGroup: async (groupId) => {
+    try {
+      const response = await fetch(`${BASE_URL_GROUPS}/${groupId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (response.status === 204) return true;
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Delete group error:", error);
+      throw error;
+    }
+  },
+
   // ==================== API QUẢN LÝ PHIÊN ĐIỂM DANH ====================
   
   /**
