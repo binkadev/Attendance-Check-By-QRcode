@@ -1,304 +1,494 @@
-import React, { useState } from 'react';
-import { 
-  Search, ChevronDown, Calendar, Users as UsersIcon, 
-  AlertCircle, X, UploadCloud, QrCode, UserSquare2 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Search, ChevronDown, Users as UsersIcon, AlertCircle, X,
+  QrCode, UserSquare2, Loader2, CheckCircle, Clock, XCircle, RefreshCw
 } from 'lucide-react';
-
 import Sidebar from '../../../components/layout/Sidebar';
+import { classApi } from '../../../api/classApi';
+import toast from 'react-hot-toast';
 
-// --- DỮ LIỆU MẪU ---
-const MOCK_ATTENDANCE_LOGS = [
-  {
-    id: 'rec-1',
-    student: { name: 'Nguyễn Văn Mạnh', id: 'STU-1102', avatar: 'https://i.pravatar.cc/150?img=33' },
-    session: { classCode: 'CS204: Cấu trúc dữ liệu', date: '24 Th10, 2023 • 10:00 SA' },
-    status: 'Có mặt',
-    method: 'QR Động',
-    isFlagged: true,
-    history: [
-      { time: '24 Th10, 2023 lúc 10:05 SA', action: 'Cảnh báo hệ thống: Sai lệch vị trí', type: 'flag' },
-      { time: '24 Th10, 2023 lúc 10:00 SA', action: 'Quét mã lần đầu (QR Động)', type: 'info' }
-    ]
-  },
-  {
-    id: 'rec-2',
-    student: { name: 'Lê Thị Hồng', id: 'STU-4491', avatar: 'https://i.pravatar.cc/150?img=47' },
-    session: { classCode: 'CS204: Cấu trúc dữ liệu', date: '24 Th10, 2023 • 10:00 SA' },
-    status: 'Có mặt',
-    method: 'QR Động',
-    isFlagged: false,
-  },
-  {
-    id: 'rec-3',
-    student: { name: 'Trần Đăng Khoa', id: 'STU-7721', avatar: 'https://i.pravatar.cc/150?img=12' },
-    session: { classCode: 'CS301: Thuật toán', date: '23 Th10, 2023 • 14:00 CH' },
-    status: 'Vắng mặt',
-    method: 'Hệ thống ghi nhận',
-    isFlagged: false,
-  },
-  {
-    id: 'rec-4',
-    student: { name: 'Phạm Minh Anh', id: 'STU-3382', avatar: 'https://i.pravatar.cc/150?img=5' },
-    session: { classCode: 'SE101: Kỹ thuật phần mềm', date: '22 Th10, 2023 • 09:00 SA' },
-    status: 'Có phép',
-    method: 'Chỉnh sửa thủ công',
-    isFlagged: false,
-  }
-];
+// --- Helpers ---
+const STATUS_MAP = {
+  PRESENT:  { label: 'Có mặt',   cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  LATE:     { label: 'Muộn',     cls: 'bg-amber-100  text-amber-700  border-amber-200'  },
+  ABSENT:   { label: 'Vắng mặt', cls: 'bg-red-100    text-red-700    border-red-200'    },
+  EXCUSED:  { label: 'Có phép',  cls: 'bg-blue-100   text-blue-700   border-blue-200'   },
+};
+const STATUS_OPTIONS = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'];
+const STATUS_LABELS  = { PRESENT: 'Có mặt', LATE: 'Muộn', ABSENT: 'Vắng mặt', EXCUSED: 'Có phép' };
+
+const fmtDate = (iso) => iso
+  ? new Date(iso).toLocaleString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })
+  : '--';
+
+const avatarUrl = (seed) => `https://i.pravatar.cc/80?u=${seed}`;
 
 export default function HistoryAndManualEdit() {
-  const [selectedRecord, setSelectedRecord] = useState(MOCK_ATTENDANCE_LOGS[0]);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar_collapsed') === 'true';
-  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => localStorage.getItem('sidebar_collapsed') === 'true'
+  );
 
-  const handleRowClick = (record) => {
-    setSelectedRecord(record);
-    setIsPanelOpen(true);
+  // --- DATA STATES ---
+  const [classes,  setClasses]  = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [records,  setRecords]  = useState([]); // flat attendance records
+
+  const [isLoadingClasses,  setIsLoadingClasses]  = useState(true);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [isLoadingRecords,  setIsLoadingRecords]  = useState(false);
+
+  // --- FILTER STATES ---
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+
+  // --- PANEL STATES ---
+  const [panelRecord,  setPanelRecord]  = useState(null);
+  const [editStatus,   setEditStatus]   = useState('');
+  const [editNote,     setEditNote]     = useState('');
+  const [isSaving,     setIsSaving]     = useState(false);
+
+  // --- PAGINATION ---
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  // 1. Load danh sách lớp
+  useEffect(() => {
+    const load = async () => {
+      setIsLoadingClasses(true);
+      try {
+        const res = await classApi.getTeachingClasses();
+        const items = res.items || [];
+        setClasses(items);
+        if (items.length > 0) setSelectedClassId(items[0].groupId || items[0].id);
+      } catch (e) {
+        toast.error('Không tải được danh sách lớp');
+      } finally {
+        setIsLoadingClasses(false);
+      }
+    };
+    load();
+  }, []);
+
+  // 2. Load phiên khi chọn lớp
+  useEffect(() => {
+    if (!selectedClassId) return;
+    const load = async () => {
+      setIsLoadingSessions(true);
+      setSessions([]);
+      setSelectedSessionId('');
+      setRecords([]);
+      try {
+        const res = await classApi.getGroupSessions(selectedClassId);
+        const items = (res.items || []).sort(
+          (a, b) => new Date(b.checkinOpenAt || b.createdAt) - new Date(a.checkinOpenAt || a.createdAt)
+        );
+        setSessions(items);
+        if (items.length > 0) setSelectedSessionId(items[0].id);
+      } catch (e) {
+        toast.error('Không tải được danh sách phiên');
+      } finally {
+        setIsLoadingSessions(false);
+      }
+    };
+    load();
+  }, [selectedClassId]);
+
+  // 3. Load attendance events khi chọn phiên
+  const loadRecords = useCallback(async () => {
+    if (!selectedSessionId || !selectedClassId) return;
+    setIsLoadingRecords(true);
+    try {
+      const [eventsRes, membersRes] = await Promise.all([
+        classApi.getAttendanceEvents(selectedSessionId, 200),
+        classApi.getClassMembers(selectedClassId),
+      ]);
+      const events  = Array.isArray(eventsRes)  ? eventsRes  : (eventsRes.items  || []);
+      const members = Array.isArray(membersRes) ? membersRes : (membersRes.items || []);
+      const students = members.filter(m => m.role !== 'LECTURER' && m.role !== 'OWNER');
+
+      // Latest status per user from events
+      const statusMap = new Map();
+      const methodMap = new Map();
+      [...events]
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        .forEach(e => {
+          statusMap.set(String(e.userId), e.newStatus);
+          methodMap.set(String(e.userId), e.method || e.source || 'QR');
+        });
+
+      const session = sessions.find(s => s.id === selectedSessionId);
+      const cls     = classes.find(c => (c.groupId || c.id) === selectedClassId);
+
+      const flat = students.map(m => {
+        const uid    = String(m.userId || m.id);
+        const status = statusMap.get(uid) || 'ABSENT';
+        const method = methodMap.get(uid) || (status === 'ABSENT' ? 'Hệ thống' : 'QR Động');
+        return {
+          uid,
+          studentName: m.fullName || m.name || 'Không rõ',
+          studentCode: m.studentCode || m.code || uid.slice(0, 8).toUpperCase(),
+          status,
+          method,
+          sessionId: selectedSessionId,
+          sessionTitle: session?.title || `Phiên ${fmtDate(session?.checkinOpenAt)}`,
+          sessionDate:  fmtDate(session?.checkinOpenAt),
+          className:    cls?.groupName || '',
+          courseCode:   cls?.courseCode || '',
+        };
+      });
+      setRecords(flat);
+      setPage(1);
+    } catch (e) {
+      toast.error('Không tải được dữ liệu điểm danh');
+    } finally {
+      setIsLoadingRecords(false);
+    }
+  }, [selectedSessionId, selectedClassId, sessions, classes]);
+
+  useEffect(() => { loadRecords(); }, [loadRecords]);
+
+  // --- FILTER + PAGINATION ---
+  const filtered = records.filter(r => {
+    const q = searchQuery.toLowerCase();
+    const matchQ = !q || r.studentName.toLowerCase().includes(q) || r.studentCode.toLowerCase().includes(q);
+    const matchS = !statusFilter || r.status === statusFilter;
+    return matchQ && matchS;
+  });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRecords = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // --- STATS ---
+  const totalCount    = records.length;
+  const absentCount   = records.filter(r => r.status === 'ABSENT').length;
+  const presentCount  = records.filter(r => r.status === 'PRESENT' || r.status === 'LATE').length;
+
+  // --- OPEN PANEL ---
+  const openPanel = (r) => {
+    setPanelRecord(r);
+    setEditStatus(r.status);
+    setEditNote('');
+  };
+
+  // --- SAVE ---
+  const handleSave = async () => {
+    if (!panelRecord) return;
+    setIsSaving(true);
+    try {
+      await classApi.submitAttendance(panelRecord.sessionId, panelRecord.uid, {
+        status: editStatus,
+        note: editNote || `Chỉnh sửa thủ công: ${STATUS_LABELS[editStatus]}`,
+        method: 'MANUAL',
+      });
+      toast.success('Đã cập nhật điểm danh!');
+      setRecords(prev => prev.map(r =>
+        r.uid === panelRecord.uid && r.sessionId === panelRecord.sessionId
+          ? { ...r, status: editStatus, method: 'Thủ công' }
+          : r
+      ));
+      setPanelRecord(null);
+    } catch (e) {
+      toast.error(e.message || 'Lưu thất bại');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="flex min-h-screen bg-gray-50 font-sans text-gray-800">
-      
       <Sidebar onCollapseChange={setIsSidebarCollapsed} />
 
       <div className={`flex-1 flex h-screen overflow-hidden transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'ml-[80px]' : 'ml-64'}`}>
-        
         <main className="flex-1 flex flex-col h-full overflow-y-auto relative">
-          <header className="px-8 py-6 bg-white border-b border-gray-200 sticky top-0 z-10">
-            <h2 className="text-2xl font-bold text-gray-900">Lịch sử điểm danh & Chỉnh sửa</h2>
+
+          {/* HEADER */}
+          <header className="px-8 py-6 bg-white border-b border-gray-200 sticky top-0 z-10 flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Lịch sử điểm danh &amp; Chỉnh sửa</h2>
+              <p className="text-sm text-gray-500 mt-0.5">Xem và chỉnh sửa thủ công bản ghi điểm danh</p>
+            </div>
+            <button onClick={loadRecords} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+              <RefreshCw size={15} /> Làm mới
+            </button>
           </header>
 
           <div className="p-8 w-full flex-1">
-            {/* Bộ lọc */}
-            <div className="flex items-center gap-4 mb-8">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Tìm sinh viên hoặc MSSV..." 
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm bg-white"
+
+            {/* FILTERS */}
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[200px] max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+                  placeholder="Tìm tên, MSSV..."
+                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
                 />
               </div>
-              <div className="relative w-48">
-                <select className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-lg appearance-none text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
-                  <option>Tất cả lớp học</option>
-                  <option>CS204</option>
-                  <option>CS301</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-              </div>
-              <div className="relative w-64">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="text" 
-                  value="01 Th10 - 31 Th10, 2023" 
-                  readOnly
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm cursor-pointer bg-white"
-                />
-              </div>
-            </div>
 
-            {/* Thẻ thống kê */}
-            <div className="grid grid-cols-2 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                  <p className="text-gray-500 font-medium">Tổng số bản ghi</p>
-                  <UsersIcon className="text-gray-400" size={20} />
-                </div>
-                <div className="mt-4">
-                  <h3 className="text-4xl font-bold text-gray-900">4,821</h3>
-                  <p className="text-sm text-gray-500 mt-1">Trong khoảng thời gian đã chọn</p>
-                </div>
-              </div>
-
-              <div className="bg-red-50 p-6 rounded-2xl border border-red-100 shadow-sm flex flex-col justify-between relative overflow-hidden">
-                <div className="flex justify-between items-start">
-                  <p className="text-red-800 font-bold">Trường hợp nghi vấn</p>
-                  <AlertCircle className="text-red-500" size={20} />
-                </div>
-                <div className="mt-4 flex items-baseline gap-3">
-                  <h3 className="text-4xl font-bold text-red-600">14</h3>
-                  <span className="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">+2 tuần này</span>
-                </div>
-                <p className="text-sm text-red-700 mt-1">Cần xem xét thủ công</p>
-              </div>
-            </div>
-
-            {/* Bảng điểm danh */}
-            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-200 bg-white">
-                <h3 className="font-bold text-lg text-gray-900">Nhật ký điểm danh</h3>
-              </div>
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50/80 text-gray-500 font-bold uppercase text-xs">
-                  <tr>
-                    <th className="px-6 py-4 border-b border-gray-100">SINH VIÊN</th>
-                    <th className="px-6 py-4 border-b border-gray-100">PHIÊN HỌC</th>
-                    <th className="px-6 py-4 border-b border-gray-100">TRẠNG THÁI & PHƯƠNG THỨC</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {MOCK_ATTENDANCE_LOGS.map((record) => (
-                    <tr 
-                      key={record.id} 
-                      onClick={() => handleRowClick(record)}
-                      className={`cursor-pointer transition ${record.isFlagged ? 'bg-red-50/40 hover:bg-red-50' : 'hover:bg-gray-50'} ${selectedRecord?.id === record.id && isPanelOpen ? 'bg-gray-50 ring-1 ring-inset ring-gray-200' : ''}`}
+              {/* Class select */}
+              <div className="relative min-w-[180px]">
+                {isLoadingClasses ? (
+                  <div className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-gray-400">
+                    <Loader2 size={14} className="animate-spin" /> Đang tải...
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedClassId}
+                      onChange={e => setSelectedClassId(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-lg appearance-none text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
                     >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <img src={record.student.avatar} alt={record.student.name} className="w-10 h-10 rounded-full" />
-                          <div>
-                            <p className="font-bold text-gray-900">{record.student.name}</p>
-                            <p className="text-xs text-gray-500">{record.student.id}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-gray-900">{record.session.classCode}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{record.session.date}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col items-start gap-1">
-                          <span className={`px-2.5 py-1 text-xs font-bold rounded-md border ${
-                            record.status === 'Có mặt' ? 'bg-gray-100 text-gray-700 border-gray-200' :
-                            record.status === 'Vắng mặt' ? 'bg-red-100 text-red-700 border-red-200' :
-                            'bg-blue-100 text-blue-700 border-blue-200'
-                          }`}>
-                            {record.status}
-                          </span>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1 font-medium">
-                            {record.method.includes('QR') ? <QrCode size={12} /> : <UserSquare2 size={12} />}
-                            {record.method}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              
-              {/* Phân trang */}
-              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
-                <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-500 disabled:opacity-50" disabled>Trước</button>
-                <div className="flex items-center gap-1">
-                  <button className="w-8 h-8 rounded-lg bg-red-50 text-red-600 font-bold">1</button>
-                  <button className="w-8 h-8 rounded-lg text-gray-600 hover:bg-gray-100 font-bold">2</button>
-                  <button className="w-8 h-8 rounded-lg text-gray-600 hover:bg-gray-100 font-bold">3</button>
-                  <span className="px-2 text-gray-400">...</span>
-                </div>
-                <button className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-600 hover:bg-white shadow-sm">Sau</button>
+                      {classes.map(c => (
+                        <option key={c.groupId || c.id} value={c.groupId || c.id}>
+                          {c.courseCode ? `${c.courseCode} – ${c.groupName}` : c.groupName}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                  </>
+                )}
               </div>
+
+              {/* Session select */}
+              <div className="relative min-w-[220px]">
+                {isLoadingSessions ? (
+                  <div className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-gray-400">
+                    <Loader2 size={14} className="animate-spin" /> Đang tải phiên...
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedSessionId}
+                      onChange={e => setSelectedSessionId(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-lg appearance-none text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                    >
+                      {sessions.length === 0 && <option value="">Không có phiên nào</option>}
+                      {sessions.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.title || fmtDate(s.checkinOpenAt)}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                  </>
+                )}
+              </div>
+
+              {/* Status filter */}
+              <div className="relative min-w-[140px]">
+                <select
+                  value={statusFilter}
+                  onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+                  className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-lg appearance-none text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+              </div>
+            </div>
+
+            {/* STATS */}
+            <div className="grid grid-cols-3 gap-5 mb-6">
+              <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
+                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center"><UsersIcon size={18} className="text-gray-600" /></div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-0.5">Tổng sinh viên</p>
+                  <h3 className="text-2xl font-bold text-gray-900">{isLoadingRecords ? '...' : totalCount}</h3>
+                </div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
+                <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center"><CheckCircle size={18} className="text-emerald-600" /></div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-0.5">Đã điểm danh</p>
+                  <h3 className="text-2xl font-bold text-emerald-600">{isLoadingRecords ? '...' : presentCount}</h3>
+                </div>
+              </div>
+              <div className="bg-red-50 p-5 rounded-2xl border border-red-100 shadow-sm flex items-center gap-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center"><XCircle size={18} className="text-red-600" /></div>
+                <div>
+                  <p className="text-xs font-semibold text-red-700 mb-0.5">Vắng mặt</p>
+                  <h3 className="text-2xl font-bold text-red-600">{isLoadingRecords ? '...' : absentCount}</h3>
+                </div>
+              </div>
+            </div>
+
+            {/* TABLE */}
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="font-bold text-gray-900">Nhật ký điểm danh</h3>
+                <span className="text-xs text-gray-500">{filtered.length} bản ghi</span>
+              </div>
+
+              {isLoadingRecords ? (
+                <div className="flex justify-center items-center h-40">
+                  <Loader2 className="animate-spin text-red-600" size={28} />
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-16 text-gray-400">
+                  <UsersIcon size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Không có dữ liệu điểm danh</p>
+                </div>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
+                    <tr>
+                      <th className="px-6 py-4 border-b border-gray-100">SINH VIÊN</th>
+                      <th className="px-6 py-4 border-b border-gray-100">PHIÊN HỌC</th>
+                      <th className="px-6 py-4 border-b border-gray-100">TRẠNG THÁI</th>
+                      <th className="px-6 py-4 border-b border-gray-100">PHƯƠNG THỨC</th>
+                      <th className="px-6 py-4 border-b border-gray-100"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {pageRecords.map((r, idx) => (
+                      <tr
+                        key={`${r.uid}-${idx}`}
+                        className={`transition ${r.status === 'ABSENT' ? 'bg-red-50/30 hover:bg-red-50' : 'hover:bg-gray-50'} ${panelRecord?.uid === r.uid ? 'ring-1 ring-inset ring-red-200' : ''}`}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <img src={avatarUrl(r.uid)} alt={r.studentName} className="w-9 h-9 rounded-full bg-gray-100 object-cover" />
+                            <div>
+                              <p className="font-bold text-gray-900">{r.studentName}</p>
+                              <p className="text-xs text-gray-400">{r.studentCode}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-gray-800 text-sm">{r.courseCode} {r.courseCode && '–'} {r.className}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{r.sessionDate}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 text-xs font-bold rounded-md border ${STATUS_MAP[r.status]?.cls || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                            {STATUS_MAP[r.status]?.label || r.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                            {r.method.includes('QR') ? <QrCode size={12} /> : <UserSquare2 size={12} />}
+                            {r.method}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => openPanel(r)}
+                            className="px-3 py-1.5 text-xs font-bold border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                          >
+                            Chỉnh sửa
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {/* PAGINATION */}
+              {totalPages > 1 && (
+                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50/50">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-500 disabled:opacity-40 hover:bg-white transition-colors">
+                    Trước
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(p => (
+                      <button key={p} onClick={() => setPage(p)}
+                        className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors ${p === page ? 'bg-red-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                        {p}
+                      </button>
+                    ))}
+                    {totalPages > 5 && <span className="px-2 text-gray-400">...</span>}
+                  </div>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-600 disabled:opacity-40 hover:bg-white transition-colors">
+                    Sau
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </main>
 
-        {/* BẢNG ĐIỀU KHIỂN BÊN PHẢI (Chỉnh sửa thủ công) */}
-        {isPanelOpen && selectedRecord && (
-          <aside className="w-[420px] bg-white border-l border-gray-200 shadow-2xl flex flex-col h-full shrink-0 sticky top-0">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gray-50/50">
+        {/* SIDE PANEL */}
+        {panelRecord && (
+          <aside className="w-[400px] bg-white border-l border-gray-200 shadow-2xl flex flex-col h-full shrink-0 sticky top-0">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 bg-gray-50">
               <h3 className="font-bold text-lg text-gray-900">Chỉnh sửa thủ công</h3>
-              <button onClick={() => setIsPanelOpen(false)} className="text-gray-400 hover:text-gray-900 bg-white p-1 rounded-md shadow-sm border border-gray-200 transition-colors">
-                <X size={18} />
+              <button onClick={() => setPanelRecord(null)} className="p-1.5 rounded-md border border-gray-200 text-gray-400 hover:text-gray-900 hover:bg-white transition-colors">
+                <X size={16} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              
-              {/* Thẻ thông tin sinh viên */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Student info */}
               <div className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                <div className="relative">
-                  <img src={selectedRecord.student.avatar} alt="Student" className="w-12 h-12 rounded-full ring-2 ring-white" />
-                  {selectedRecord.isFlagged && (
-                    <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-red-500 border-2 border-white rounded-full"></span>
-                  )}
-                </div>
+                <img src={avatarUrl(panelRecord.uid)} alt={panelRecord.studentName} className="w-12 h-12 rounded-full object-cover" />
                 <div>
-                  <h4 className="font-bold text-gray-900">{selectedRecord.student.name}</h4>
-                  <p className="text-xs font-medium text-gray-500">{selectedRecord.student.id} • {selectedRecord.session.classCode.split(':')[0]}</p>
+                  <h4 className="font-bold text-gray-900">{panelRecord.studentName}</h4>
+                  <p className="text-xs text-gray-500">{panelRecord.studentCode} • {panelRecord.courseCode}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{panelRecord.sessionDate}</p>
                 </div>
               </div>
 
-              {/* Tùy chọn cập nhật trạng thái */}
+              {/* Status picker */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Cập nhật trạng thái</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {['Có mặt', 'Muộn', 'Vắng mặt', 'Có phép'].map((statusOption) => (
-                    <label key={statusOption} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border-2 transition-all ${
-                      selectedRecord.status === statusOption 
-                        ? 'border-red-500 bg-red-50/50' 
-                        : 'border-transparent bg-gray-50 hover:bg-gray-100'
-                    }`}>
-                      <input 
-                        type="radio" 
-                        name="status" 
-                        defaultChecked={selectedRecord.status === statusOption} 
-                        className="accent-red-600 w-4 h-4" 
-                      />
-                      <span className={`font-bold text-sm ${selectedRecord.status === statusOption ? 'text-gray-900' : 'text-gray-600'}`}>
-                        {statusOption}
-                      </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {STATUS_OPTIONS.map(s => (
+                    <label key={s} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border-2 transition-all ${editStatus === s ? 'border-red-500 bg-red-50' : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}>
+                      <input type="radio" name="editStatus" value={s} checked={editStatus === s} onChange={() => setEditStatus(s)} className="accent-red-600 w-4 h-4" />
+                      <span className={`font-bold text-sm ${editStatus === s ? 'text-gray-900' : 'text-gray-600'}`}>{STATUS_LABELS[s]}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
-              {/* Lý do chỉnh sửa */}
+              {/* Note */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Lý do chỉnh sửa (Nhật ký hệ thống)</label>
-                <textarea 
-                  rows="3" 
-                  placeholder="Giải thích lý do thay đổi bản ghi này..."
-                  className="w-full p-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none bg-white shadow-sm"
-                ></textarea>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ghi chú (Nhật ký hệ thống)</label>
+                <textarea
+                  rows="3"
+                  value={editNote}
+                  onChange={e => setEditNote(e.target.value)}
+                  placeholder="Lý do chỉnh sửa..."
+                  className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none bg-white"
+                />
               </div>
 
-              {/* Khu vực tải lên */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Đính kèm minh chứng (Không bắt buộc)</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 hover:border-gray-400 transition-colors">
-                  <UploadCloud className="text-gray-400 mb-2" size={28} />
-                  <p className="text-sm font-bold text-gray-700">Nhấn để tải lên hoặc kéo thả tệp</p>
-                  <p className="text-xs text-gray-500 mt-1">PDF, JPG, PNG (tối đa 5MB)</p>
+              {/* Current status */}
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Trạng thái hiện tại</p>
+                <div className="flex items-center gap-3">
+                  <span className={`px-3 py-1 text-xs font-bold rounded-md border ${STATUS_MAP[panelRecord.status]?.cls}`}>
+                    {STATUS_MAP[panelRecord.status]?.label}
+                  </span>
+                  <span className="text-xs text-gray-400">→</span>
+                  <span className={`px-3 py-1 text-xs font-bold rounded-md border ${STATUS_MAP[editStatus]?.cls}`}>
+                    {STATUS_MAP[editStatus]?.label}
+                  </span>
                 </div>
               </div>
-
-              {/* Lịch sử thay đổi */}
-              {selectedRecord.history && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Lịch sử thay đổi</label>
-                  <div className="relative pl-4 space-y-5 before:absolute before:inset-y-0 before:left-[7px] before:w-0.5 before:bg-gray-200">
-                    {selectedRecord.history.map((log, index) => (
-                      <div key={index} className="relative">
-                        <div className={`absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full ring-4 ring-white ${log.type === 'flag' ? 'bg-red-500' : 'bg-gray-300'}`}></div>
-                        <p className={`text-sm font-bold ${log.type === 'flag' ? 'text-gray-900' : 'text-gray-600'}`}>{log.action}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{log.time}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
             </div>
 
-            {/* Các nút cuối trang */}
-            <div className="p-6 border-t border-gray-200 bg-white flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-              <button 
-                onClick={() => setIsPanelOpen(false)}
-                className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
-              >
+            <div className="p-6 border-t border-gray-200 bg-white flex justify-end gap-3">
+              <button onClick={() => setPanelRecord(null)}
+                className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
                 Hủy
               </button>
-              <button className="px-5 py-2.5 text-sm font-bold text-white bg-[#b91c1c] rounded-xl hover:bg-red-800 shadow-sm transition-colors">
+              <button onClick={handleSave} disabled={isSaving || editStatus === panelRecord.status}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-red-700 rounded-xl hover:bg-red-800 shadow-sm transition-colors disabled:opacity-50 flex items-center gap-2">
+                {isSaving && <Loader2 size={14} className="animate-spin" />}
                 Xác nhận thay đổi
               </button>
             </div>
           </aside>
         )}
       </div>
-
     </div>
   );
 }

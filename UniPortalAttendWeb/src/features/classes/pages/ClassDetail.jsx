@@ -189,56 +189,52 @@ export default function ClassDetail() {
     }
   }, [classId]);
 
-  // LẤY OPEN SESSION VÀ CẬP NHẬT ĐỒNG HỒ ĐẾM NGƯỢC
+  // LẤY OPEN SESSION - CHẠY LUÔN, KHÔNG PHỤ THUỘC VÀO TAB
   useEffect(() => {
-    let timer;
-    if (activeTab === 'dynamic-qr' && classId) {
-      const fetchSessionAndStartTimer = async () => {
-        try {
-          // Bỏ qua nếu là mock data
-          if (classId.startsWith('mock-')) {
-             setTimeRemaining('--:--');
-             return;
-          }
-
-          const session = await classApi.getOpenSession(classId);
-          setOpenSession(session);
-          
-          if (session && session.checkinCloseAt) {
-            const closeTime = new Date(session.checkinCloseAt).getTime();
-            
-            const updateTimer = () => {
-              const now = new Date().getTime();
-              const distance = closeTime - now;
-              
-              if (distance <= 0) {
-                setTimeRemaining('00:00');
-                clearInterval(timer);
-                return;
-              }
-              
-              const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-              const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-              setTimeRemaining(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-            };
-            
-            updateTimer();
-            timer = setInterval(updateTimer, 1000);
-          } else {
-             setTimeRemaining('--:--');
-          }
-        } catch (error) {
-          console.error("Lỗi lấy phiên đang mở:", error);
-          setTimeRemaining('--:--');
-        }
-      };
-      fetchSessionAndStartTimer();
+    if (!classId || classId.startsWith('mock-')) {
+      setTimeRemaining('--:--');
+      return;
     }
-    
-    return () => {
-      if (timer) clearInterval(timer);
+
+    const fetchSession = async () => {
+      try {
+        const session = await classApi.getOpenSession(classId);
+        setOpenSession(session);
+      } catch (error) {
+        // getOpenSession đã xử lý im lặng, không cần làm gì
+      }
     };
-  }, [activeTab, classId]);
+
+    // Fetch ngay lập tức và poll mỗi 15s để bắt phiên mới mở
+    fetchSession();
+    const pollSession = setInterval(fetchSession, 15000);
+    return () => clearInterval(pollSession);
+  }, [classId]);
+
+  // ĐỒNG HỒ ĐẾM NGƯỢC - CHẠY LUÔN DỰA TRÊN openSession
+  useEffect(() => {
+    if (!openSession?.checkinCloseAt) {
+      setTimeRemaining('--:--');
+      return;
+    }
+
+    const closeTime = new Date(openSession.checkinCloseAt).getTime();
+
+    const updateTimer = () => {
+      const distance = closeTime - Date.now();
+      if (distance <= 0) {
+        setTimeRemaining('00:00');
+        return;
+      }
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      setTimeRemaining(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+    };
+
+    updateTimer(); // Cập nhật ngay
+    const timer = setInterval(updateTimer, 1000);
+    return () => clearInterval(timer);
+  }, [openSession]);
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans">

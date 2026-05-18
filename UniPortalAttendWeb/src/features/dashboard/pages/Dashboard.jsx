@@ -150,6 +150,11 @@ export default function Dashboard() {
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [dashboardStats, setDashboardStats] = useState({ fraudCount: 0, absenceCount: 0 });
 
+  // KPI states
+  const [attendanceRate, setAttendanceRate] = useState(null);
+  const [activeClassCount, setActiveClassCount] = useState(0);
+  const [topFraudClassId, setTopFraudClassId] = useState(null);
+
   // Thêm state trigger để ép component re-render mỗi phút cập nhật trạng thái "Now"
   const [timeTrigger, setTimeTrigger] = useState(0);
 
@@ -201,14 +206,41 @@ export default function Dashboard() {
         let allAlerts = [];
         let fraudCount = 0;
         let absenceCount = 0;
+        let activeCount = 0; // Đếm lớp có phiên điểm danh đang mở
+        // Theo dõi class có nhiều sự cố gian lận nhất để điều hướng "Xem chi tiết"
+        const fraudCountPerClass = {};
+
+        // Tính tỷ lệ điểm danh hôm nay từ summary các lớp
+        let totalPresent = 0;
+        let totalExpected = 0;
 
         await Promise.all(classes.map(async (cls) => {
           try {
             const classId = cls.groupId || cls.id;
-            const [fraudRes, absenceRes] = await Promise.all([
+            const [fraudRes, absenceRes, summaryRes, openSession] = await Promise.all([
               classApi.getFraudIncidents(classId).catch(() => null),
-              classApi.getAbsenceRequests(classId).catch(() => null)
+              classApi.getAbsenceRequests(classId).catch(() => null),
+              classApi.getAttendanceSummary(classId).catch(() => null),
+              classApi.getOpenSession(classId).catch(() => null)
             ]);
+
+            // Đếm lớp đang có phiên mở (còn thời gian hiệu lực)
+            if (openSession && openSession.id) {
+              const closeAt = openSession.checkinCloseAt ? new Date(openSession.checkinCloseAt) : null;
+              if (!closeAt || closeAt > new Date()) {
+                activeCount++;
+              }
+            }
+
+            // Tỷ lệ điểm danh
+            if (summaryRes) {
+              const present = summaryRes.totalPresent ?? summaryRes.presentCount ?? 0;
+              const total = summaryRes.totalStudents ?? summaryRes.totalEnrolled ?? 0;
+              if (total > 0) {
+                totalPresent += present;
+                totalExpected += total;
+              }
+            }
 
             const frauds = fraudRes?.items || fraudRes || [];
             const absences = absenceRes?.items || absenceRes || [];
@@ -219,6 +251,11 @@ export default function Dashboard() {
             fraudCount += openFrauds.length;
             absenceCount += pendingAbsences.length;
 
+            // Ghi nhận class có nhiều sự cố nhất
+            if (openFrauds.length > 0) {
+              fraudCountPerClass[classId] = (fraudCountPerClass[classId] || 0) + openFrauds.length;
+            }
+
             allAlerts.push(...frauds.map(f => ({ ...f, type: 'fraud', classInfo: { ...cls, id: classId } })));
             allAlerts.push(...absences.map(a => ({ ...a, type: 'absence', classInfo: { ...cls, id: classId } })));
           } catch (e) {
@@ -226,14 +263,25 @@ export default function Dashboard() {
           }
         }));
 
+        setActiveClassCount(activeCount);
+
+        // Tính tỷ lệ điểm danh
+        if (totalExpected > 0) {
+          setAttendanceRate(((totalPresent / totalExpected) * 100).toFixed(1));
+        }
+
+        // Lớp có nhiều sự cố nhất
+        const topClassEntry = Object.entries(fraudCountPerClass).sort((a, b) => b[1] - a[1])[0];
+        if (topClassEntry) setTopFraudClassId(topClassEntry[0]);
+
         allAlerts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         // Fallback to mock data if no alerts from API
         if (allAlerts.length === 0) {
           allAlerts = [...MOCK_ALERTS];
           if (fraudCount === 0 && absenceCount === 0) {
-            fraudCount = 3; // mock stats
-            absenceCount = 7; // mock stats
+            fraudCount = 3;
+            absenceCount = 7;
           }
         } else {
           // Lấy chi tiết cho 5 alert đầu tiên (nếu là fraud) để có evidenceSummary hiển thị thiết bị
@@ -305,12 +353,15 @@ export default function Dashboard() {
           
           {/* KPI CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            {/* Card 1: Tỷ lệ đi học hôm nay */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 opacity-50"></div>
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-500 mb-1">Tỷ lệ đi học hôm nay</p>
-                  <h3 className="text-3xl font-bold text-gray-900">92.4%</h3>
+                  <h3 className="text-3xl font-bold text-gray-900">
+                    {isLoadingAlerts ? '...' : (attendanceRate !== null ? `${attendanceRate}%` : '--')}
+                  </h3>
                 </div>
                 <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600">
                   <UserCheck size={20} />
@@ -318,29 +369,38 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded flex items-center gap-1">
-                  ↗ +2.1%
+                  Hôm nay
                 </span>
-                <span className="text-gray-400 font-medium">so với tuần trước</span>
+                <span className="text-gray-400 font-medium">tổng hợp tất cả lớp</span>
               </div>
             </div>
 
+            {/* Card 2: Lớp học đang hoạt động */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 opacity-50"></div>
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-500 mb-1">Lớp học đang hoạt động</p>
-                  <h3 className="text-3xl font-bold text-gray-900">4</h3>
+                  <h3 className="text-3xl font-bold text-gray-900">
+                    {isLoadingSchedule ? '...' : activeClassCount}
+                  </h3>
                 </div>
                 <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
                   <Monitor size={20} />
                 </div>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-700 font-bold">120</span>
-                <span className="text-gray-400 font-medium">tổng số sinh viên dự kiến</span>
+                {activeClassCount > 0 ? (
+                  <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span> Đang diễn ra
+                  </span>
+                ) : (
+                  <span className="text-gray-400 font-medium">Không có lớp đang diễn ra</span>
+                )}
               </div>
             </div>
 
+            {/* Card 3: Đơn xin nghỉ chờ duyệt */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 relative overflow-hidden">
                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-bl-full -mr-4 -mt-4 opacity-50"></div>
               <div className="flex justify-between items-start mb-4">
@@ -359,6 +419,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Card 4: Sự cố gian lận – có điều hướng đến tab fraud */}
             <div className="bg-red-50/30 rounded-2xl border border-red-100 shadow-sm p-6 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-red-100 rounded-bl-full -mr-4 -mt-4 opacity-50"></div>
               <div className="flex justify-between items-start mb-4">
@@ -372,11 +433,20 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-red-600 font-bold bg-red-100 px-2 py-0.5 rounded flex items-center gap-1">
-                  ↗ +1 hôm nay
+                  {dashboardStats.fraudCount > 0 ? `${dashboardStats.fraudCount} cần xử lý` : 'Không có sự cố'}
                 </span>
-                <span className="text-red-600 font-bold cursor-pointer hover:underline flex items-center gap-1">
-                  Xem chi tiết <ArrowRight size={14} />
-                </span>
+                {topFraudClassId ? (
+                  <button
+                    onClick={() => navigate(`/classes/${topFraudClassId}`, { state: { activeTab: 'fraud' } })}
+                    className="text-red-600 font-bold hover:underline flex items-center gap-1 transition-all"
+                  >
+                    Xem chi tiết <ArrowRight size={14} />
+                  </button>
+                ) : (
+                  <span className="text-red-400 flex items-center gap-1">
+                    Xem chi tiết <ArrowRight size={14} />
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -452,7 +522,7 @@ export default function Dashboard() {
                             </div>
                             <div className="text-sm text-gray-600 mb-3">
                               <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span>: {alert.description || 'Có hành vi điểm danh bất thường'} <br/>
-                              Tại lớp: <span className="font-bold text-gray-900">{alert.classInfo?.courseCode ? `${alert.classInfo.courseCode} - ` : ''}{alert.classInfo?.name || 'Không rõ lớp'}</span>.
+                              Tại lớp: <span className="font-bold text-gray-900">{alert.classInfo?.courseCode ? `${alert.classInfo.courseCode} - ` : ''}{alert.classInfo?.groupName || alert.classInfo?.name || 'Không rõ lớp'}</span>.
                               
                               {alert.evidenceSummary?.userAgent && (
                                 <p className="text-xs text-gray-500 mt-2 leading-relaxed bg-gray-50 p-2 rounded-lg border border-gray-100">
@@ -481,7 +551,7 @@ export default function Dashboard() {
                               <span className="text-xs font-medium text-gray-400">{timeAgo(alert.createdAt)}</span>
                             </div>
                             <p className="text-sm text-gray-600 mb-3">
-                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span> đã gửi yêu cầu cho môn {alert.classInfo?.name}. Lý do: {alert.reason}
+                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span> đã gửi yêu cầu cho môn {alert.classInfo?.groupName || alert.classInfo?.name || 'không rõ'}. Lý do: {alert.reason}
                             </p>
                             <div>
                               <button onClick={() => navigate(`/classes/${alert.classInfo?.id}`, { state: { activeTab: 'absence' } })} className="px-4 py-2 bg-[#111827] hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition-colors">Xem tài liệu</button>

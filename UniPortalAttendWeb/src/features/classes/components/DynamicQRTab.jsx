@@ -124,7 +124,7 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
     
     const fetchAlerts = async () => {
       try {
-        const res = await classApi.getFraudIncidents(groupId, { size: 3, sortDir: 'DESC', status: 'PENDING' });
+        const res = await classApi.getFraudIncidents(groupId, { size: 3, sortDir: 'DESC' });
         const realAlerts = (res.items || []).map((incident) => {
              const detectedTime = incident.createdAt || incident.lastDetectedAt;
              return {

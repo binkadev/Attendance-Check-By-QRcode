@@ -192,19 +192,41 @@ export const classApi = {
     try {
       const response = await fetch(`${BASE_URL_GROUPS}/${groupId}/sessions/open`, { headers: getHeaders() });
       
-      // Nếu không có phiên đang mở, backend trả về 404 hoặc 204
+      // Backend trả về 404 hoặc 204 khi không có phiên mở
       if (response.status === 404 || response.status === 204) {
         return null;
       }
-      
-      return handleResponse(response);
+
+      // Đọc body để kiểm tra trước khi xử lý
+      const contentType = response.headers.get('content-type');
+      const isJson = contentType?.includes('application/json');
+      const data = isJson ? await response.json() : null;
+
+      // Backend đôi khi trả 200 nhưng body có code lỗi SESSION_OPEN_NOT_FOUND
+      if (data?.code === 'SESSION_OPEN_NOT_FOUND') {
+        return null;
+      }
+
+      if (!response.ok) {
+        const error = new Error(data?.message || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.code = data?.code;
+        throw error;
+      }
+
+      return data;
     } catch (error) {
-      // Nếu lỗi là SESSION_OPEN_NOT_FOUND thì trả về null thay vì throw
+      // Bắt mọi dạng SESSION_OPEN_NOT_FOUND – trả null để không throw
       if (error.code === 'SESSION_OPEN_NOT_FOUND' || error.status === 404) {
         return null;
       }
-      console.error("Get open session error:", error);
-      throw error;
+      // Im lặng đối với lỗi này trên dashboard (không có phiên mở là bình thường)
+      if (error.message?.includes('SESSION_OPEN_NOT_FOUND')) {
+        return null;
+      }
+      // Chỉ log lỗi thực sự (không phải "không có phiên")
+      console.warn('getOpenSession:', error.message);
+      return null; // Trả null thay vì throw – tránh làm vỡ UI
     }
   },
 
