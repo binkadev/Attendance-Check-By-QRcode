@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Bell, Plus, UserCheck, Monitor, Inbox, AlertTriangle, 
-  Calendar as CalendarIcon, MapPin, ArrowRight, Smartphone, FileText, Clock
+  Calendar as CalendarIcon, MapPin, ArrowRight, Smartphone, FileText, Clock, Timer
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../../components/layout/Sidebar';
@@ -10,6 +10,7 @@ import {
   Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 import { classApi } from '../../../api/classApi';
+import { parseDeviceName } from '../../../utils/formatters';
 
 // --- MOCK DATA ---
 const chartData = [
@@ -38,6 +39,22 @@ const getSessionStatus = (startAt, endAt) => {
   return 'future';
 };
 
+// Hàm tính thời gian trôi qua
+const timeAgo = (dateString) => {
+  if (!dateString) return "";
+  const now = new Date();
+  const past = new Date(dateString);
+  const diffMs = now - past;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return `Vừa xong`;
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  return `${diffDays} ngày trước`;
+};
+
 // Giả lập Avatar sinh viên ngẫu nhiên
 const generateMockParticipants = (index, modifier = 0) => {
   const totalStudents = ((index + 1 + modifier) * 27) % 45 + 20; 
@@ -52,6 +69,70 @@ const generateMockParticipants = (index, modifier = 0) => {
   return { avatars, extraCount };
 };
 
+// Cấu hình hiển thị theo loại sự cố
+const FRAUD_TYPE_CONFIG = {
+  REPEATED_FAILED_QR_TOKEN: { label: 'Quét QR thất bại liên tục', icon: <Timer size={20} className="text-red-500" /> },
+  WRONG_SESSION_QR_TOKEN: { label: 'QR sai phiên học', icon: <Smartphone size={20} className="text-amber-500" /> },
+  EXPIRED_QR_TOKEN: { label: 'QR hết hạn', icon: <Timer size={20} className="text-red-500" /> },
+  REPEATED_OUT_OF_RANGE: { label: 'Quét ngoài phạm vi', icon: <MapPin size={20} className="text-amber-500" /> },
+  IP_BURST_MULTI_ATTEMPT: { label: 'Nhiều yêu cầu từ 1 IP', icon: <Smartphone size={20} className="text-red-500" /> },
+  SHARED_DEVICE_MULTI_ACCOUNT: { label: 'Trùng thiết bị điểm danh', icon: <Smartphone size={20} className="text-red-500" /> },
+};
+
+// Dữ liệu mẫu (Mock data) cho Cảnh báo để tránh bị trống
+const MOCK_ALERTS = [
+  {
+    id: 'mock-f1',
+    type: 'fraud',
+    fraudType: 'SHARED_DEVICE_MULTI_ACCOUNT',
+    title: 'Trùng thiết bị điểm danh',
+    description: 'Sinh viên cố tình điểm danh trên cùng một thiết bị (trùng địa chỉ MAC). Những sinh viên liên quan: Lê Văn Bình.',
+    createdAt: new Date(Date.now() - 10 * 60000).toISOString(),
+    studentName: 'Nguyễn Văn Mạnh',
+    classInfo: { courseCode: 'CS101', name: 'Nhập môn lập trình', id: 'mock-1' },
+    evidenceSummary: {
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+      deviceId: "A8F2-99B1-C34X"
+    }
+  },
+  {
+    id: 'mock-f2',
+    type: 'fraud',
+    fraudType: 'REPEATED_OUT_OF_RANGE',
+    title: 'Quét QR ngoài phạm vi',
+    description: 'Phát hiện tọa độ GPS cách xa vị trí phòng học 2.5km.',
+    createdAt: new Date(Date.now() - 45 * 60000).toISOString(),
+    studentName: 'Trần Đăng Khoa',
+    classInfo: { courseCode: 'CS204', name: 'Cấu trúc dữ liệu', id: 'mock-2' }
+  },
+  {
+    id: 'mock-f3',
+    type: 'fraud',
+    fraudType: 'IP_BURST_MULTI_ATTEMPT',
+    title: 'Quét QR quá nhanh',
+    description: 'Phát hiện 3 lần quét trong 4 giây từ cùng một địa chỉ IP.',
+    createdAt: new Date(Date.now() - 90 * 60000).toISOString(),
+    studentName: 'Phạm Thị Mai',
+    classInfo: { courseCode: 'CS101', name: 'Nhập môn lập trình', id: 'mock-1' }
+  },
+  {
+    id: 'mock-a1',
+    type: 'absence',
+    createdAt: new Date(Date.now() - 120 * 60000).toISOString(),
+    studentName: 'Lê Thị Hồng',
+    reason: 'Lý do y tế (Có kèm giấy khám bệnh)',
+    classInfo: { name: 'Hệ quản trị cơ sở dữ liệu nâng cao', id: 'mock-1' }
+  },
+  {
+    id: 'mock-a2',
+    type: 'absence',
+    createdAt: new Date(Date.now() - 360 * 60000).toISOString(),
+    studentName: 'Hoàng Văn Thái',
+    reason: 'Xin nghỉ việc gia đình',
+    classInfo: { name: 'Toán rời rạc', id: 'mock-3' }
+  }
+];
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [chartPeriod, setChartPeriod] = useState('This Week');
@@ -63,6 +144,11 @@ export default function Dashboard() {
   const [todayClasses, setTodayClasses] = useState([]);
   const [tomorrowClasses, setTomorrowClasses] = useState([]);
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(true);
+
+  // Thêm state cho Cảnh báo & Thống kê
+  const [alerts, setAlerts] = useState([]);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState({ fraudCount: 0, absenceCount: 0 });
 
   // Thêm state trigger để ép component re-render mỗi phút cập nhật trạng thái "Now"
   const [timeTrigger, setTimeTrigger] = useState(0);
@@ -106,7 +192,77 @@ export default function Dashboard() {
       }
     };
 
+    const fetchAlertsAndStats = async () => {
+      try {
+        setIsLoadingAlerts(true);
+        const classesData = await classApi.getTeachingClasses();
+        const classes = classesData.items || [];
+        
+        let allAlerts = [];
+        let fraudCount = 0;
+        let absenceCount = 0;
+
+        await Promise.all(classes.map(async (cls) => {
+          try {
+            const classId = cls.groupId || cls.id;
+            const [fraudRes, absenceRes] = await Promise.all([
+              classApi.getFraudIncidents(classId).catch(() => null),
+              classApi.getAbsenceRequests(classId).catch(() => null)
+            ]);
+
+            const frauds = fraudRes?.items || fraudRes || [];
+            const absences = absenceRes?.items || absenceRes || [];
+
+            const openFrauds = frauds.filter(f => f.status === 'OPEN' || f.status === 'PENDING');
+            const pendingAbsences = absences.filter(a => a.status === 'PENDING');
+
+            fraudCount += openFrauds.length;
+            absenceCount += pendingAbsences.length;
+
+            allAlerts.push(...frauds.map(f => ({ ...f, type: 'fraud', classInfo: { ...cls, id: classId } })));
+            allAlerts.push(...absences.map(a => ({ ...a, type: 'absence', classInfo: { ...cls, id: classId } })));
+          } catch (e) {
+            console.error(`Failed to fetch alerts for class`, e);
+          }
+        }));
+
+        allAlerts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        // Fallback to mock data if no alerts from API
+        if (allAlerts.length === 0) {
+          allAlerts = [...MOCK_ALERTS];
+          if (fraudCount === 0 && absenceCount === 0) {
+            fraudCount = 3; // mock stats
+            absenceCount = 7; // mock stats
+          }
+        } else {
+          // Lấy chi tiết cho 5 alert đầu tiên (nếu là fraud) để có evidenceSummary hiển thị thiết bị
+          const top5 = allAlerts.slice(0, 5);
+          await Promise.all(top5.map(async (alert) => {
+            if (alert.type === 'fraud' && !alert.evidenceSummary && !String(alert.id).startsWith('mock-')) {
+              try {
+                const detail = await classApi.getFraudIncidentDetail(alert.classInfo.id, alert.id);
+                if (detail && detail.evidenceSummary) {
+                  alert.evidenceSummary = detail.evidenceSummary;
+                }
+              } catch (e) {
+                console.error("Failed to fetch alert detail for evidenceSummary", e);
+              }
+            }
+          }));
+        }
+        
+        setAlerts(allAlerts);
+        setDashboardStats({ fraudCount, absenceCount });
+      } catch (error) {
+        console.error("Failed to fetch teaching classes for alerts:", error);
+      } finally {
+        setIsLoadingAlerts(false);
+      }
+    };
+
     fetchSchedule();
+    fetchAlertsAndStats();
     
     // Cập nhật lại UI mỗi 60 giây để status chuyển từ Future -> Now -> Past mượt mà
     const interval = setInterval(() => setTimeTrigger(prev => prev + 1), 60000);
@@ -190,7 +346,7 @@ export default function Dashboard() {
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-500 mb-1">Đơn xin nghỉ chờ duyệt</p>
-                  <h3 className="text-3xl font-bold text-gray-900">7</h3>
+                  <h3 className="text-3xl font-bold text-gray-900">{isLoadingAlerts ? '...' : dashboardStats.absenceCount}</h3>
                 </div>
                 <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-600">
                   <Inbox size={20} />
@@ -208,7 +364,7 @@ export default function Dashboard() {
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <p className="text-sm font-semibold text-red-800 mb-1">Sự cố gian lận đang mở</p>
-                  <h3 className="text-3xl font-bold text-red-600">3</h3>
+                  <h3 className="text-3xl font-bold text-red-600">{isLoadingAlerts ? '...' : dashboardStats.fraudCount}</h3>
                 </div>
                 <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600">
                   <AlertTriangle size={20} />
@@ -278,42 +434,65 @@ export default function Dashboard() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex gap-4 p-4 rounded-xl border border-gray-100 bg-gray-50/50">
-                    <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0 mt-1">
-                      <Smartphone size={20} />
+                  {isLoadingAlerts ? (
+                    <div className="flex justify-center items-center h-20 text-red-600">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-gray-900">Phát hiện sai lệch thiết bị</h4>
-                        <span className="text-xs font-medium text-gray-400">10 phút trước</span>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-3">
-                        Sinh viên <span className="font-bold text-gray-900">Nguyễn Văn Mạnh</span> đã cố gắng quét từ thiết bị chưa đăng ký trong lớp CS101.
-                      </p>
-                      <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors">Xem xét sự cố</button>
-                        <button className="px-4 py-2 bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold rounded-lg transition-colors">Bỏ qua</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4 p-4 rounded-xl border border-gray-100 bg-gray-50/50">
-                    <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-1">
-                      <FileText size={20} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-bold text-gray-900">Yêu cầu xin nghỉ vì lý do y tế</h4>
-                        <span className="text-xs font-medium text-gray-400">2 giờ trước</span>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-3">
-                        <span className="font-bold text-gray-900">Lê Thị Hồng</span> đã gửi yêu cầu cho môn Hệ quản trị cơ sở dữ liệu nâng cao.
-                      </p>
-                      <div>
-                        <button className="px-4 py-2 bg-[#111827] hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition-colors">Xem tài liệu</button>
-                      </div>
-                    </div>
-                  </div>
+                  ) : alerts.length > 0 ? (
+                    alerts.slice(0, 5).map((alert, idx) => (
+                      alert.type === 'fraud' ? (
+                        <div key={`fraud-${idx}`} className="flex gap-4 p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                          <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0 mt-1">
+                            {FRAUD_TYPE_CONFIG[alert.fraudType || alert.type]?.icon || <Smartphone size={20} />}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start mb-1">
+                              <h4 className="font-bold text-gray-900">{alert.title || FRAUD_TYPE_CONFIG[alert.fraudType || alert.type]?.label || 'Phát hiện gian lận điểm danh'}</h4>
+                              <span className="text-xs font-medium text-gray-400">{timeAgo(alert.createdAt)}</span>
+                            </div>
+                            <div className="text-sm text-gray-600 mb-3">
+                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span>: {alert.description || 'Có hành vi điểm danh bất thường'} <br/>
+                              Tại lớp: <span className="font-bold text-gray-900">{alert.classInfo?.courseCode ? `${alert.classInfo.courseCode} - ` : ''}{alert.classInfo?.name || 'Không rõ lớp'}</span>.
+                              
+                              {alert.evidenceSummary?.userAgent && (
+                                <p className="text-xs text-gray-500 mt-2 leading-relaxed bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                  Hệ thống phát hiện thiết bị {' '}
+                                  <span className="font-mono bg-white border border-gray-200 px-1 py-0.5 rounded text-gray-700 font-bold">
+                                    {parseDeviceName(alert.evidenceSummary.userAgent)}
+                                  </span> {' '}
+                                  {alert.evidenceSummary.deviceId && `(Mã ID: ${alert.evidenceSummary.deviceId.substring(0,6)}) `}
+                                  đã quét điểm danh cho nhiều sinh viên.
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => navigate(`/classes/${alert.classInfo?.id}`, { state: { activeTab: 'fraud' } })} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors">Xem xét sự cố</button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={`abs-${idx}`} className="flex gap-4 p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                          <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-1">
+                            <FileText size={20} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start mb-1">
+                              <h4 className="font-bold text-gray-900">Yêu cầu xin nghỉ</h4>
+                              <span className="text-xs font-medium text-gray-400">{timeAgo(alert.createdAt)}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-3">
+                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span> đã gửi yêu cầu cho môn {alert.classInfo?.name}. Lý do: {alert.reason}
+                            </p>
+                            <div>
+                              <button onClick={() => navigate(`/classes/${alert.classInfo?.id}`, { state: { activeTab: 'absence' } })} className="px-4 py-2 bg-[#111827] hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition-colors">Xem tài liệu</button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500 text-center py-4">Không có hoạt động nào gần đây.</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -496,6 +675,9 @@ export default function Dashboard() {
     </div>
   );
 }
+
+
+
 // (cleaned up)
 
 //                 {isLoadingSchedule ? (

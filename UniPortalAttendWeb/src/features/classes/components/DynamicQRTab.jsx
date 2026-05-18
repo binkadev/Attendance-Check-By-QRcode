@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Maximize, Pause, Plus, ShieldCheck, BarChart2, AlertTriangle, Play, Settings, X, BookOpen, CalendarDays, MapPin, Clock } from 'lucide-react';
+import { QrCode, Maximize, Pause, Plus, ShieldCheck, BarChart2, AlertTriangle, Play, Settings, X, BookOpen, CalendarDays, MapPin, Clock, Timer, Smartphone } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react'; 
 import { classApi } from '../../../api/classApi';
 import toast from 'react-hot-toast';
+
+// Cấu hình hiển thị theo loại sự cố
+const FRAUD_TYPE_CONFIG = {
+  REPEATED_FAILED_QR_TOKEN: { label: 'Quét QR thất bại liên tục', icon: <Timer size={16} className="text-red-500" /> },
+  WRONG_SESSION_QR_TOKEN: { label: 'QR sai phiên học', icon: <Smartphone size={16} className="text-amber-500" /> },
+  EXPIRED_QR_TOKEN: { label: 'QR hết hạn', icon: <Timer size={16} className="text-red-500" /> },
+  REPEATED_OUT_OF_RANGE: { label: 'Quét ngoài phạm vi', icon: <MapPin size={16} className="text-amber-500" /> },
+  IP_BURST_MULTI_ATTEMPT: { label: 'Nhiều yêu cầu từ 1 IP', icon: <Smartphone size={16} className="text-red-500" /> },
+  SHARED_DEVICE_MULTI_ACCOUNT: { label: 'Trùng thiết bị điểm danh', icon: <Smartphone size={16} className="text-red-500" /> },
+};
 
 // =========================================================================
 // COMPONENT CHÍNH
@@ -81,10 +91,27 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
   // --- MOCK DATA CẢNH BÁO ---
   const MOCK_ALERTS = [
     {
-      id: 'mock-1',
-      title: 'Phát hiện nhiều lượt quét',
-      time: 'Vừa xong',
-      desc: 'Thiết bị ID A8F2 đã thử quét cho STU-6520 và STU-1198.',
+      id: 'mock-f1',
+      fraudType: 'SHARED_DEVICE_MULTI_ACCOUNT',
+      title: 'Trùng thiết bị điểm danh',
+      desc: 'Sinh viên <span class="font-bold">Nguyễn Văn Mạnh</span> cố tình điểm danh trên cùng một thiết bị (trùng địa chỉ MAC). Những sinh viên liên quan: Lê Văn Bình.',
+      time: '10 phút trước',
+      severity: 'CRITICAL'
+    },
+    {
+      id: 'mock-f2',
+      fraudType: 'REPEATED_OUT_OF_RANGE',
+      title: 'Quét QR ngoài phạm vi',
+      desc: 'Sinh viên <span class="font-bold">Trần Đăng Khoa</span>: Phát hiện tọa độ GPS cách xa vị trí phòng học 2.5km.',
+      time: '45 phút trước',
+      severity: 'HIGH'
+    },
+    {
+      id: 'mock-f3',
+      fraudType: 'IP_BURST_MULTI_ATTEMPT',
+      title: 'Quét QR quá nhanh',
+      desc: 'Sinh viên <span class="font-bold">Phạm Thị Mai</span>: Phát hiện 3 lần quét trong 4 giây từ cùng một địa chỉ IP.',
+      time: '1 giờ trước',
       severity: 'HIGH'
     }
   ];
@@ -98,15 +125,21 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
     const fetchAlerts = async () => {
       try {
         const res = await classApi.getFraudIncidents(groupId, { size: 3, sortDir: 'DESC', status: 'PENDING' });
-        const realAlerts = (res.items || []).map((incident) => ({
-             id: incident.id,
-             title: incident.title || incident.type || 'Hoạt động bất thường',
-             time: new Date(incident.createdAt || incident.lastDetectedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-             desc: incident.description || 'Hệ thống tự động phát hiện rủi ro',
-             severity: incident.severity || 'HIGH'
-        }));
+        const realAlerts = (res.items || []).map((incident) => {
+             const detectedTime = incident.createdAt || incident.lastDetectedAt;
+             return {
+               id: incident.id,
+               fraudType: incident.type,
+               title: incident.title || FRAUD_TYPE_CONFIG[incident.type]?.label || incident.type || 'Hoạt động bất thường',
+               time: new Date(detectedTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+               desc: incident.description || (incident.student?.name ? `Sinh viên <span class="font-bold">${incident.student.name}</span>: Hệ thống tự động phát hiện rủi ro` : 'Hệ thống tự động phát hiện rủi ro'),
+               severity: incident.severity || 'HIGH'
+             };
+        });
         if (realAlerts.length > 0) {
            setSecurityAlerts(realAlerts);
+        } else {
+           setSecurityAlerts(MOCK_ALERTS);
         }
       } catch (error) {}
     };
@@ -431,7 +464,12 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
             ) : securityAlerts.map(alert => (
                <div key={alert.id} className="pb-4 border-b border-gray-100 last:border-0 last:pb-0">
                  <div className="flex justify-between items-start mb-1.5">
-                   <h4 className="text-[14px] font-bold text-gray-900">{alert.title}</h4>
+                   <div className="flex gap-2 items-center">
+                      <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                         {FRAUD_TYPE_CONFIG[alert.fraudType]?.icon || <AlertTriangle size={14} className="text-red-500" />}
+                      </div>
+                      <h4 className="text-[14px] font-bold text-gray-900">{alert.title}</h4>
+                   </div>
                    <span className="text-[10px] text-gray-400 font-medium">{alert.time}</span>
                  </div>
                  <p className="text-xs text-gray-500 mb-2.5 leading-relaxed" dangerouslySetInnerHTML={{ __html: alert.desc }}></p>

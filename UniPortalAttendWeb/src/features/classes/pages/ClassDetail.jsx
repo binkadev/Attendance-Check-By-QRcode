@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import Sidebar from '../../../components/layout/Sidebar';
 import { 
   Bell, LayoutDashboard, Users, Clock, ShieldAlert, 
@@ -40,7 +40,14 @@ const MOCK_CLASSES_LIST = [
 
 export default function ClassDetail() {
   const { classId } = useParams(); 
-  const [activeTab, setActiveTab] = useState('students');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(location.state?.activeTab || 'students');
+
+  useEffect(() => {
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+    }
+  }, [location.state?.activeTab]);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
@@ -54,6 +61,10 @@ export default function ClassDetail() {
   // States cho thống kê động
   const [totalStudents, setTotalStudents] = useState(0);
   const [latestAttendance, setLatestAttendance] = useState(0);
+
+  const [fraudCount, setFraudCount] = useState(0);
+  const [absenceCount, setAbsenceCount] = useState(0);
+  const [sessionsCount, setSessionsCount] = useState(0);
 
   // States cho đồng hồ đếm ngược
   const [openSession, setOpenSession] = useState(null);
@@ -84,12 +95,19 @@ export default function ClassDetail() {
     };
     
     const fetchClassStats = async () => {
-      if (!classId || classId.startsWith('mock-')) return;
+      if (!classId || classId.startsWith('mock-')) {
+        setFraudCount(0);
+        setAbsenceCount(0);
+        setSessionsCount(0);
+        return;
+      }
       try {
-        const [membersRes, sessionsRes, summaryRes] = await Promise.all([
+        const [membersRes, sessionsRes, summaryRes, fraudRes, absenceRes] = await Promise.all([
           classApi.getClassMembers(classId),
           classApi.getGroupSessions(classId),
-          classApi.getAttendanceSummary(classId).catch(() => null)
+          classApi.getAttendanceSummary(classId).catch(() => null),
+          classApi.getFraudIncidents(classId).catch(() => null),
+          classApi.getAbsenceRequests(classId).catch(() => null)
         ]);
 
         const allMembers = Array.isArray(membersRes) ? membersRes : (membersRes.items || []);
@@ -98,7 +116,16 @@ export default function ClassDetail() {
         // Nếu API summary trả về totalStudents thì dùng, không thì đếm tay
         setTotalStudents(summaryRes?.totalStudents || students.length);
 
+        // Lấy số lượng sự cố gian lận và đơn xin phép
+        const realFraud = fraudRes?.totalElements ?? fraudRes?.items?.length ?? fraudRes?.length ?? 0;
+        const realAbsence = absenceRes?.totalElements ?? absenceRes?.items?.length ?? absenceRes?.length ?? 0;
+        
+        setFraudCount(realFraud);
+        setAbsenceCount(realAbsence);
+
         const allSessions = sessionsRes.items || [];
+        setSessionsCount(sessionsRes?.totalElements ?? sessionsRes?.items?.length ?? allSessions.length);
+        
         if (allSessions.length > 0) {
           const sortedSessions = allSessions.sort((a, b) => new Date(b.checkinOpenAt) - new Date(a.checkinOpenAt));
           const latestSession = sortedSessions[0];
@@ -439,23 +466,27 @@ export default function ClassDetail() {
           )}
 
           {/* TABS NAVIGATION */}
-          <div className="flex gap-8 border-b border-gray-200 mb-6">
+          <div className="flex gap-8 border-b border-gray-200 mb-6 flex-wrap">
             <button onClick={() => setActiveTab('students')} className={`pb-4 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === 'students' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-              <Users size={18} /> Sinh viên ({totalStudents})
+              <Users size={18} /> Sinh viên <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${activeTab === 'students' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{totalStudents}</span>
             </button>
             <button onClick={() => setActiveTab('dynamic-qr')} className={`pb-4 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === 'dynamic-qr' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-              <QrCode size={18} /> QR Động
+              <QrCode size={18} /> QR Động <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 ${openSession?.id ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}>
+                {openSession?.id ? (
+                  <><span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span> Đang mở</>
+                ) : 'Chưa mở'}
+              </span>
             </button>
 
             <button onClick={() => setActiveTab('sessions')} className={`pb-4 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === 'sessions' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-              <CalendarDays size={18} /> Lịch sử phiên học
+              <CalendarDays size={18} /> Lịch sử phiên học <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${activeTab === 'sessions' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{sessionsCount}</span>
             </button>
 
             <button onClick={() => setActiveTab('fraud')} className={`pb-4 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === 'fraud' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-              <AlertTriangle size={18} /> Gian lận <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${activeTab === 'fraud' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>3</span>
+              <AlertTriangle size={18} /> Gian lận {fraudCount > 0 && <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${activeTab === 'fraud' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{fraudCount}</span>}
             </button>
             <button onClick={() => setActiveTab('absence')} className={`pb-4 text-sm font-semibold flex items-center gap-2 relative transition-colors ${activeTab === 'absence' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-              <CalendarX size={18} /> Vắng mặt <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${activeTab === 'absence' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>1</span>
+              <CalendarX size={18} /> Vắng mặt {absenceCount > 0 && <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${activeTab === 'absence' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{absenceCount}</span>}
             </button>
           </div>
 
