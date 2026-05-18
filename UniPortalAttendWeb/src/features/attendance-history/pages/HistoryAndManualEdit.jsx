@@ -17,6 +17,14 @@ const STATUS_MAP = {
 const STATUS_OPTIONS = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'];
 const STATUS_LABELS  = { PRESENT: 'Có mặt', LATE: 'Muộn', ABSENT: 'Vắng mặt', EXCUSED: 'Có phép' };
 
+const METHOD_MAP = {
+  'MANUAL': 'Thủ công',
+  'QR': 'QR Động',
+  'QR_DYNAMIC': 'QR Động',
+  'GPS': 'GPS',
+  'SYSTEM': 'Hệ thống',
+};
+
 const fmtDate = (iso) => iso
   ? new Date(iso).toLocaleString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })
   : '--';
@@ -115,14 +123,16 @@ export default function HistoryAndManualEdit() {
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
         .forEach(e => {
           statusMap.set(String(e.userId), e.newStatus);
-          methodMap.set(String(e.userId), e.method || e.source || 'QR');
+          const rawMethod = e.method || e.source || 'QR';
+          const cleanMethod = METHOD_MAP[rawMethod.toUpperCase()] || rawMethod;
+          methodMap.set(String(e.userId), cleanMethod);
         });
 
       const session = sessions.find(s => s.id === selectedSessionId);
       const cls     = classes.find(c => (c.groupId || c.id) === selectedClassId);
 
       const flat = students.map(m => {
-        const uid    = String(m.userId || m.id);
+        const uid    = String(m.studentCode || m.code || m.userId || m.id);
         const status = statusMap.get(uid) || 'ABSENT';
         const method = methodMap.get(uid) || (status === 'ABSENT' ? 'Hệ thống' : 'QR Động');
         return {
@@ -136,6 +146,7 @@ export default function HistoryAndManualEdit() {
           sessionDate:  fmtDate(session?.checkinOpenAt),
           className:    cls?.groupName || '',
           courseCode:   cls?.courseCode || '',
+          classCode:    cls?.classCode || '',
         };
       });
       setRecords(flat);
@@ -242,11 +253,18 @@ export default function HistoryAndManualEdit() {
                       onChange={e => setSelectedClassId(e.target.value)}
                       className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-lg appearance-none text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
                     >
-                      {classes.map(c => (
-                        <option key={c.groupId || c.id} value={c.groupId || c.id}>
-                          {c.courseCode ? `${c.courseCode} – ${c.groupName}` : c.groupName}
-                        </option>
-                      ))}
+                      {classes.map(c => {
+                        const classLabel = [
+                          c.courseCode,
+                          c.classCode || c.code || '',
+                          c.groupName || c.name || ''
+                        ].filter(Boolean).join(' – ');
+                        return (
+                          <option key={c.groupId || c.id} value={c.groupId || c.id}>
+                            {classLabel || 'Không rõ lớp'}
+                          </option>
+                        );
+                      })}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </>
@@ -360,7 +378,9 @@ export default function HistoryAndManualEdit() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <p className="font-semibold text-gray-800 text-sm">{r.courseCode} {r.courseCode && '–'} {r.className}</p>
+                          <p className="font-semibold text-gray-800 text-sm">
+                            {[r.courseCode, r.classCode, r.className].filter(Boolean).join(' – ')}
+                          </p>
                           <p className="text-xs text-gray-400 mt-0.5">{r.sessionDate}</p>
                         </td>
                         <td className="px-6 py-4">
@@ -430,7 +450,9 @@ export default function HistoryAndManualEdit() {
                 <img src={avatarUrl(panelRecord.uid)} alt={panelRecord.studentName} className="w-12 h-12 rounded-full object-cover" />
                 <div>
                   <h4 className="font-bold text-gray-900">{panelRecord.studentName}</h4>
-                  <p className="text-xs text-gray-500">{panelRecord.studentCode} • {panelRecord.courseCode}</p>
+                  <p className="text-xs text-gray-500">
+                    {panelRecord.studentCode} • {[panelRecord.courseCode, panelRecord.classCode, panelRecord.className].filter(Boolean).join(' – ')}
+                  </p>
                   <p className="text-xs text-gray-400 mt-0.5">{panelRecord.sessionDate}</p>
                 </div>
               </div>

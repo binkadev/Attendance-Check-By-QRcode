@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Download, Mail, ChevronLeft, ChevronRight, ShieldAlert, 
-  Smartphone, Crosshair, Loader2 
+  Smartphone, Crosshair, Loader2, Trash2
 } from 'lucide-react';
 import { classApi } from '../../../api/classApi';
+import toast from 'react-hot-toast';
 
 // --- MOCK DATA ---
 const MOCK_STUDENTS = [
@@ -68,6 +69,58 @@ export default function StudentsTab({ classId }) {
   
   // --- STATE CẢNH BÁO BẢO MẬT ---
   const [securityAlerts, setSecurityAlerts] = useState(ALERTS_DATA);
+
+  // --- STATE XÓA THÀNH VIÊN LỚP HỌC ---
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteStudent = (student) => {
+    // Không thể xóa giảng viên/người tạo lớp khỏi lớp học
+    if (student.role === 'LECTURER' || student.role === 'OWNER') {
+      toast.error("Không thể xóa giảng viên/người tạo lớp khỏi lớp học!");
+      return;
+    }
+
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const currentUserId = currentUser.userId || currentUser.id;
+    if (String(student.rawId || student.id) === String(currentUserId)) {
+      toast.error("Bạn không thể tự xóa chính mình khỏi lớp học!");
+      return;
+    }
+
+    setStudentToDelete(student);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!studentToDelete) return;
+    setIsDeleting(true);
+    const loadingToast = toast.loading(`Đang xóa ${studentToDelete.name} khỏi lớp...`);
+
+    try {
+      if (!classId || classId.startsWith('mock-')) {
+        setStudents(prev => prev.filter(s => s.id !== studentToDelete.id));
+        toast.success(`Đã xóa sinh viên ${studentToDelete.name} (Mock)`, { id: loadingToast });
+        setShowDeleteModal(false);
+        setStudentToDelete(null);
+        return;
+      }
+
+      await classApi.removeMember(classId, studentToDelete.rawId || studentToDelete.id);
+      toast.success(`Đã xóa sinh viên ${studentToDelete.name} khỏi lớp thành công!`, { id: loadingToast });
+      
+      setShowDeleteModal(false);
+      setStudentToDelete(null);
+      // Tải lại danh sách
+      fetchStudents(false);
+    } catch (error) {
+      console.error("Lỗi xóa sinh viên:", error);
+      toast.error(error.message || "Xóa sinh viên thất bại!", { id: loadingToast });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return null;
@@ -145,8 +198,10 @@ export default function StudentsTab({ classId }) {
     try {
       let apiStudents = [];
       let apiTotal = 0;
+      let apiTotalPages = 1;
       
-      if (!classId?.startsWith('mock-')) {
+      const isMockClass = String(classId).startsWith('mock-');
+      if (!isMockClass) {
         const [res, policyRes] = await Promise.all([
           classApi.getClassMembers(classId, { 
             page, 
@@ -157,6 +212,7 @@ export default function StudentsTab({ classId }) {
         ]);
         
         apiTotal = res?.totalElements || 0;
+        apiTotalPages = res?.totalPages || 1;
         
         // Map policy data
         const policyItems = policyRes?.items || [];
@@ -165,7 +221,9 @@ export default function StudentsTab({ classId }) {
            policyMap.set(p.userId, p);
         });
 
-        apiStudents = (res?.items || []).map(member => {
+        apiStudents = (res?.items || [])
+          .filter(member => member.role !== 'LECTURER' && member.role !== 'OWNER') // Lọc giảng viên / chủ phòng ra khỏi danh sách
+          .map(member => {
           const policy = policyMap.get(member.userId || member.id);
           const rate = policy ? Math.round(policy.attendanceRate) : undefined;
           
@@ -178,6 +236,7 @@ export default function StudentsTab({ classId }) {
           
           return {
             id: member.studentCode || 'N/A',
+            rawId: member.userId || member.id,
             name: member.fullName || 'N/A',
             email: member.email || 'N/A',
             avatar: member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName || 'U')}&background=random`,
@@ -185,23 +244,23 @@ export default function StudentsTab({ classId }) {
             attendanceRate: rate,
             lastSeen: undefined,      
             memberStatus: member.memberStatus || 'N/A',
-            attendanceStatus: attendanceStatus
+            attendanceStatus: attendanceStatus,
+            role: member.role
           };
         });
       }
 
-      // Xử lý lọc dữ liệu Mock
-      let finalMock = MOCK_STUDENTS;
-      if (searchQuery) {
+      let finalMock = isMockClass ? MOCK_STUDENTS : [];
+      if (isMockClass && searchQuery) {
         const query = searchQuery.toLowerCase();
         finalMock = MOCK_STUDENTS.filter(s => 
           s.name.toLowerCase().includes(query) || 
           s.id.toLowerCase().includes(query) ||
-          (s.email && s.email.toLowerCase().includes(query)) // Cho phép search bằng email (mock)
+          (s.email && s.email.toLowerCase().includes(query))
         );
       }
 
-      let combined = [...apiStudents, ...finalMock];
+      let combined = isMockClass ? finalMock : apiStudents;
       
       if (filterAttendance !== 'ALL') {
          combined = combined.filter(s => s.attendanceStatus === filterAttendance);
@@ -211,15 +270,14 @@ export default function StudentsTab({ classId }) {
       }
 
       setStudents(combined);
-      setTotalPages(Math.ceil(combined.length / size) || 1);
-      setTotalElements(combined.length);
+      setTotalPages(isMockClass ? (Math.ceil(combined.length / size) || 1) : apiTotalPages);
+      setTotalElements(isMockClass ? combined.length : apiTotal);
       
     } catch (error) {
       console.error("Lỗi lấy danh sách sinh viên:", error);
-      if (showLoadingUI) {
-         setStudents(MOCK_STUDENTS); 
-         setTotalElements(MOCK_STUDENTS.length);
-      }
+      setStudents([]);
+      setTotalElements(0);
+      setTotalPages(1);
     } finally {
       setIsInitialLoading(false);
       setIsPolling(false);
@@ -343,8 +401,45 @@ export default function StudentsTab({ classId }) {
 
         <div className="overflow-x-auto min-h-[300px]">
           {isInitialLoading ? (
-            <div className="flex justify-center items-center h-48 text-gray-400">
-              <Loader2 className="animate-spin" size={24} />
+            <div className="animate-fade-in-up">
+              <table className="min-w-[850px] w-full text-left text-sm">
+                <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-200">
+                  <tr>
+                    <th className="p-4 w-10 text-center text-[10px] text-gray-400">STT</th>
+                    <th className="p-4 w-12 text-center"><input type="checkbox" disabled className="rounded border-gray-300 opacity-50" /></th>
+                    <th className="p-4 whitespace-nowrap">Sinh viên</th>
+                    <th className="p-4 whitespace-nowrap">Tỷ lệ điểm danh</th>
+                    <th className="p-4 whitespace-nowrap">Ngày tham gia</th>
+                    <th className="p-4 whitespace-nowrap">Lần cuối thấy</th>
+                    <th className="p-4 whitespace-nowrap">Tham gia lớp</th>
+                    <th className="p-4 whitespace-nowrap">Điểm danh</th>
+                    <th className="p-4 whitespace-nowrap text-center">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[...Array(5)].map((_, index) => (
+                    <tr key={`sk-${index}`} className="hover:bg-gray-50/50">
+                      <td className="p-4 text-center"><div className="w-5 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
+                      <td className="p-4 text-center"><div className="w-4 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-gray-200 shimmer-loader shrink-0" />
+                          <div className="space-y-2">
+                            <div className="w-32 h-4 bg-gray-200 rounded shimmer-loader" />
+                            <div className="w-24 h-3 bg-gray-200 rounded shimmer-loader" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4"><div className="w-16 h-4 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4"><div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4"><div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4"><div className="w-20 h-6 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4"><div className="w-16 h-6 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4 text-center"><div className="w-8 h-8 bg-gray-200 rounded-full shimmer-loader mx-auto" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : students.length === 0 ? (
             <div className="flex justify-center items-center h-48 text-gray-500 font-medium">Không tìm thấy sinh viên nào.</div>
@@ -360,6 +455,7 @@ export default function StudentsTab({ classId }) {
                   <th className="p-4 whitespace-nowrap">Lần cuối thấy</th>
                   <th className="p-4 whitespace-nowrap">Tham gia lớp</th>
                   <th className="p-4 whitespace-nowrap">Điểm danh</th>
+                  <th className="p-4 whitespace-nowrap text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -386,6 +482,15 @@ export default function StudentsTab({ classId }) {
                     </td>
                     <td className="p-4 whitespace-nowrap">{renderMemberStatusBadge(student.memberStatus)}</td>
                     <td className="p-4 whitespace-nowrap">{renderStatusBadge(student.attendanceStatus)}</td>
+                    <td className="p-4 text-center whitespace-nowrap">
+                      <button 
+                        onClick={() => handleDeleteStudent(student)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Xóa sinh viên khỏi lớp"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -442,6 +547,51 @@ export default function StudentsTab({ classId }) {
           </button>
         </div>
       </div>
+
+      {/* DETAILED DELETE CONFIRMATION MODAL WITH PREMIUM UI */}
+      {showDeleteModal && studentToDelete && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[999] flex items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 transform transition-all scale-in animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mb-4 animate-bounce">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Xác nhận xóa sinh viên</h3>
+              <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                Bạn có chắc chắn muốn xóa sinh viên <strong className="text-gray-900">{studentToDelete.name}</strong> (MSSV: <span className="font-mono font-bold text-red-600">{studentToDelete.id}</span>) ra khỏi lớp học này? 
+                <br />
+                <span className="text-[12px] text-red-500 font-medium mt-2 block">⚠️ Lưu ý: Thao tác này không thể hoàn tác và mọi dữ liệu liên quan sẽ bị xóa!</span>
+              </p>
+              
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setStudentToDelete(null);
+                  }}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 font-semibold rounded-xl text-sm transition-all active:scale-[0.98]"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 disabled:opacity-50 text-white font-semibold rounded-xl text-sm shadow-md shadow-red-200 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} /> Đang xóa...
+                    </>
+                  ) : (
+                    'Xác nhận xóa'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -111,7 +111,7 @@ const MOCK_INCIDENTS = [
 ];
 
 export default function FraudTab({ classId }) {
-  const [incidents, setIncidents] = useState(MOCK_INCIDENTS);
+  const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,17 +134,14 @@ export default function FraudTab({ classId }) {
       });
 
       const realItems = data.items || [];
-      // Trộn dữ liệu thật với dữ liệu giả để kiểm thử
-      const combinedItems = [...realItems, ...MOCK_INCIDENTS];
+      setIncidents(realItems);
 
-      setIncidents(combinedItems);
-
-      // Tính toán thống kê dựa trên dữ liệu tổng hợp
-      const total = combinedItems.length;
-      const highRisk = combinedItems.filter(i =>
+      // Tính toán thống kê dựa trên dữ liệu
+      const total = realItems.length;
+      const highRisk = realItems.filter(i =>
         i.severity === 'HIGH' || i.severity === 'CRITICAL'
       ).length;
-      const resolved = combinedItems.filter(i =>
+      const resolved = realItems.filter(i =>
         i.status === 'RESOLVED'
       ).length;
 
@@ -152,10 +149,9 @@ export default function FraudTab({ classId }) {
       setError(null);
     } catch (err) {
       console.error("Lỗi khi tải sự cố gian lận:", err);
-      // Nếu lỗi API vẫn giữ lại dữ liệu giả để kiểm thử giao diện
-      setIncidents(MOCK_INCIDENTS);
-      setError("Lỗi kết nối API: Đang hiển thị dữ liệu mẫu để thử nghiệm");
-      toast.error("Không thể tải dữ liệu thực, đang hiển thị dữ liệu mẫu");
+      setIncidents([]);
+      setError("Không thể tải danh sách sự cố gian lận");
+      toast.error("Không thể kết nối API sự cố gian lận.");
     } finally {
       setLoading(false);
     }

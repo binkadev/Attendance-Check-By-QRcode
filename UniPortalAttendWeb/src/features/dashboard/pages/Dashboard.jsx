@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { 
   Search, Bell, Plus, UserCheck, Monitor, Inbox, AlertTriangle, 
-  Calendar as CalendarIcon, MapPin, ArrowRight, Smartphone, FileText, Clock, Timer
+  Calendar as CalendarIcon, MapPin, ArrowRight, Smartphone, FileText, Clock, Timer, ShieldAlert
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../../components/layout/Sidebar';
 import { 
-  ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
+  ComposedChart, Line, Bar, Area, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 import { classApi } from '../../../api/classApi';
@@ -78,6 +78,7 @@ const FRAUD_TYPE_CONFIG = {
   REPEATED_OUT_OF_RANGE: { label: 'Quét ngoài phạm vi', icon: <MapPin size={20} className="text-amber-500" /> },
   IP_BURST_MULTI_ATTEMPT: { label: 'Nhiều yêu cầu từ 1 IP', icon: <Smartphone size={20} className="text-red-500" /> },
   SHARED_DEVICE_MULTI_ACCOUNT: { label: 'Trùng thiết bị điểm danh', icon: <Smartphone size={20} className="text-red-500" /> },
+  fraud: { label: 'Phát hiện gian lận', icon: <ShieldAlert size={20} className="text-red-500" /> },
 };
 
 // Dữ liệu mẫu (Mock data) cho Cảnh báo để tránh bị trống
@@ -136,7 +137,8 @@ const MOCK_ALERTS = [
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [chartPeriod, setChartPeriod] = useState('This Week');
+  const [chartPeriod, setChartPeriod] = useState('day');
+  const [classSessions, setClassSessions] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [chartKeys, setChartKeys] = useState([]);
 
@@ -201,44 +203,10 @@ export default function Dashboard() {
         }).length;
         setActiveClassCount(activeCount);
       } catch (error) {
-        console.error("Failed to fetch schedule, loading fallback mock schedule:", error);
-        const nowMs = Date.now();
-        const fallbackToday = [
-          {
-            id: 'mock-s1',
-            groupName: 'Cấu trúc dữ liệu và giải thuật',
-            courseCode: 'CS201',
-            startAt: new Date(nowMs - 30 * 60000).toISOString(),
-            endAt: new Date(nowMs + 60 * 60000).toISOString(),
-            room: 'Phòng 402 - Tòa A1'
-          },
-          {
-            id: 'mock-s2',
-            groupName: 'Giải tích 1',
-            courseCode: 'MA101',
-            startAt: new Date(nowMs + 120 * 60000).toISOString(),
-            endAt: new Date(nowMs + 210 * 60000).toISOString(),
-            room: 'Phòng 201 - Tòa B2'
-          }
-        ];
-        const fallbackTomorrow = [
-          {
-            id: 'mock-s3',
-            groupName: 'Hệ điều hành',
-            courseCode: 'CS302',
-            startAt: new Date(nowMs + 24 * 3600000).toISOString(),
-            endAt: new Date(nowMs + 26 * 3600000).toISOString(),
-            room: 'Phòng 503 - Tòa A1'
-          }
-        ];
-        setTodayClasses(fallbackToday);
-        setTomorrowClasses(fallbackTomorrow);
-
-        const activeCount = fallbackToday.filter(cls => {
-          const status = getSessionStatus(cls.startAt, cls.endAt);
-          return status === 'now' || status === 'future';
-        }).length;
-        setActiveClassCount(activeCount);
+        console.error("Failed to fetch schedule:", error);
+        setTodayClasses([]);
+        setTomorrowClasses([]);
+        setActiveClassCount(0);
       } finally {
         setIsLoadingSchedule(false);
       }
@@ -340,16 +308,100 @@ export default function Dashboard() {
           try {
             const classId = cls.groupId || cls.id;
             const res = await classApi.getGroupSessions(classId);
-            const sessions = res?.items || [];
-            // Sắp xếp các phiên cũ nhất lên trước (Buổi 1 -> Buổi n)
-            const sortedSessions = [...sessions].sort(
-              (a, b) => new Date(a.checkinOpenAt || a.createdAt) - new Date(b.checkinOpenAt || b.createdAt)
+            const realSessions = res?.items || [];
+            
+            const getSessionDateStr = (sess) => {
+              const dateObj = new Date(sess.checkinOpenAt || sess.createdAt);
+              return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+            };
+
+            // Nhóm các phiên thực tế theo ngày
+            const sessionsByDate = {};
+            realSessions.forEach(sess => {
+              const dateStr = getSessionDateStr(sess);
+              if (!sessionsByDate[dateStr]) {
+                sessionsByDate[dateStr] = [];
+              }
+              sessionsByDate[dateStr].push(sess);
+            });
+
+            // Chọn phiên cuối cùng của mỗi ngày làm đại diện
+            const uniqueRealSessionsMap = new Map();
+            Object.keys(sessionsByDate).forEach(dateStr => {
+              const daySessions = sessionsByDate[dateStr];
+              // Sắp xếp tăng dần theo thời gian để lấy phiên cuối cùng trong ngày
+              daySessions.sort((a, b) => new Date(a.checkinOpenAt || a.createdAt) - new Date(b.checkinOpenAt || b.createdAt));
+              uniqueRealSessionsMap.set(dateStr, daySessions[daySessions.length - 1]);
+            });
+
+            // Lấy danh sách ngày dự kiến đã trôi qua
+            const scheduledDates = [];
+            const now = new Date();
+            const startStr = cls.startDate || cls.createdAt || new Date().toISOString();
+            const startDate = new Date(startStr);
+            const totalSessions = cls.totalSessions || 15;
+            for (let j = 0; j < totalSessions; j++) {
+              const expectedDate = new Date(startDate.getTime() + j * 7 * 24 * 60 * 60 * 1000);
+              if (expectedDate <= now) {
+                const ymd = `${expectedDate.getFullYear()}-${String(expectedDate.getMonth() + 1).padStart(2, '0')}-${String(expectedDate.getDate()).padStart(2, '0')}`;
+                scheduledDates.push(ymd);
+              }
+            }
+
+            // Gộp tất cả các ngày và sắp xếp theo thứ tự thời gian tăng dần
+            const allDatesSet = new Set([
+              ...scheduledDates,
+              ...uniqueRealSessionsMap.keys()
+            ]);
+            const sortedAllDates = Array.from(allDatesSet).sort(
+              (a, b) => new Date(a) - new Date(b)
             );
+
+            // Xây dựng danh sách phiên hoàn chỉnh có đếm sự kiện thực tế
+            const finalSessions = [];
+            for (const dateStr of sortedAllDates) {
+              const realSess = uniqueRealSessionsMap.get(dateStr);
+              if (realSess) {
+                try {
+                  const eventRes = await classApi.getAttendanceEvents(realSess.id, 200);
+                  const allEvents = Array.isArray(eventRes) ? eventRes : (eventRes.items || []);
+                  const latestStatusMap = new Map();
+                  const sorted = [...allEvents].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                  sorted.forEach(e => latestStatusMap.set(String(e.userId), e.newStatus));
+                  let count = 0;
+                  latestStatusMap.forEach(status => {
+                    if (status === 'PRESENT' || status === 'LATE') count++;
+                  });
+                  finalSessions.push({
+                    ...realSess,
+                    actualCheckIns: count,
+                    dateStr
+                  });
+                } catch (err) {
+                  finalSessions.push({
+                    ...realSess,
+                    actualCheckIns: realSess.checkIns || realSess.checkinCount || 0,
+                    dateStr
+                  });
+                }
+              } else {
+                finalSessions.push({
+                  id: `missed-${classId}-${dateStr}`,
+                  actualCheckIns: 0,
+                  checkinOpenAt: new Date(dateStr).toISOString(),
+                  dateStr,
+                  isMissed: true
+                });
+              }
+            }
+
             return {
               classId,
               groupName: cls.groupName || cls.name || 'Không rõ lớp',
               courseCode: cls.courseCode || '',
-              sessions: sortedSessions,
+              classCode: cls.classCode || '',
+              semester: cls.semester || cls.term || 'Kỳ 1 2025',
+              sessions: finalSessions,
               totalEnrolled: cls.approvedStudentCount || 30
             };
           } catch (e) {
@@ -359,82 +411,13 @@ export default function Dashboard() {
         });
 
         const classSessionsResults = (await Promise.all(classSessionsPromises)).filter(Boolean);
-        
-        const sessionCounts = classSessionsResults.map(c => c.sessions.length);
-        const maxSessions = Math.min(8, Math.max(...sessionCounts, 0));
-        
-        let newChartData = [];
-        let newChartKeys = [];
-        
-        classSessionsResults.forEach(c => {
-          const key = c.courseCode || c.groupName;
-          if (key && !newChartKeys.includes(key)) {
-            newChartKeys.push(key);
-          }
-        });
-        
-        if (maxSessions > 0) {
-          for (let i = 0; i < maxSessions; i++) {
-            const chartItem = { name: `Buổi ${i + 1}` };
-            let sumRates = 0;
-            let validClassesCount = 0;
-            
-            classSessionsResults.forEach(c => {
-              const session = c.sessions[i];
-              if (session) {
-                const checkIns = session.checkIns || session.checkinCount || 0;
-                const total = c.totalEnrolled || 30;
-                const rate = total > 0 ? Math.round((checkIns / total) * 100) : 0;
-                
-                const key = c.courseCode || c.groupName;
-                chartItem[key] = rate;
-                
-                sumRates += rate;
-                validClassesCount++;
-              }
-            });
-            
-            if (validClassesCount > 0) {
-              chartItem['Trung bình'] = Math.round(sumRates / validClassesCount);
-            }
-            newChartData.push(chartItem);
-          }
-        }
-        
-        // Nếu không có dữ liệu thực tế, hiển thị biểu đồ mẫu đa môn học phong phú để tránh trống trải
-        if (newChartData.length === 0) {
-          newChartData = [
-            { name: 'Buổi 1', 'Giải tích 1': 85, 'Cấu trúc dữ liệu': 90, 'Hệ điều hành': 78, 'Trung bình': 84 },
-            { name: 'Buổi 2', 'Giải tích 1': 88, 'Cấu trúc dữ liệu': 92, 'Hệ điều hành': 82, 'Trung bình': 87 },
-            { name: 'Buổi 3', 'Giải tích 1': 82, 'Cấu trúc dữ liệu': 85, 'Hệ điều hành': 80, 'Trung bình': 82 },
-            { name: 'Buổi 4', 'Giải tích 1': 90, 'Cấu trúc dữ liệu': 94, 'Hệ điều hành': 85, 'Trung bình': 90 },
-            { name: 'Buổi 5', 'Giải tích 1': 87, 'Cấu trúc dữ liệu': 89, 'Hệ điều hành': 88, 'Trung bình': 88 },
-          ];
-          newChartKeys = ['Giải tích 1', 'Cấu trúc dữ liệu', 'Hệ điều hành'];
-        }
-        
-        setChartData(newChartData);
-        setChartKeys(newChartKeys);
+        setClassSessions(classSessionsResults);
       } catch (error) {
-        console.error("Failed to fetch teaching classes for alerts, loading fallback mock data:", error);
-        
-        // Fallback chart data
-        const fallbackChartData = [
-          { name: 'Buổi 1', 'Giải tích 1': 85, 'Cấu trúc dữ liệu': 90, 'Hệ điều hành': 78, 'Trung bình': 84 },
-          { name: 'Buổi 2', 'Giải tích 1': 88, 'Cấu trúc dữ liệu': 92, 'Hệ điều hành': 82, 'Trung bình': 87 },
-          { name: 'Buổi 3', 'Giải tích 1': 82, 'Cấu trúc dữ liệu': 85, 'Hệ điều hành': 80, 'Trung bình': 82 },
-          { name: 'Buổi 4', 'Giải tích 1': 90, 'Cấu trúc dữ liệu': 94, 'Hệ điều hành': 85, 'Trung bình': 90 },
-          { name: 'Buổi 5', 'Giải tích 1': 87, 'Cấu trúc dữ liệu': 89, 'Hệ điều hành': 88, 'Trung bình': 88 },
-        ];
-        setChartData(fallbackChartData);
-        setChartKeys(['Giải tích 1', 'Cấu trúc dữ liệu', 'Hệ điều hành']);
-        
-        // Fallback alerts & counts
-        setAlerts(MOCK_ALERTS);
-        setDashboardStats({ fraudCount: 3, absenceCount: 7 });
-        
-        // Fallback KPI stats
-        setAttendanceRate("86.5");
+        console.error("Failed to fetch teaching classes for alerts:", error);
+        setClassSessions([]);
+        setAlerts([]);
+        setDashboardStats({ fraudCount: 0, absenceCount: 0 });
+        setAttendanceRate(null);
       } finally {
         setIsLoadingAlerts(false);
       }
@@ -447,6 +430,249 @@ export default function Dashboard() {
     const interval = setInterval(() => setTimeTrigger(prev => prev + 1), 60000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!classSessions || classSessions.length === 0) {
+      setChartData([]);
+      setChartKeys([]);
+      return;
+    }
+
+    let newChartData = [];
+    let newChartKeys = [];
+
+    classSessions.forEach(c => {
+      const key = `${c.courseCode}${c.classCode ? ` - ${c.classCode}` : ''} - ${c.groupName}`;
+      if (key && !newChartKeys.includes(key)) {
+        newChartKeys.push(key);
+      }
+    });
+
+    if (chartPeriod === 'day') {
+      const allDatesAcrossClasses = new Set();
+      classSessions.forEach(c => {
+        c.sessions.forEach(sess => {
+          if (sess.dateStr) {
+            allDatesAcrossClasses.add(sess.dateStr);
+          }
+        });
+      });
+
+      const sortedGlobalDates = Array.from(allDatesAcrossClasses).sort(
+        (a, b) => new Date(a) - new Date(b)
+      );
+
+      const finalGlobalDates = sortedGlobalDates.slice(-10);
+
+      if (finalGlobalDates.length > 0) {
+        finalGlobalDates.forEach(dateStr => {
+          const dateObj = new Date(dateStr);
+          const formattedLabel = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+          
+          const chartItem = { name: formattedLabel, rawDate: dateStr };
+          let sumRates = 0;
+          let validClassesCount = 0;
+          
+          classSessions.forEach(c => {
+            const sessionIndex = c.sessions.findIndex(s => s.dateStr === dateStr);
+            if (sessionIndex !== -1) {
+              const sessionOnDate = c.sessions[sessionIndex];
+              const checkIns = sessionOnDate.actualCheckIns ?? (sessionOnDate.checkIns || sessionOnDate.checkinCount || 0);
+              const total = c.totalEnrolled || 30;
+              const rate = total > 0 ? Math.round((checkIns / total) * 100) : 0;
+              
+              const key = `${c.courseCode}${c.classCode ? ` - ${c.classCode}` : ''} - ${c.groupName}`;
+              chartItem[key] = rate;
+              chartItem[`${key}_sessionLabel`] = `Buổi ${sessionIndex + 1}`;
+              
+              sumRates += rate;
+              validClassesCount++;
+            }
+          });
+          
+          if (validClassesCount > 0) {
+            chartItem['Trung bình'] = Math.round(sumRates / validClassesCount);
+          }
+          newChartData.push(chartItem);
+        });
+      }
+    } else if (chartPeriod === 'week') {
+      const getMondayStr = (dStr) => {
+        const d = new Date(dStr);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff));
+        return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+      };
+
+      const allWeeksAcrossClasses = new Set();
+      classSessions.forEach(c => {
+        c.sessions.forEach(sess => {
+          if (sess.dateStr) {
+            allWeeksAcrossClasses.add(getMondayStr(sess.dateStr));
+          }
+        });
+      });
+
+      const sortedGlobalWeeks = Array.from(allWeeksAcrossClasses).sort(
+        (a, b) => new Date(a) - new Date(b)
+      );
+
+      const finalGlobalWeeks = sortedGlobalWeeks.slice(-10);
+
+      if (finalGlobalWeeks.length > 0) {
+        finalGlobalWeeks.forEach(mondayStr => {
+          const mondayDate = new Date(mondayStr);
+          const formattedLabel = `T. ${String(mondayDate.getDate()).padStart(2, '0')}/${String(mondayDate.getMonth() + 1).padStart(2, '0')}`;
+          
+          const chartItem = { name: formattedLabel, rawDate: mondayStr };
+          let sumRates = 0;
+          let validClassesCount = 0;
+          
+          classSessions.forEach(c => {
+            const sessionsInWeek = [];
+            c.sessions.forEach((s, idx) => {
+              if (getMondayStr(s.dateStr) === mondayStr) {
+                sessionsInWeek.push({ session: s, index: idx });
+              }
+            });
+
+            if (sessionsInWeek.length > 0) {
+              let sumVal = 0;
+              sessionsInWeek.forEach(item => {
+                const s = item.session;
+                const checkIns = s.actualCheckIns ?? (s.checkIns || s.checkinCount || 0);
+                const total = c.totalEnrolled || 30;
+                sumVal += total > 0 ? Math.round((checkIns / total) * 100) : 0;
+              });
+              const rate = Math.round(sumVal / sessionsInWeek.length);
+              
+              const key = `${c.courseCode}${c.classCode ? ` - ${c.classCode}` : ''} - ${c.groupName}`;
+              chartItem[key] = rate;
+              
+              const labelIndices = sessionsInWeek.map(item => item.index + 1);
+              chartItem[`${key}_sessionLabel`] = `Buổi ${labelIndices.join('-')}`;
+              
+              sumRates += rate;
+              validClassesCount++;
+            }
+          });
+          
+          if (validClassesCount > 0) {
+            chartItem['Trung bình'] = Math.round(sumRates / validClassesCount);
+          }
+          newChartData.push(chartItem);
+        });
+      }
+    } else if (chartPeriod === 'month') {
+      const allMonthsAcrossClasses = new Set();
+      classSessions.forEach(c => {
+        c.sessions.forEach(sess => {
+          if (sess.dateStr) {
+            allMonthsAcrossClasses.add(sess.dateStr.substring(0, 7));
+          }
+        });
+      });
+
+      const sortedGlobalMonths = Array.from(allMonthsAcrossClasses).sort(
+        (a, b) => new Date(a + "-01") - new Date(b + "-01")
+      );
+
+      const finalGlobalMonths = sortedGlobalMonths.slice(-10);
+
+      if (finalGlobalMonths.length > 0) {
+        finalGlobalMonths.forEach(monthStr => {
+          const parts = monthStr.split('-');
+          const formattedLabel = `T. ${parts[1]}`;
+          
+          const chartItem = { name: formattedLabel, rawDate: monthStr };
+          let sumRates = 0;
+          let validClassesCount = 0;
+          
+          classSessions.forEach(c => {
+            const sessionsInMonth = [];
+            c.sessions.forEach((s, idx) => {
+              if (s.dateStr.substring(0, 7) === monthStr) {
+                sessionsInMonth.push({ session: s, index: idx });
+              }
+            });
+
+            if (sessionsInMonth.length > 0) {
+              let sumVal = 0;
+              sessionsInMonth.forEach(item => {
+                const s = item.session;
+                const checkIns = s.actualCheckIns ?? (s.checkIns || s.checkinCount || 0);
+                const total = c.totalEnrolled || 30;
+                sumVal += total > 0 ? Math.round((checkIns / total) * 100) : 0;
+              });
+              const rate = Math.round(sumVal / sessionsInMonth.length);
+              
+              const key = `${c.courseCode}${c.classCode ? ` - ${c.classCode}` : ''} - ${c.groupName}`;
+              chartItem[key] = rate;
+              
+              const labelIndices = sessionsInMonth.map(item => item.index + 1);
+              const labelText = labelIndices.length > 2 
+                ? `Buổi ${labelIndices[0]}-${labelIndices[labelIndices.length - 1]}`
+                : `Buổi ${labelIndices.join('-')}`;
+              chartItem[`${key}_sessionLabel`] = labelText;
+              
+              sumRates += rate;
+              validClassesCount++;
+            }
+          });
+          
+          if (validClassesCount > 0) {
+            chartItem['Trung bình'] = Math.round(sumRates / validClassesCount);
+          }
+          newChartData.push(chartItem);
+        });
+      }
+    } else if (chartPeriod === 'semester') {
+      const allSemestersAcrossClasses = new Set();
+      classSessions.forEach(c => {
+        if (c.semester) {
+          allSemestersAcrossClasses.add(c.semester);
+        }
+      });
+
+      const sortedGlobalSemesters = Array.from(allSemestersAcrossClasses).sort();
+
+      if (sortedGlobalSemesters.length > 0) {
+        sortedGlobalSemesters.forEach(semStr => {
+          const chartItem = { name: semStr };
+          let sumRates = 0;
+          let validClassesCount = 0;
+          
+          classSessions.forEach(c => {
+            if (c.semester === semStr && c.sessions.length > 0) {
+              let sumVal = 0;
+              c.sessions.forEach(s => {
+                const checkIns = s.actualCheckIns ?? (s.checkIns || s.checkinCount || 0);
+                const total = c.totalEnrolled || 30;
+                sumVal += total > 0 ? Math.round((checkIns / total) * 100) : 0;
+              });
+              const rate = Math.round(sumVal / c.sessions.length);
+              
+              const key = `${c.courseCode}${c.classCode ? ` - ${c.classCode}` : ''} - ${c.groupName}`;
+              chartItem[key] = rate;
+              chartItem[`${key}_sessionLabel`] = `Cả kỳ (1-${c.sessions.length})`;
+              
+              sumRates += rate;
+              validClassesCount++;
+            }
+          });
+          
+          if (validClassesCount > 0) {
+            chartItem['Trung bình'] = Math.round(sumRates / validClassesCount);
+          }
+          newChartData.push(chartItem);
+        });
+      }
+    }
+
+    setChartData(newChartData);
+    setChartKeys(newChartKeys);
+  }, [classSessions, chartPeriod]);
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc] font-sans">
@@ -594,16 +820,28 @@ export default function Dashboard() {
                   </div>
                   <div className="flex bg-gray-50 border border-gray-200 rounded-lg p-1">
                     <button 
-                      onClick={() => setChartPeriod('This Week')}
-                      className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'This Week' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setChartPeriod('day')}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'day' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                      Tuần này
+                      Theo ngày
                     </button>
                     <button 
-                      onClick={() => setChartPeriod('Last Week')}
-                      className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'Last Week' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      onClick={() => setChartPeriod('week')}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'week' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                      Tuần trước
+                      Theo tuần
+                    </button>
+                    <button 
+                      onClick={() => setChartPeriod('month')}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'month' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      Theo tháng
+                    </button>
+                    <button 
+                      onClick={() => setChartPeriod('semester')}
+                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'semester' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      Theo học kỳ
                     </button>
                   </div>
                 </div>
@@ -611,31 +849,120 @@ export default function Dashboard() {
                 <div className="h-72 w-full" style={{ minHeight: '288px' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#94A3B8" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#94A3B8" stopOpacity={0}/>
+                        </linearGradient>
+                        {SUBJECT_COLORS.map((color, idx) => (
+                          <linearGradient key={idx} id={`colorSubj-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={color} stopOpacity={0.35}/>
+                            <stop offset="95%" stopColor={color} stopOpacity={0}/>
+                          </linearGradient>
+                        ))}
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} dy={10} />
                       <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} domain={[0, 100]} />
                       <Tooltip 
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 30px rgb(0 0 0 / 0.12)', padding: '12px 16px' }}
                         cursor={{ fill: '#F3F4F6' }}
+                        formatter={(value, name, props) => {
+                          const payload = props.payload;
+                          const sessionLabel = payload[`${name}_sessionLabel`];
+                          if (sessionLabel) {
+                            return [`${value}% (${sessionLabel})`, name];
+                          }
+                          return [`${value}%`, name];
+                        }}
                       />
                       <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 600 }} />
                       
-                      {/* Bar chart background đại diện cho trung bình chung */}
-                      <Bar dataKey="Trung bình" name="Trung bình chung" fill="#E2E8F0" barSize={35} radius={[6, 6, 0, 0]} opacity={0.5} />
-                      
-                      {/* Đường biểu đồ riêng biệt cho từng môn học */}
-                      {chartKeys.map((key, index) => (
-                        <Line
-                          key={key}
-                          type="monotone"
-                          dataKey={key}
-                          name={key}
-                          stroke={SUBJECT_COLORS[index % SUBJECT_COLORS.length]}
-                          strokeWidth={3}
-                          dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
-                          activeDot={{ r: 6 }}
+                      {/* VÙNG TRUNG BÌNH CHUNG ĐƯỜNG NỀN CHO CÁC PHIÊN CHU KỲ NGẮN */}
+                      {chartPeriod === 'day' && (
+                        <Area 
+                          type="monotone" 
+                          dataKey="Trung bình" 
+                          name="Trung bình chung" 
+                          stroke="#94A3B8" 
+                          fill="url(#colorAvg)" 
+                          strokeWidth={2}
+                          strokeDasharray="4 4"
                         />
-                      ))}
+                      )}
+
+                      {chartPeriod === 'week' && (
+                        <Area 
+                          type="monotone" 
+                          dataKey="Trung bình" 
+                          name="Trung bình chung" 
+                          stroke="#475569" 
+                          fill="url(#colorAvg)" 
+                          strokeWidth={2}
+                        />
+                      )}
+                      
+                      {/* ĐƯỜNG BIỂU ĐỒ ĐỘNG THEO TỪNG MÔN HỌC & CHU KỲ */}
+                      {chartKeys.map((key, index) => {
+                        const color = SUBJECT_COLORS[index % SUBJECT_COLORS.length];
+                        
+                        if (chartPeriod === 'day') {
+                          // Daily View: Dynamic lines with active dots
+                          return (
+                            <Line
+                              key={key}
+                              type="monotone"
+                              dataKey={key}
+                              name={key}
+                              connectNulls
+                              stroke={color}
+                              strokeWidth={3}
+                              dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                              activeDot={{ r: 6 }}
+                            />
+                          );
+                        } else if (chartPeriod === 'week') {
+                          // Weekly View: Layered smooth glowing Area charts
+                          return (
+                            <Area
+                              key={key}
+                              type="monotone"
+                              dataKey={key}
+                              name={key}
+                              stroke={color}
+                              fill={`url(#colorSubj-${index % SUBJECT_COLORS.length})`}
+                              strokeWidth={3}
+                              dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
+                              activeDot={{ r: 6 }}
+                            />
+                          );
+                        } else {
+                          // Monthly & Semester Views: Clean discrete Column (Bar) charts side-by-side
+                          return (
+                            <Bar
+                              key={key}
+                              dataKey={key}
+                              name={key}
+                              fill={color}
+                              barSize={chartPeriod === 'semester' ? 40 : 20}
+                              radius={[4, 4, 0, 0]}
+                            />
+                          );
+                        }
+                      })}
+
+                      {/* ĐƯỜNG TRUNG BÌNH CHUNG ĐÈ LÊN TRÊN CHO CÁC PHIÊN CHU KỲ DÀI */}
+                      {(chartPeriod === 'month' || chartPeriod === 'semester') && (
+                        <Line
+                          type="monotone"
+                          dataKey="Trung bình"
+                          name="Trung bình chung"
+                          stroke="#1E293B"
+                          strokeWidth={3}
+                          strokeDasharray="6 4"
+                          dot={{ r: 5, strokeWidth: 3, fill: '#1E293B' }}
+                        />
+                      )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -649,8 +976,23 @@ export default function Dashboard() {
 
                 <div className="space-y-4">
                   {isLoadingAlerts ? (
-                    <div className="flex justify-center items-center h-20 text-red-600">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                    <div className="space-y-4 animate-fade-in-up">
+                      {[...Array(3)].map((_, idx) => (
+                        <div key={`sk-alert-${idx}`} className="flex gap-4 p-4 rounded-xl border border-gray-100 bg-gray-50/30">
+                          <div className="w-10 h-10 rounded-full bg-gray-200 shimmer-loader shrink-0" />
+                          <div className="flex-1 space-y-3">
+                            <div className="flex justify-between items-center">
+                              <div className="w-32 h-4 bg-gray-200 rounded shimmer-loader" />
+                              <div className="w-12 h-3 bg-gray-200 rounded shimmer-loader" />
+                            </div>
+                            <div className="space-y-2">
+                              <div className="w-full h-3.5 bg-gray-200 rounded shimmer-loader" />
+                              <div className="w-3/4 h-3.5 bg-gray-200 rounded shimmer-loader" />
+                            </div>
+                            <div className="w-24 h-8 bg-gray-200 rounded-lg shimmer-loader" />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : alerts.length > 0 ? (
                     alerts.slice(0, 5).map((alert, idx) => (
@@ -665,8 +1007,28 @@ export default function Dashboard() {
                               <span className="text-xs font-medium text-gray-400">{timeAgo(alert.createdAt)}</span>
                             </div>
                             <div className="text-sm text-gray-600 mb-3">
-                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span>: {alert.description || 'Có hành vi điểm danh bất thường'} <br/>
-                              Tại lớp: <span className="font-bold text-gray-900">{alert.classInfo?.courseCode ? `${alert.classInfo.courseCode} - ` : ''}{alert.classInfo?.groupName || alert.classInfo?.name || 'Không rõ lớp'}</span>.
+                              {alert.studentName && alert.studentName !== 'Không rõ' ? (
+                                <><span className="font-bold text-gray-900">{alert.studentName}</span>: </>
+                              ) : (
+                                <span className="font-bold text-red-600">Cảnh báo: </span>
+                              )}
+                              {alert.description || 'Có hành vi điểm danh bất thường'} <br/>
+                              Tại lớp: <span className="font-bold text-gray-900">
+                                {alert.classInfo?.courseCode ? `${alert.classInfo.courseCode} – ` : ''}
+                                {alert.classInfo?.classCode ? `${alert.classInfo.classCode} – ` : ''}
+                                {alert.classInfo?.groupName || alert.classInfo?.name || 'Không rõ lớp'}
+                              </span>.
+
+                              {/* THÔNG TIN SINH VIÊN LIÊN QUAN (TÊN & MSV) */}
+                              {(alert.studentName || alert.student?.name) && (
+                                <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5 bg-red-50/40 border border-red-100/50 p-2 rounded-lg">
+                                  <span>👤 Sinh viên liên quan:</span>
+                                  <strong className="text-gray-900 font-bold">{alert.studentName || alert.student?.name}</strong>
+                                  {(alert.studentCode || alert.student?.studentCode || alert.student?.id || alert.userId) && (
+                                    <> - MSV: <span className="font-mono font-bold text-red-600 bg-white border border-red-100 px-1 py-0.5 rounded">{alert.studentCode || alert.student?.studentCode || alert.student?.id || alert.userId}</span></>
+                                  )}
+                                </p>
+                              )}
                               
                               {alert.evidenceSummary?.userAgent && (
                                 <p className="text-xs text-gray-500 mt-2 leading-relaxed bg-gray-50 p-2 rounded-lg border border-gray-100">
@@ -695,7 +1057,14 @@ export default function Dashboard() {
                               <span className="text-xs font-medium text-gray-400">{timeAgo(alert.createdAt)}</span>
                             </div>
                             <p className="text-sm text-gray-600 mb-3">
-                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span> đã gửi yêu cầu cho môn {alert.classInfo?.groupName || alert.classInfo?.name || 'không rõ'}. Lý do: {alert.reason}
+                              <span className="font-bold text-gray-900">{alert.studentName || 'Không rõ'}</span>
+                              {(alert.studentCode || alert.student?.studentCode || alert.student?.id || alert.userId) && (
+                                <> (MSV: <span className="font-mono text-red-600 font-bold">{alert.studentCode || alert.student?.studentCode || alert.student?.id || alert.userId}</span>)</>
+                              )} đã gửi yêu cầu cho môn <span className="font-bold text-gray-900">
+                                {alert.classInfo?.courseCode ? `${alert.classInfo.courseCode} – ` : ''}
+                                {alert.classInfo?.classCode ? `${alert.classInfo.classCode} – ` : ''}
+                                {alert.classInfo?.groupName || alert.classInfo?.name || 'không rõ'}
+                              </span>. Lý do: {alert.reason}
                             </p>
                             <div>
                               <button onClick={() => navigate(`/classes/${alert.classInfo?.id}`, { state: { activeTab: 'absence' } })} className="px-4 py-2 bg-[#111827] hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition-colors">Xem tài liệu</button>

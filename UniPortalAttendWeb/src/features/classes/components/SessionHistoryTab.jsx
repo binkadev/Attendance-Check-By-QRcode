@@ -131,11 +131,20 @@ export default function SessionHistoryTab({ classId }) {
         toast.success(`Đã hủy kết quả điểm danh`, { id: loadingToast });
         setEvents(prev => prev.filter(e => String(e.userId) !== String(userId)));
       } else {
-        const payload = { status: status, note: "Ghi nhận thủ công" };
+        const payload = { 
+          status: status, 
+          note: "Ghi nhận thủ công",
+          method: "MANUAL"
+        };
         await classApi.submitAttendance(selectedSession.id, userId, payload);
         toast.success(`Đã ghi nhận: ${statusLabels[status]}`, { id: loadingToast });
 
-        const newEvent = { userId, newStatus: status, createdAt: new Date().toISOString() };
+        const newEvent = { 
+          userId, 
+          newStatus: status, 
+          createdAt: new Date().toISOString(),
+          method: "MANUAL"
+        };
         setEvents(prev => [newEvent, ...prev.filter(e => String(e.userId) !== String(userId))]);
       }
 
@@ -187,7 +196,7 @@ export default function SessionHistoryTab({ classId }) {
   });
 
   const filteredCheckedIn = Array.from(checkedInUserIds).map(userId => {
-    const memberInfo = members.find(m => String(m.userId || m.id) === userId);
+    const memberInfo = members.find(m => String(m.studentCode || m.code || m.userId || m.id) === userId);
     const userEvents = events
       .filter(e => String(e.userId) === userId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -207,7 +216,7 @@ export default function SessionHistoryTab({ classId }) {
 
   const pendingUsers = members
     .filter(m => m.role !== 'LECTURER' && m.role !== 'OWNER') 
-    .filter(m => !checkedInUserIds.has(String(m.userId || m.id)))
+    .filter(m => !checkedInUserIds.has(String(m.studentCode || m.code || m.userId || m.id)))
     .filter(m => (m.fullName || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
                  (m.studentCode || m.code || "").toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -231,9 +240,51 @@ export default function SessionHistoryTab({ classId }) {
 
         <div className="overflow-x-auto min-h-[300px]">
           {isLoadingSessions ? (
-            <div className="flex flex-col justify-center items-center h-56 gap-3">
-              <Loader2 className="animate-spin text-red-600" size={32} />
-              <p className="text-sm font-semibold text-gray-400">Đang tải danh sách phiên học...</p>
+            <div className="animate-fade-in-up">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100 uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="p-4 pl-6">Ngày học</th>
+                    <th className="p-4">Thời gian mở</th>
+                    <th className="p-4">Trạng thái</th>
+                    <th className="p-4">Phương thức</th>
+                    <th className="p-4">Hiện diện</th>
+                    <th className="p-4 pr-6 text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[...Array(4)].map((_, index) => (
+                    <tr key={`sk-sess-${index}`} className="hover:bg-gray-50/50">
+                      <td className="p-4 pl-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-gray-200 shimmer-loader shrink-0" />
+                          <div className="space-y-1.5">
+                            <div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" />
+                            <div className="w-16 h-3 bg-gray-200 rounded shimmer-loader" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="space-y-1.5">
+                          <div className="w-28 h-4 bg-gray-200 rounded shimmer-loader" />
+                          <div className="w-20 h-3 bg-gray-200 rounded shimmer-loader" />
+                        </div>
+                      </td>
+                      <td className="p-4"><div className="w-16 h-6 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4"><div className="w-20 h-6 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4">
+                        <div className="space-y-1.5">
+                          <div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" />
+                          <div className="w-32 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="w-1/2 h-full bg-gray-200 shimmer-loader rounded-full" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 pr-6 text-right"><div className="w-24 h-8 bg-gray-200 rounded-lg shimmer-loader ml-auto" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : sessions.length === 0 ? (
             <div className="flex flex-col justify-center items-center h-56 text-gray-400">
@@ -389,9 +440,30 @@ export default function SessionHistoryTab({ classId }) {
       {/* Data Table */}
       <div className="overflow-x-auto min-h-[300px]">
         {isLoadingDetail ? (
-          <div className="flex flex-col justify-center items-center h-48 gap-2">
-            <Loader2 className="animate-spin text-red-600" size={24} />
-            <span className="text-xs text-gray-400 font-medium">Đang đồng bộ dữ liệu...</span>
+          <div className="animate-fade-in-up">
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="bg-gray-50/70 text-gray-500 font-bold border-b border-gray-100 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th className="p-4 pl-6 w-2/5">Sinh viên</th>
+                  <th className="p-4 w-1/4">Mã sinh viên</th>
+                  <th className="p-4 pr-6 text-right">Ghi nhận thủ công</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {[...Array(3)].map((_, index) => (
+                  <tr key={`sk-det-${index}`} className="hover:bg-gray-50/50">
+                    <td className="p-4 pl-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 shimmer-loader shrink-0" />
+                        <div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" />
+                      </div>
+                    </td>
+                    <td className="p-4"><div className="w-16 h-4 bg-gray-200 rounded shimmer-loader" /></td>
+                    <td className="p-4 pr-6 text-right"><div className="w-32 h-8 bg-gray-200 rounded-lg shimmer-loader ml-auto" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : subTab === 'pending' ? (
           <table className="w-full text-left text-sm border-collapse">
@@ -419,13 +491,13 @@ export default function SessionHistoryTab({ classId }) {
                   <td className="p-4 pr-6 text-right">
                     <div className="flex justify-end gap-2">
                       <button 
-                        onClick={() => handleManualCheckIn(user.userId || user.id, 'PRESENT')} 
+                        onClick={() => handleManualCheckIn(user.studentCode || user.code || user.userId || user.id, 'PRESENT')} 
                         className="px-3.5 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200 transition-all hover:scale-[1.02] shadow-sm"
                       >
                         <CheckCircle size={13} /> Có mặt
                       </button>
                       <button 
-                        onClick={() => handleManualCheckIn(user.userId || user.id, 'ABSENT')} 
+                        onClick={() => handleManualCheckIn(user.studentCode || user.code || user.userId || user.id, 'ABSENT')} 
                         className="px-3.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200 transition-all hover:scale-[1.02] shadow-sm"
                       >
                         <XCircle size={13} /> Vắng
@@ -490,7 +562,7 @@ export default function SessionHistoryTab({ classId }) {
                   </td>
                   <td className="p-4 pr-6 text-right">
                     <button 
-                      onClick={() => handleManualCheckIn(user.userId || user.id, 'ABSENT')} 
+                      onClick={() => handleManualCheckIn(user.studentCode || user.code || user.userId || user.id, 'ABSENT')} 
                       className="text-gray-400 hover:text-red-600 text-xs font-bold hover:underline transition-all"
                     >
                       Hủy điểm danh

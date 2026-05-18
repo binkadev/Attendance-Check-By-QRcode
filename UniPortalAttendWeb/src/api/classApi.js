@@ -164,6 +164,42 @@ export const classApi = {
     }
   },
 
+  /**
+   * Xóa sinh viên khỏi lớp (Dành cho Giảng viên)
+   */
+  removeMember: async (groupId, userId) => {
+    try {
+      const url = `${BASE_URL_GROUPS}/${groupId}/members/${userId}`;
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (response.status === 204) return true;
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Remove member error:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Rời khỏi lớp học (Dành cho Sinh viên)
+   */
+  leaveClass: async (groupId) => {
+    try {
+      const url = `${BASE_URL_GROUPS}/${groupId}/members/me`;
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (response.status === 204) return true;
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Leave class error:", error);
+      throw error;
+    }
+  },
+
   // ==================== API TẠO LỚP ====================
   
   /**

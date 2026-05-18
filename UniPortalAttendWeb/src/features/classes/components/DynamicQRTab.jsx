@@ -88,35 +88,7 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
     autoResumeSession();
   }, [groupId]);
 
-  // --- MOCK DATA CẢNH BÁO ---
-  const MOCK_ALERTS = [
-    {
-      id: 'mock-f1',
-      fraudType: 'SHARED_DEVICE_MULTI_ACCOUNT',
-      title: 'Trùng thiết bị điểm danh',
-      desc: 'Sinh viên <span class="font-bold">Nguyễn Văn Mạnh</span> cố tình điểm danh trên cùng một thiết bị (trùng địa chỉ MAC). Những sinh viên liên quan: Lê Văn Bình.',
-      time: '10 phút trước',
-      severity: 'CRITICAL'
-    },
-    {
-      id: 'mock-f2',
-      fraudType: 'REPEATED_OUT_OF_RANGE',
-      title: 'Quét QR ngoài phạm vi',
-      desc: 'Sinh viên <span class="font-bold">Trần Đăng Khoa</span>: Phát hiện tọa độ GPS cách xa vị trí phòng học 2.5km.',
-      time: '45 phút trước',
-      severity: 'HIGH'
-    },
-    {
-      id: 'mock-f3',
-      fraudType: 'IP_BURST_MULTI_ATTEMPT',
-      title: 'Quét QR quá nhanh',
-      desc: 'Sinh viên <span class="font-bold">Phạm Thị Mai</span>: Phát hiện 3 lần quét trong 4 giây từ cùng một địa chỉ IP.',
-      time: '1 giờ trước',
-      severity: 'HIGH'
-    }
-  ];
-  
-  const [securityAlerts, setSecurityAlerts] = useState(MOCK_ALERTS);
+  const [securityAlerts, setSecurityAlerts] = useState([]);
 
   // --- FETCH SECURITY ALERTS (POLLING) ---
   useEffect(() => {
@@ -136,12 +108,10 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
                severity: incident.severity || 'HIGH'
              };
         });
-        if (realAlerts.length > 0) {
-           setSecurityAlerts(realAlerts);
-        } else {
-           setSecurityAlerts(MOCK_ALERTS);
-        }
-      } catch (error) {}
+        setSecurityAlerts(realAlerts);
+      } catch (error) {
+        setSecurityAlerts([]);
+      }
     };
     
     fetchAlerts();

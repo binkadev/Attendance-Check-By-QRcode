@@ -467,7 +467,7 @@ export default function CreateClass() {
           </button>
         </header>
 
-        <div className="p-8 max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="p-8 max-w-[1600px] 2xl:max-w-[1800px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
           
           {/* CỘT TRÁI - Form chính */}
           <div className="lg:col-span-8 space-y-6">

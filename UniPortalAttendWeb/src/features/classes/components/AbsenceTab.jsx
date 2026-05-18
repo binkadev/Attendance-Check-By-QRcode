@@ -16,6 +16,7 @@ const MOCK_REQUESTS = [
     reason: 'Cấp cứu y tế',
     attachment: 'medical_cert.pdf',
     attachmentType: 'pdf',
+    evidenceUrl: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf', // Tài liệu PDF mẫu chất lượng cao
     policyStatus: 'late', // 'on_time' | 'late'
     status: 'PENDING',
     submittedAt: new Date(Date.now() - 26 * 3600 * 1000).toISOString(),
@@ -27,6 +28,7 @@ const MOCK_REQUESTS = [
     reason: 'Sự kiện thể thao trường',
     attachment: 'coach_letter.jpg',
     attachmentType: 'img',
+    evidenceUrl: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=1200', // Hình ảnh minh chứng y tế/thể thao mẫu
     policyStatus: 'on_time',
     status: 'PENDING',
     submittedAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
@@ -38,6 +40,7 @@ const MOCK_REQUESTS = [
     reason: 'Việc gia đình khẩn cấp',
     attachment: null,
     attachmentType: null,
+    evidenceUrl: null,
     policyStatus: 'on_time',
     status: 'APPROVED',
     submittedAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
@@ -51,6 +54,7 @@ const MOCK_REQUESTS = [
     reason: 'Lý do cá nhân',
     attachment: null,
     attachmentType: null,
+    evidenceUrl: null,
     policyStatus: 'late',
     status: 'DENIED',
     submittedAt: new Date(Date.now() - 50 * 3600 * 1000).toISOString(),
@@ -59,8 +63,77 @@ const MOCK_REQUESTS = [
   },
 ];
 
+// --- SUB-COMPONENT: FILE PREVIEW MODAL ---
+function FilePreviewModal({ file, onClose }) {
+  if (!file || !file.url) return null;
+
+  return (
+    <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
+      {/* Backdrop mờ sang trọng */}
+      <div 
+        className="absolute inset-0 bg-gray-950/60 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
+        onClick={onClose}
+      ></div>
+
+      {/* Card Preview */}
+      <div className="relative bg-white rounded-3xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col overflow-hidden border border-gray-100/80 animate-in zoom-in-95 duration-200">
+        
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-slate-50">
+          <div>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+              <FileText size={18} className="text-red-500" />
+              Minh chứng: {file.name}
+            </h3>
+            <p className="text-[11px] text-gray-400 mt-0.5 font-bold uppercase tracking-wider">Tài liệu đính kèm đơn xin nghỉ</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <a 
+              href={file.url} 
+              target="_blank" 
+              rel="noreferrer" 
+              className="px-4 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-bold text-xs rounded-xl shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+            >
+              <Download size={14} className="text-gray-500" /> Tải file gốc
+            </a>
+            <button 
+              onClick={onClose} 
+              className="p-2 hover:bg-gray-200 text-gray-400 hover:text-gray-600 rounded-full transition-all"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Viewer */}
+        <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-hidden p-4">
+          {file.type === 'pdf' ? (
+            <iframe 
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(file.url)}&embedded=true`}
+              className="w-full h-full rounded-2xl border border-gray-200/50 shadow-inner bg-white"
+              title={file.name}
+            />
+          ) : (
+            <div className="max-w-full max-h-full overflow-auto flex items-center justify-center p-2">
+              <img 
+                src={file.url} 
+                alt={file.name} 
+                className="max-w-full max-h-[68vh] object-contain rounded-2xl shadow-lg border border-white"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "https://placehold.co/600x400?text=Không+thể+hiển+thị+ảnh";
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- SUB-COMPONENT: REVIEW MODAL ---
-function ReviewModal({ request, onClose, onApprove, onDeny }) {
+function ReviewModal({ request, onClose, onApprove, onDeny, onPreviewFile }) {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -112,15 +185,25 @@ function ReviewModal({ request, onClose, onApprove, onDeny }) {
             {request.attachment && (
               <div className="flex justify-between items-center">
                 <span className="text-gray-500 font-medium">Tệp đính kèm</span>
-                <a href="#" className="text-indigo-600 font-semibold text-xs flex items-center gap-1 hover:underline">
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onPreviewFile({
+                      url: request.evidenceUrl || request.url,
+                      type: request.attachmentType,
+                      name: request.attachment
+                    });
+                  }}
+                  className="text-indigo-600 font-semibold text-xs flex items-center gap-1 hover:underline bg-transparent border-none p-0 cursor-pointer"
+                >
                   <Paperclip size={12} /> {request.attachment}
-                </a>
+                </button>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">
               Ghi chú của giảng viên (tùy chọn)
             </label>
             <textarea
@@ -128,7 +211,7 @@ function ReviewModal({ request, onClose, onApprove, onDeny }) {
               onChange={e => setNote(e.target.value)}
               rows={3}
               placeholder="Nhập ghi chú phản hồi cho sinh viên..."
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 resize-none transition-all text-gray-700"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 resize-none transition-all text-gray-700"
             />
           </div>
         </div>
@@ -138,14 +221,14 @@ function ReviewModal({ request, onClose, onApprove, onDeny }) {
           <button
             onClick={() => handleAction('deny')}
             disabled={loading}
-            className="flex-1 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            className="flex-1 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 active:scale-[0.98]"
           >
             <ThumbsDown size={16} /> Từ chối
           </button>
           <button
             onClick={() => handleAction('approve')}
             disabled={loading}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 active:scale-[0.98]"
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
             Phê duyệt
@@ -165,6 +248,9 @@ export default function AbsenceTab({ classId }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [reviewingRequest, setReviewingRequest] = useState(null);
+  
+  // State quản lý xem thử tệp đính kèm trực tuyến
+  const [previewFile, setPreviewFile] = useState(null); // { url, type, name }
 
   // Fetch data from API
   const fetchAbsenceRequests = async () => {
@@ -196,7 +282,7 @@ export default function AbsenceTab({ classId }) {
           },
           sessionDate: item.requestedDate ? new Date(item.requestedDate).toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Không rõ',
           reason: item.reason || 'Không có lý do',
-          attachment: item.evidenceUrl ? 'Bằng chứng kèm theo' : null,
+          attachment: item.evidenceUrl ? 'Bằng chứng kèm theo.jpg' : null,
           attachmentType: item.evidenceUrl?.endsWith('.pdf') ? 'pdf' : 'img',
           evidenceUrl: item.evidenceUrl,
           policyStatus: 'on_time', // Mặc định
@@ -359,7 +445,7 @@ export default function AbsenceTab({ classId }) {
                 placeholder="Tìm sinh viên hoặc MSSV..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 transition-all"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 transition-all"
               />
             </div>
 
@@ -368,7 +454,7 @@ export default function AbsenceTab({ classId }) {
               <select
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
-                className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm font-semibold text-gray-700 outline-none focus:border-indigo-300 cursor-pointer"
+                className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm font-semibold text-gray-700 outline-none focus:border-red-400 cursor-pointer"
               >
                 <option value="ALL">Tất cả trạng thái</option>
                 <option value="PENDING">Đang chờ</option>
@@ -430,14 +516,24 @@ export default function AbsenceTab({ classId }) {
                     <td className="px-5 py-4">
                       <p className="font-semibold text-gray-800 mb-1">{req.reason}</p>
                       {req.attachment ? (
-                        <a href="#" className="flex items-center gap-1.5 text-indigo-600 hover:underline text-xs font-medium">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPreviewFile({
+                              url: req.evidenceUrl,
+                              type: req.attachmentType,
+                              name: req.attachment
+                            });
+                          }}
+                          className="flex items-center gap-1.5 text-indigo-600 hover:underline text-xs font-semibold bg-transparent border-none p-0 cursor-pointer"
+                        >
                           {req.attachmentType === 'pdf' ? (
-                            <span className="bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">PDF</span>
+                            <span className="bg-red-100 text-red-600 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">PDF</span>
                           ) : (
-                            <span className="bg-blue-100 text-blue-600 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">IMG</span>
+                            <span className="bg-blue-100 text-blue-600 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">IMG</span>
                           )}
                           {req.attachment}
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-gray-400 italic">Không có tệp đính kèm</span>
                       )}
@@ -476,14 +572,14 @@ export default function AbsenceTab({ classId }) {
                       {req.status === 'PENDING' ? (
                         <button
                           onClick={() => setReviewingRequest(req)}
-                          className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+                          className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors active:scale-[0.95]"
                         >
                           Xem xét
                         </button>
                       ) : (
                         <button
                           onClick={() => setReviewingRequest(req)}
-                          className="text-indigo-600 hover:bg-indigo-50 border border-indigo-200 text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+                          className="text-indigo-600 hover:bg-indigo-50 border border-indigo-200 text-xs font-bold px-4 py-2 rounded-lg transition-colors active:scale-[0.95]"
                         >
                           Xem chi tiết
                         </button>
@@ -513,6 +609,15 @@ export default function AbsenceTab({ classId }) {
           onClose={() => setReviewingRequest(null)}
           onApprove={handleApprove}
           onDeny={handleDeny}
+          onPreviewFile={(file) => setPreviewFile(file)}
+        />
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
         />
       )}
     </div>

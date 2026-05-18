@@ -700,7 +700,7 @@ export default function ClassManagementLayout() {
           </div>
         </header>
 
-        <div className="p-8 max-w-7xl w-full mx-auto flex-1">
+        <div className="p-8 max-w-[1600px] 2xl:max-w-[1800px] w-full mx-auto flex-1">
           {/* Filter Bar */}
           <FilterBar
             semesters={semesters}

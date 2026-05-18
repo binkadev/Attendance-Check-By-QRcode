@@ -346,7 +346,7 @@ export default function ClassDetail() {
           </div>
         </header>
 
-        <div className="p-8 max-w-7xl w-full mx-auto flex-1 flex flex-col">
+        <div className="p-8 max-w-[1600px] 2xl:max-w-[1800px] w-full mx-auto flex-1 flex flex-col">
           
           {/* OVERVIEW CARD (Thay đổi theo Tab) */}
           {activeTab === 'dynamic-qr' ? (
