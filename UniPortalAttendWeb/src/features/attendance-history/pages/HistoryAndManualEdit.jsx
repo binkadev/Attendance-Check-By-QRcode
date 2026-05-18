@@ -132,13 +132,13 @@ export default function HistoryAndManualEdit() {
       const cls     = classes.find(c => (c.groupId || c.id) === selectedClassId);
 
       const flat = students.map(m => {
-        const uid    = String(m.studentCode || m.code || m.userId || m.id);
+        const uid    = String(m.userCode || m.studentCode || m.code || m.userId || m.id);
         const status = statusMap.get(uid) || 'ABSENT';
         const method = methodMap.get(uid) || (status === 'ABSENT' ? 'Hệ thống' : 'QR Động');
         return {
           uid,
           studentName: m.fullName || m.name || 'Không rõ',
-          studentCode: m.studentCode || m.code || uid.slice(0, 8).toUpperCase(),
+          studentCode: m.userCode || m.studentCode || m.code || uid.slice(0, 8).toUpperCase(),
           status,
           method,
           sessionId: selectedSessionId,

@@ -206,33 +206,34 @@ export default function Profile({ isModal = false }) {
             {/* Vòng tròn phản chiếu nghệ thuật */}
             <div className="absolute top-[-50px] right-[-30px] w-48 h-48 rounded-full bg-white/10 blur-xl"></div>
             <div className="absolute bottom-[-20px] left-1/3 w-36 h-36 rounded-full bg-white/10 blur-xl"></div>
-            
-            <div className="absolute -bottom-14 left-8">
-              <div className="relative group">
-                <div className="w-28 h-28 rounded-3xl bg-white p-1.5 shadow-xl overflow-hidden transition-all duration-300 group-hover:scale-105">
-                  <div className="w-full h-full rounded-2xl bg-slate-50 flex items-center justify-center text-red-600 font-extrabold text-4xl overflow-hidden border border-slate-100">
-                    {user.avatar ? (
-                      <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      user.fullName?.charAt(0).toUpperCase() || 'G'
-                    )}
-                  </div>
+          </div>
+          
+          {/* Avatar Container moved outside the overflow-hidden banner but still inside the relative card */}
+          <div className="absolute top-14 left-8 z-20">
+            <div className="relative group">
+              <div className="w-28 h-28 rounded-3xl bg-white p-1.5 shadow-xl overflow-hidden transition-all duration-300 group-hover:scale-105">
+                <div className="w-full h-full rounded-2xl bg-slate-50 flex items-center justify-center text-red-600 font-extrabold text-4xl overflow-hidden border border-slate-100">
+                  {user.avatar ? (
+                    <img src={user.avatar} alt="avatar" className="w-full h-full object-cover relative z-10" />
+                  ) : (
+                    user.fullName?.charAt(0).toUpperCase() || 'G'
+                  )}
                 </div>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                />
-                <button 
-                  onClick={() => fileInputRef.current.click()}
-                  className="absolute bottom-1.5 right-1.5 p-2 bg-red-600 text-white rounded-xl shadow-lg border-2 border-white hover:bg-red-700 hover:scale-110 active:scale-95 transition-all"
-                  title="Thay ảnh đại diện"
-                >
-                  <Camera size={14} />
-                </button>
               </div>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*"
+                onChange={handleAvatarChange}
+              />
+              <button 
+                onClick={() => fileInputRef.current.click()}
+                className="absolute bottom-1.5 right-1.5 p-2 bg-red-600 text-white rounded-xl shadow-lg border-2 border-white hover:bg-red-700 hover:scale-110 active:scale-95 transition-all z-20"
+                title="Thay ảnh đại diện"
+              >
+                <Camera size={14} />
+              </button>
             </div>
           </div>
           

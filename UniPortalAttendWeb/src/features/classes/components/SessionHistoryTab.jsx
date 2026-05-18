@@ -196,7 +196,7 @@ export default function SessionHistoryTab({ classId }) {
   });
 
   const filteredCheckedIn = Array.from(checkedInUserIds).map(userId => {
-    const memberInfo = members.find(m => String(m.studentCode || m.code || m.userId || m.id) === userId);
+    const memberInfo = members.find(m => String(m.userCode || m.studentCode || m.code || m.userId || m.id) === userId);
     const userEvents = events
       .filter(e => String(e.userId) === userId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -208,7 +208,7 @@ export default function SessionHistoryTab({ classId }) {
       checkInTime: latestEvent?.createdAt,
       attendanceStatus: latestStatusMap.get(userId),
       fullName: memberInfo?.fullName || 'Sinh viên ẩn danh',
-      studentCode: memberInfo?.studentCode || memberInfo?.code || userId.slice(0, 8).toUpperCase(),
+      studentCode: memberInfo?.userCode || memberInfo?.studentCode || memberInfo?.code || userId.slice(0, 8).toUpperCase(),
     };
   })
   .filter(m => (m.fullName || "").toLowerCase().includes(searchQuery.toLowerCase()))
@@ -216,9 +216,9 @@ export default function SessionHistoryTab({ classId }) {
 
   const pendingUsers = members
     .filter(m => m.role !== 'LECTURER' && m.role !== 'OWNER') 
-    .filter(m => !checkedInUserIds.has(String(m.studentCode || m.code || m.userId || m.id)))
+    .filter(m => !checkedInUserIds.has(String(m.userCode || m.studentCode || m.code || m.userId || m.id)))
     .filter(m => (m.fullName || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
-                 (m.studentCode || m.code || "").toLowerCase().includes(searchQuery.toLowerCase()));
+                 (m.userCode || m.studentCode || m.code || "").toLowerCase().includes(searchQuery.toLowerCase()));
 
   // =============================================================
   // VIEW 1: MÀN HÌNH DANH SÁCH PHIÊN
@@ -477,27 +477,29 @@ export default function SessionHistoryTab({ classId }) {
             <tbody className="divide-y divide-gray-100">
               {pendingUsers.map(user => (
                 <tr key={user.userId || user.id} className="hover:bg-gray-50/40 transition-colors">
-                  <td className="p-4 pl-6 flex items-center gap-3">
-                    <img 
-                      src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=fca5a5&color=b91c1c&bold=true`} 
-                      className="w-9 h-9 rounded-full object-cover border-2 border-white ring-2 ring-gray-100" 
-                      alt="" 
-                    />
-                    <span className="font-bold text-gray-900">{user.fullName}</span>
+                  <td className="p-4 pl-6 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=fca5a5&color=b91c1c&bold=true`} 
+                        className="w-9 h-9 rounded-full object-cover border-2 border-white ring-2 ring-gray-100 relative z-10 shadow-sm" 
+                        alt="" 
+                      />
+                      <span className="font-bold text-gray-900">{user.fullName}</span>
+                    </div>
                   </td>
                   <td className="p-4 text-gray-500 font-bold font-mono text-xs">
-                    {user.studentCode || user.code || 'N/A'}
+                    {user.userCode || user.studentCode || user.code || 'N/A'}
                   </td>
                   <td className="p-4 pr-6 text-right">
                     <div className="flex justify-end gap-2">
                       <button 
-                        onClick={() => handleManualCheckIn(user.studentCode || user.code || user.userId || user.id, 'PRESENT')} 
+                        onClick={() => handleManualCheckIn(user.userCode || user.studentCode || user.code || user.userId || user.id, 'PRESENT')} 
                         className="px-3.5 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold flex items-center gap-1 border border-emerald-200 transition-all hover:scale-[1.02] shadow-sm"
                       >
                         <CheckCircle size={13} /> Có mặt
                       </button>
                       <button 
-                        onClick={() => handleManualCheckIn(user.studentCode || user.code || user.userId || user.id, 'ABSENT')} 
+                        onClick={() => handleManualCheckIn(user.userCode || user.studentCode || user.code || user.userId || user.id, 'ABSENT')} 
                         className="px-3.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200 transition-all hover:scale-[1.02] shadow-sm"
                       >
                         <XCircle size={13} /> Vắng
@@ -534,16 +536,18 @@ export default function SessionHistoryTab({ classId }) {
             <tbody className="divide-y divide-gray-100">
               {filteredCheckedIn.map((user, idx) => (
                 <tr key={idx} className="hover:bg-gray-50/40 transition-colors">
-                  <td className="p-4 pl-6 flex items-center gap-3">
-                    <img 
-                      src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=86efac&color=15803d&bold=true`} 
-                      className="w-9 h-9 rounded-full object-cover border-2 border-white ring-2 ring-gray-100" 
-                      alt="" 
-                    />
-                    <span className="font-bold text-gray-900">{user.fullName}</span>
+                  <td className="p-4 pl-6 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=86efac&color=15803d&bold=true`} 
+                        className="w-9 h-9 rounded-full object-cover border-2 border-white ring-2 ring-gray-100 relative z-10 shadow-sm" 
+                        alt="" 
+                      />
+                      <span className="font-bold text-gray-900">{user.fullName}</span>
+                    </div>
                   </td>
                   <td className="p-4 text-gray-500 font-bold font-mono text-xs">
-                    {user.studentCode || 'N/A'}
+                    {user.userCode || user.studentCode || 'N/A'}
                   </td>
                   <td className="p-4 text-gray-600 font-bold font-mono text-xs">
                     <div className="flex items-center gap-1">
@@ -562,7 +566,7 @@ export default function SessionHistoryTab({ classId }) {
                   </td>
                   <td className="p-4 pr-6 text-right">
                     <button 
-                      onClick={() => handleManualCheckIn(user.studentCode || user.code || user.userId || user.id, 'ABSENT')} 
+                      onClick={() => handleManualCheckIn(user.userCode || user.studentCode || user.code || user.userId || user.id, 'ABSENT')} 
                       className="text-gray-400 hover:text-red-600 text-xs font-bold hover:underline transition-all"
                     >
                       Hủy điểm danh

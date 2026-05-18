@@ -129,31 +129,81 @@ export default function StudentsTab({ classId }) {
   };
 
   // --- HÀM XUẤT FILE ---
+  const exportClientSideCSV = () => {
+    // Tiêu đề cột rõ ràng, đầy đủ các thông tin cần thiết trong bảng
+    let csvContent = "\uFEFF"; // UTF-8 Byte Order Mark (BOM) để hiển thị tiếng Việt trong Excel không bị lỗi font!
+    csvContent += "Mã Sinh Viên (MSV),Họ và Tên,Email,Tỷ lệ Điểm danh (%),Trạng thái Học tập,Trạng thái Thành viên\n";
+    
+    students.forEach(student => {
+      const rate = student.attendanceRate !== undefined ? `${student.attendanceRate}%` : 'Chưa cập nhật';
+      const statusTrans = student.attendanceStatus === 'Good' ? 'Tốt' : 
+                          student.attendanceStatus === 'Flagged' ? 'Nghi vấn' : 
+                          student.attendanceStatus === 'At-Risk' ? 'Nguy cơ' : 'Chưa cập nhật';
+      
+      const memberStatusTrans = student.memberStatus === 'ACTIVE' ? 'Hoạt động' : 
+                                student.memberStatus === 'PENDING' ? 'Chờ duyệt' : 'Không hoạt động';
+
+      // Loại bỏ dấu phẩy trong các trường để tránh làm hỏng cấu trúc CSV
+      const cleanName = (student.name || '').replace(/,/g, ' ');
+      const cleanEmail = (student.email || '').replace(/,/g, ' ');
+      
+      csvContent += `${student.id},${cleanName},${cleanEmail},${rate},${statusTrans},${memberStatusTrans}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Danh_sach_lop_${classId || 'export'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleExportFile = async () => {
-    if (!classId || classId.startsWith('mock-')) {
-       // Mock export
-       const mockCsv = "MSSV,Ho Ten\nSTU-8921,Le Thi Hong\n";
-       const blob = new Blob([mockCsv], { type: 'text/csv' });
-       const url = window.URL.createObjectURL(blob);
-       const a = document.createElement('a');
-       a.href = url;
-       a.download = `Danh_sach_lop_${classId}.csv`;
-       a.click();
-       window.URL.revokeObjectURL(url);
-       return;
-    }
+    const loadingToast = toast.loading("Đang chuẩn bị dữ liệu xuất file...");
     try {
-       const blob = await classApi.exportAttendance(classId);
-       const url = window.URL.createObjectURL(blob);
-       const a = document.createElement('a');
-       a.href = url;
-       a.download = `Attendance_Export_${classId}.csv`; // Tên file có thể lấy từ header nếu backend trả về
-       document.body.appendChild(a);
-       a.click();
-       a.remove();
-       window.URL.revokeObjectURL(url);
+      // 1. Nếu là mock class hoặc API chưa sẵn sàng
+      if (!classId || classId.startsWith('mock-')) {
+        exportClientSideCSV();
+        toast.success("Đã xuất danh sách lớp học (Mẫu Local)", { id: loadingToast });
+        return;
+      }
+
+      // 2. Gọi API thực tế
+      try {
+        const blob = await classApi.exportAttendance(classId);
+        
+        // Kiểm tra content type hoặc kích thước blob
+        if (blob && blob.size > 100) {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          
+          // Kiểm tra loại file trả về từ Backend để gán extension chuẩn
+          const isExcel = blob.type.includes('spreadsheet') || blob.type.includes('excel') || blob.type.includes('officedocument');
+          const extension = isExcel ? 'xlsx' : 'csv';
+          
+          a.download = `Bao_cao_diem_danh_${classId}.${extension}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          toast.success(`Đã xuất báo cáo điểm danh (.${extension})`, { id: loadingToast });
+        } else {
+          // Fallback sang Client-side CSV nếu API rỗng
+          exportClientSideCSV();
+          toast.success("Đã xuất dữ liệu hiển thị (Bản Local)", { id: loadingToast });
+        }
+      } catch (apiError) {
+        console.warn("API Export failed, falling back to client-side CSV:", apiError);
+        exportClientSideCSV();
+        toast.success("Đã xuất dữ liệu hiển thị (Bản Local)", { id: loadingToast });
+      }
     } catch (error) {
-       console.error("Lỗi xuất file:", error);
+      console.error("Lỗi xuất file:", error);
+      toast.error("Lỗi khi xuất dữ liệu", { id: loadingToast });
     }
   };
 
@@ -235,7 +285,7 @@ export default function StudentsTab({ classId }) {
           }
           
           return {
-            id: member.studentCode || 'N/A',
+            id: member.userCode || member.studentCode || 'N/A',
             rawId: member.userId || member.id,
             name: member.fullName || 'N/A',
             email: member.email || 'N/A',
@@ -464,12 +514,14 @@ export default function StudentsTab({ classId }) {
                     <td className="p-4 text-center text-xs text-gray-400 font-semibold">{page * size + idx + 1}</td>
                     <td className="p-4 text-center"><input type="checkbox" className="rounded border-gray-300 text-red-600 focus:ring-red-500" /></td>
                     
-                    <td className="p-4 flex items-center gap-3 whitespace-nowrap">
-                      <img src={student.avatar} alt={student.name} className="w-9 h-9 rounded-full bg-gray-200 object-cover border border-gray-200 shrink-0" />
-                      <div className="flex flex-col">
-                        <span className="font-bold text-gray-900 whitespace-nowrap">{student.name}</span>
-                        <span className="text-[12px] text-gray-500 font-medium mt-0.5 whitespace-nowrap">{student.email}</span>
-                        <span className="text-[11px] text-[#dc2626] font-bold mt-0.5 whitespace-nowrap">MSSV: {student.id}</span>
+                    <td className="p-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <img src={student.avatar} alt={student.name} className="w-9 h-9 rounded-full bg-gray-200 object-cover border border-gray-200 shrink-0 relative z-10 shadow-sm" />
+                        <div className="flex flex-col">
+                          <span className="font-bold text-gray-900 whitespace-nowrap">{student.name}</span>
+                          <span className="text-[12px] text-gray-500 font-medium mt-0.5 whitespace-nowrap">{student.email}</span>
+                          <span className="text-[11px] text-[#dc2626] font-bold mt-0.5 whitespace-nowrap">MSSV: {student.id}</span>
+                        </div>
                       </div>
                     </td>
 
