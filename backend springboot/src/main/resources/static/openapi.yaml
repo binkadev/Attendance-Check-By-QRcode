@@ -41,8 +41,49 @@ paths:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
           $ref: '#/components/responses/Err401'
+        '428':
+          description: Password change is required before login can continue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                requirePasswordChange:
+                  value:
+                    code: REQUIRE_PASSWORD_CHANGE
+                    message: You must change the default password before continuing.
+                    path: /api/v1/auth/login
         '429':
           $ref: '#/components/responses/Err429'
+
+  /auth/force-change-password:
+    post:
+      tags:
+        - Auth
+      security: []
+      summary: Change imported/default password before first login
+      description: Used when /auth/login returns REQUIRE_PASSWORD_CHANGE for an auto-provisioned imported student account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForceChangePasswordRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/Err400'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '409':
+          $ref: '#/components/responses/Err409'
+        '422':
+          $ref: '#/components/responses/Err422'
 
   /auth/refresh:
     post:
@@ -1302,6 +1343,42 @@ paths:
         '404':
           $ref: '#/components/responses/Err404'
 
+
+  /groups/{groupId}/members/import:
+    post:
+      tags:
+        - Members
+      summary: Import members from parsed Excel rows
+      description: Validates and imports official class roster rows. Existing users are linked by studentCode/email; missing users can be auto-provisioned with requirePasswordChange=true.
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportMembersRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportMembersResponse'
+        '400':
+          description: Import validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberImportValidationErrorResponse'
+        '401':
+          $ref: '#/components/responses/Err401'
+        '403':
+          $ref: '#/components/responses/Err403'
+        '404':
+          $ref: '#/components/responses/Err404'
+        '409':
+          $ref: '#/components/responses/Err409'
 
   /groups/{groupId}/members/{userId}:
     patch:
@@ -3478,6 +3555,30 @@ components:
         - refreshTokenExpiresAt
         - sessionId
         - user
+
+    ForceChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 190
+        currentPassword:
+          type: string
+          maxLength: 200
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 200
+        deviceId:
+          type: string
+          maxLength: 120
+      required:
+        - email
+        - currentPassword
+        - newPassword
+
     RegisterRequest:
       type: object
       properties:
@@ -3984,6 +4085,183 @@ components:
           maxLength: 500
       required:
         - action
+
+    MemberImportMode:
+      type: string
+      enum: [VALIDATE_ONLY, VALIDATE_AND_IMPORT]
+
+    MemberImportSyncMode:
+      type: string
+      enum: [APPEND_ONLY]
+
+    AccountProvisioningMode:
+      type: string
+      enum: [CREATE_REQUIRE_PASSWORD_CHANGE, LINK_EXISTING_ONLY]
+
+    ImportMembersRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        importMode:
+          $ref: '#/components/schemas/MemberImportMode'
+        syncMode:
+          $ref: '#/components/schemas/MemberImportSyncMode'
+        accountProvisioningMode:
+          $ref: '#/components/schemas/AccountProvisioningMode'
+        notifyStudents:
+          type: boolean
+          default: false
+        members:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/ImportMemberRowRequest'
+      required:
+        - members
+
+    ImportMemberRowRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        rowIndex:
+          type: integer
+          minimum: 1
+          nullable: true
+        studentCode:
+          type: string
+          maxLength: 40
+        fullName:
+          type: string
+          minLength: 2
+          maxLength: 120
+        email:
+          type: string
+          format: email
+          maxLength: 190
+      required:
+        - studentCode
+        - fullName
+        - email
+
+    ImportMemberAction:
+      type: string
+      enum:
+        - CREATED_USER_AND_ADDED
+        - EXISTING_USER_ADDED
+        - ALREADY_MEMBER_SKIPPED
+        - REMOVED_MEMBER_RESTORED
+        - VALIDATED_ONLY
+
+    ImportMemberItemResponse:
+      type: object
+      properties:
+        rowIndex:
+          type: integer
+        studentCode:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        memberStatus:
+          type: string
+          nullable: true
+        accountStatus:
+          type: string
+          nullable: true
+        action:
+          $ref: '#/components/schemas/ImportMemberAction'
+        loginIdentifier:
+          type: string
+          nullable: true
+        defaultPasswordRule:
+          type: string
+          nullable: true
+      required:
+        - rowIndex
+        - studentCode
+        - fullName
+        - email
+        - action
+
+    ImportMembersResponse:
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        totalRows:
+          type: integer
+        createdUsers:
+          type: integer
+        linkedExistingUsers:
+          type: integer
+        addedMembers:
+          type: integer
+        skippedExistingMembers:
+          type: integer
+        restoredMembers:
+          type: integer
+        invitationEmailsQueued:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportMemberItemResponse'
+      required:
+        - groupId
+        - totalRows
+        - createdUsers
+        - linkedExistingUsers
+        - addedMembers
+        - skippedExistingMembers
+        - restoredMembers
+        - invitationEmailsQueued
+        - items
+
+    MemberImportValidationError:
+      type: object
+      properties:
+        rowIndex:
+          type: integer
+        field:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+      required:
+        - rowIndex
+        - field
+        - code
+        - message
+
+    MemberImportValidationErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: MEMBER_IMPORT_VALIDATION_FAILED
+        message:
+          type: string
+        path:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberImportValidationError'
+      required:
+        - code
+        - message
+        - path
+        - errors
+
     MemberResponse:
       type: object
       properties:
@@ -4750,85 +5028,55 @@ components:
 
     FraudIncidentEvidenceSummaryResponse:
       type: object
-      description: Compact evidence summary tailored to the incident type. Null and empty fields are omitted by the API.
       properties:
-        occurrenceCount:
+        totalAttempts:
           type: integer
-          format: int32
-          nullable: true
-        reason:
-          type: string
-          nullable: true
-        deviceId:
-          type: string
-          nullable: true
-        ipAddress:
-          type: string
-          nullable: true
-        userAgent:
-          type: string
-          nullable: true
-        distinctUserCount:
+          format: int64
+        failAttempts:
           type: integer
-          format: int32
-          nullable: true
-        involvedUserIds:
-          type: array
-          nullable: true
-          items:
-            type: string
-            format: uuid
-        involvedUsers:
-          type: array
-          nullable: true
-          items:
-            $ref: '#/components/schemas/FraudIncidentStudentResponse'
+          format: int64
         distanceMeter:
           type: integer
           format: int32
           nullable: true
-        allowedRadiusMeter:
+        distinctUserCount:
           type: integer
-          format: int32
-          nullable: true
-        location:
-          nullable: true
-          $ref: '#/components/schemas/FraudIncidentLocationResponse'
-        lastFailureCode:
+          format: int64
+        distinctIpCount:
+          type: integer
+          format: int64
+        distinctDeviceCount:
+          type: integer
+          format: int64
+        dominantFailureCode:
           type: string
           nullable: true
-
-    FraudIncidentLocationResponse:
-      type: object
-      properties:
-        lat:
-          type: number
-          format: double
+        windowSeconds:
+          type: integer
+          format: int64
           nullable: true
-        lng:
-          type: number
-          format: double
-          nullable: true
-
-    FraudIncidentStudentResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          nullable: true
-        studentCode:
-          type: string
-          nullable: true
-        name:
-          type: string
-          nullable: true
-        email:
-          type: string
-          nullable: true
-        avatar:
-          type: string
-          nullable: true
+        relatedAttemptIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        relatedUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        ipAddresses:
+          type: array
+          items:
+            type: string
+        deviceIds:
+          type: array
+          items:
+            type: string
+        notes:
+          type: array
+          items:
+            type: string
 
     FraudIncidentResponse:
       type: object
@@ -4853,25 +5101,6 @@ components:
           $ref: '#/components/schemas/FraudIncidentSeverity'
         status:
           $ref: '#/components/schemas/FraudIncidentStatus'
-        displayStatus:
-          type: string
-          nullable: true
-          description: UI-friendly status alias. OPEN is returned as PENDING.
-        title:
-          type: string
-          nullable: true
-        description:
-          type: string
-          nullable: true
-        confidence:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-          nullable: true
-        student:
-          nullable: true
-          $ref: '#/components/schemas/FraudIncidentStudentResponse'
         firstDetectedAt:
           type: string
           format: date-time

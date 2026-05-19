@@ -5,41 +5,45 @@ import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.domain.entity.ClassGroup;
 import com.attendance.backend.domain.entity.GroupMember;
 import com.attendance.backend.domain.entity.User;
-import com.attendance.backend.domain.enums.ApprovalMode;
-import com.attendance.backend.domain.enums.GroupStatus;
-import com.attendance.backend.domain.enums.MemberRole;
-import com.attendance.backend.domain.enums.MemberStatus;
-import com.attendance.backend.group.dto.JoinGroupRequest;
-import com.attendance.backend.group.dto.MemberActionRequest;
-import com.attendance.backend.group.dto.MemberResponse;
-import com.attendance.backend.group.dto.PageMemberResponse;
+import com.attendance.backend.domain.enums.*;
+import com.attendance.backend.group.dto.*;
+import com.attendance.backend.group.exception.MemberImportValidationException;
 import com.attendance.backend.group.repository.ClassGroupRepository;
 import com.attendance.backend.group.repository.GroupMemberRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 public class GroupMemberService {
 
     private final ClassGroupRepository classGroupRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private static final String DEFAULT_PASSWORD_RULE = "STUDENT_CODE_PLUS_UNACCENTED_LOWERCASE_NAME";
+    private static final Pattern COMBINING_MARKS = Pattern.compile("\\p{M}+");
+
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
     public GroupMemberService(ClassGroupRepository classGroupRepository,
                               GroupMemberRepository groupMemberRepository,
                               UserRepository userRepository,
+                              PasswordEncoder passwordEncoder,
                               Clock clock) {
         this.classGroupRepository = classGroupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
         this.clock = clock;
     }
 
@@ -250,6 +254,151 @@ public class GroupMemberService {
         return toResponse(saved, loadUsersMap(List.of(saved)));
     }
 
+
+    @Transactional
+    public ImportMembersResponse importMembers(UUID actorUserId, UUID groupId, ImportMembersRequest request) {
+        if (request == null || request.members() == null || request.members().isEmpty()) {
+            throw ApiException.badRequest("MEMBER_IMPORT_EMPTY", "members must not be empty");
+        }
+
+        ClassGroup group = classGroupRepository.findActiveByIdForUpdate(groupId)
+                .orElseThrow(() -> ApiException.notFound("GROUP_NOT_FOUND", "Group not found"));
+
+        if (group.getStatus() != GroupStatus.ACTIVE) {
+            throw ApiException.conflict("GROUP_ARCHIVED", "Group is archived");
+        }
+
+        GroupMember actor = groupMemberRepository.findByGroupIdAndUserIdForUpdate(groupId, actorUserId)
+                .orElseThrow(() -> ApiException.forbidden("FORBIDDEN", "Not allowed"));
+
+        ensureActorCanManage(actor, "IMPORT_MEMBERS");
+
+        if (request.effectiveSyncMode() != MemberImportSyncMode.APPEND_ONLY) {
+            throw ApiException.badRequest("MEMBER_IMPORT_SYNC_MODE_UNSUPPORTED", "Only APPEND_ONLY syncMode is currently supported");
+        }
+
+        List<NormalizedImportMember> rows = normalizeImportRows(request.members());
+        validateDuplicateRows(rows);
+        validateDbConflicts(rows, request.effectiveAccountProvisioningMode());
+
+        if (request.effectiveImportMode() == MemberImportMode.VALIDATE_ONLY) {
+            List<ImportMemberItemResponse> items = rows.stream()
+                    .map(row -> new ImportMemberItemResponse(
+                            row.rowIndex(),
+                            row.studentCode(),
+                            row.fullName(),
+                            row.email(),
+                            null,
+                            null,
+                            null,
+                            ImportMemberAction.VALIDATED_ONLY,
+                            row.email(),
+                            null
+                    ))
+                    .toList();
+
+            return new ImportMembersResponse(groupId, rows.size(), 0, 0, 0, 0, 0, 0, items);
+        }
+
+        int createdUsers = 0;
+        int linkedExistingUsers = 0;
+        int addedMembers = 0;
+        int skippedExistingMembers = 0;
+        int restoredMembers = 0;
+        int invitationEmailsQueued = 0;
+        List<ImportMemberItemResponse> items = new ArrayList<>();
+
+        Instant now = Instant.now(clock);
+
+        for (NormalizedImportMember row : rows) {
+            User user = resolveExistingUser(row).orElse(null);
+            boolean created = false;
+
+            if (user == null) {
+                if (request.effectiveAccountProvisioningMode() == AccountProvisioningMode.LINK_EXISTING_ONLY) {
+                    throw new MemberImportValidationException(
+                            "Danh sách import có dữ liệu không hợp lệ.",
+                            List.of(new MemberImportValidationError(
+                                    row.rowIndex(),
+                                    "studentCode",
+                                    "USER_NOT_FOUND_FOR_IMPORTED_MEMBER",
+                                    "Không tìm thấy tài khoản có mã sinh viên hoặc email tương ứng."
+                            ))
+                    );
+                }
+
+                user = createProvisionedUser(row);
+                created = true;
+                createdUsers++;
+            } else {
+                linkedExistingUsers++;
+                syncExistingUserProfileIfEmpty(user, row);
+            }
+
+            GroupMember existing = groupMemberRepository
+                    .findByGroupIdAndUserIdForUpdate(groupId, user.getId())
+                    .orElse(null);
+
+            ImportMemberAction action;
+            GroupMember savedMember;
+
+            if (existing == null) {
+                GroupMember gm = GroupMember.newMember(groupId, user.getId(), MemberStatus.APPROVED, now);
+                gm.setInvitedBy(actorUserId);
+                savedMember = saveAndReload(gm);
+                addedMembers++;
+                action = created
+                        ? ImportMemberAction.CREATED_USER_AND_ADDED
+                        : ImportMemberAction.EXISTING_USER_ADDED;
+            } else if (existing.getMemberStatus() == MemberStatus.REMOVED
+                    || existing.getMemberStatus() == MemberStatus.REJECTED) {
+                existing.setRole(MemberRole.MEMBER);
+                existing.setMemberStatus(MemberStatus.APPROVED);
+                existing.setJoinedAt(now);
+                existing.setInvitedBy(actorUserId);
+                existing.setRemovedAt(null);
+                savedMember = saveAndReload(existing);
+                restoredMembers++;
+                action = ImportMemberAction.REMOVED_MEMBER_RESTORED;
+            } else {
+                savedMember = existing;
+                skippedExistingMembers++;
+                action = ImportMemberAction.ALREADY_MEMBER_SKIPPED;
+            }
+
+            if (created && request.effectiveNotifyStudents()) {
+                // Phase 1.5 intentionally does not send the activation email yet.
+                // The account is provisioned with requirePasswordChange=true and can be communicated by class policy.
+                invitationEmailsQueued += 0;
+            }
+
+            items.add(new ImportMemberItemResponse(
+                    row.rowIndex(),
+                    row.studentCode(),
+                    row.fullName(),
+                    row.email(),
+                    user.getId(),
+                    savedMember.getMemberStatus().name(),
+                    user.getStatus().name(),
+                    action,
+                    user.getEmail(),
+                    created ? DEFAULT_PASSWORD_RULE : null
+            ));
+        }
+
+        return new ImportMembersResponse(
+                groupId,
+                rows.size(),
+                createdUsers,
+                linkedExistingUsers,
+                addedMembers,
+                skippedExistingMembers,
+                restoredMembers,
+                invitationEmailsQueued,
+                items
+        );
+    }
+
     @Transactional
     public void leaveGroup(UUID actorUserId, UUID groupId) {
         classGroupRepository.findActiveById(groupId)
@@ -273,6 +422,165 @@ public class GroupMemberService {
         actor.setMemberStatus(MemberStatus.REMOVED);
         actor.setRemovedAt(Instant.now(clock));
         groupMemberRepository.save(actor);
+    }
+
+
+    private List<NormalizedImportMember> normalizeImportRows(List<ImportMemberRowRequest> members) {
+        List<MemberImportValidationError> errors = new ArrayList<>();
+        List<NormalizedImportMember> rows = new ArrayList<>();
+
+        for (int i = 0; i < members.size(); i++) {
+            ImportMemberRowRequest raw = members.get(i);
+            int rowIndex = raw.rowIndex() == null ? i + 1 : raw.rowIndex();
+            String studentCode = normalizeStudentCode(raw.studentCode());
+            String fullName = normalizeText(raw.fullName());
+            String email = normalizeEmail(raw.email());
+
+            if (!StringUtils.hasText(studentCode)) {
+                errors.add(new MemberImportValidationError(rowIndex, "studentCode", "STUDENT_CODE_REQUIRED", "Mã sinh viên là bắt buộc."));
+            }
+            if (!StringUtils.hasText(fullName) || fullName.length() < 2) {
+                errors.add(new MemberImportValidationError(rowIndex, "fullName", "FULL_NAME_INVALID", "Họ tên phải có ít nhất 2 ký tự."));
+            }
+            if (!StringUtils.hasText(email) || !email.contains("@")) {
+                errors.add(new MemberImportValidationError(rowIndex, "email", "INVALID_EMAIL", "Email không đúng định dạng."));
+            }
+
+            rows.add(new NormalizedImportMember(rowIndex, studentCode, fullName, email));
+        }
+
+        throwIfImportErrors(errors);
+        return rows;
+    }
+
+    private void validateDuplicateRows(List<NormalizedImportMember> rows) {
+        List<MemberImportValidationError> errors = new ArrayList<>();
+        Map<String, Integer> studentCodeRows = new HashMap<>();
+        Map<String, Integer> emailRows = new HashMap<>();
+
+        for (NormalizedImportMember row : rows) {
+            Integer firstStudentCodeRow = studentCodeRows.putIfAbsent(row.studentCode(), row.rowIndex());
+            if (firstStudentCodeRow != null) {
+                errors.add(new MemberImportValidationError(
+                        row.rowIndex(),
+                        "studentCode",
+                        "DUPLICATE_STUDENT_CODE_IN_FILE",
+                        "Mã sinh viên " + row.studentCode() + " bị trùng với dòng " + firstStudentCodeRow + "."
+                ));
+            }
+
+            Integer firstEmailRow = emailRows.putIfAbsent(row.email(), row.rowIndex());
+            if (firstEmailRow != null) {
+                errors.add(new MemberImportValidationError(
+                        row.rowIndex(),
+                        "email",
+                        "DUPLICATE_EMAIL_IN_FILE",
+                        "Email " + row.email() + " bị trùng với dòng " + firstEmailRow + "."
+                ));
+            }
+        }
+
+        throwIfImportErrors(errors);
+    }
+
+    private void validateDbConflicts(
+            List<NormalizedImportMember> rows,
+            AccountProvisioningMode accountProvisioningMode
+    ) {
+        List<MemberImportValidationError> errors = new ArrayList<>();
+
+        for (NormalizedImportMember row : rows) {
+            Optional<User> byStudentCode = userRepository.findByUserCodeAndDeletedAtIsNull(row.studentCode());
+            Optional<User> byEmail = userRepository.findByEmailNorm(row.email());
+
+            if (byStudentCode.isPresent()
+                    && byEmail.isPresent()
+                    && !byStudentCode.get().getId().equals(byEmail.get().getId())) {
+                errors.add(new MemberImportValidationError(
+                        row.rowIndex(),
+                        "email",
+                        "STUDENT_CODE_EMAIL_MATCH_DIFFERENT_USERS",
+                        "Mã sinh viên và email đang thuộc hai tài khoản khác nhau."
+                ));
+                continue;
+            }
+
+            if (accountProvisioningMode == AccountProvisioningMode.LINK_EXISTING_ONLY
+                    && byStudentCode.isEmpty()
+                    && byEmail.isEmpty()) {
+                errors.add(new MemberImportValidationError(
+                        row.rowIndex(),
+                        "studentCode",
+                        "USER_NOT_FOUND_FOR_IMPORTED_MEMBER",
+                        "Không tìm thấy tài khoản có mã sinh viên hoặc email tương ứng."
+                ));
+            }
+        }
+
+        throwIfImportErrors(errors);
+    }
+
+    private Optional<User> resolveExistingUser(NormalizedImportMember row) {
+        Optional<User> byStudentCode = userRepository.findByUserCodeAndDeletedAtIsNull(row.studentCode());
+        if (byStudentCode.isPresent()) {
+            return byStudentCode;
+        }
+        return userRepository.findByEmailNorm(row.email());
+    }
+
+    private User createProvisionedUser(NormalizedImportMember row) {
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setEmail(row.email());
+        user.setPasswordHash(passwordEncoder.encode(defaultPasswordFor(row)));
+        user.setFullName(row.fullName());
+        user.setUserCode(row.studentCode());
+        user.setPlatformRole(PlatformRole.USER);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setRequirePasswordChange(true);
+
+        return userRepository.saveAndFlush(user);
+    }
+
+    private void syncExistingUserProfileIfEmpty(User user, NormalizedImportMember row) {
+        boolean changed = false;
+
+        if (!StringUtils.hasText(user.getUserCode())) {
+            user.setUserCode(row.studentCode());
+            changed = true;
+        }
+
+        if (!StringUtils.hasText(user.getFullName())) {
+            user.setFullName(row.fullName());
+            changed = true;
+        }
+
+        if (changed) {
+            userRepository.saveAndFlush(user);
+        }
+    }
+
+    private String defaultPasswordFor(NormalizedImportMember row) {
+        return row.studentCode() + normalizeNameForPassword(row.fullName());
+    }
+
+    private String normalizeNameForPassword(String fullName) {
+        String decomposed = Normalizer.normalize(fullName, Normalizer.Form.NFD);
+        String withoutAccent = COMBINING_MARKS.matcher(decomposed).replaceAll("");
+        return withoutAccent
+                .replace("đ", "d")
+                .replace("Đ", "D")
+                .replaceAll("[^A-Za-z0-9]", "")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private void throwIfImportErrors(List<MemberImportValidationError> errors) {
+        if (!errors.isEmpty()) {
+            throw new MemberImportValidationException(
+                    "Danh sách import có dữ liệu không hợp lệ.",
+                    errors
+            );
+        }
     }
 
     private void ensureActorCanManage(GroupMember actor, String action) {
@@ -340,6 +648,29 @@ public class GroupMemberService {
                 user == null ? null : user.getFullName(),
                 user == null ? null : user.getAvatarUrl()
         );
+    }
+
+    private String normalizeStudentCode(String studentCode) {
+        return studentCode == null ? "" : studentCode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeText(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ");
+    }
+
+    private record NormalizedImportMember(
+            int rowIndex,
+            String studentCode,
+            String fullName,
+            String email
+    ) {
     }
 
     private String normalizeJoinCode(String joinCode) {
