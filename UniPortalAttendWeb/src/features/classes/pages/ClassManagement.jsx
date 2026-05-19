@@ -32,7 +32,11 @@ const formatDate = (dateString) => {
   if (diffDays === 0) return { label: 'Hôm nay', isToday: true };
   if (diffDays === 1) return { label: 'Ngày mai', isToday: false };
   if (diffDays === -1) return { label: 'Hôm qua', isToday: false };
-  return { label: date.toLocaleDateString('vi-VN', { month: 'numeric', day: 'numeric' }), isToday: false };
+  
+  const daysOfWeek = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+  const dayName = daysOfWeek[date.getDay()];
+  const formattedDate = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return { label: `${dayName}, ${formattedDate}`, isToday: false };
 };
 
 const ClassCard = ({ data, onEdit, onDelete }) => {
@@ -103,7 +107,7 @@ const ClassCard = ({ data, onEdit, onDelete }) => {
             )}
             {semesterLabel && (
               <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                {semesterLabel} {data.academicYear?.split('-')[0]}
+                {semesterLabel} {data.academicYear || ''}
               </span>
             )}
           </div>

@@ -14,6 +14,54 @@ const FRAUD_TYPE_CONFIG = {
   SHARED_DEVICE_MULTI_ACCOUNT: { label: 'Trùng thiết bị điểm danh', icon: <Smartphone size={16} className="text-red-500" /> },
 };
 
+const generateScheduledSessionsList = (startDateStr, totalSessions, weeklySchedules) => {
+  if (!startDateStr || !totalSessions || !weeklySchedules || weeklySchedules.length === 0) {
+    return [];
+  }
+  
+  const startDate = new Date(startDateStr);
+  if (isNaN(startDate.getTime())) return [];
+
+  const dayOrder = { 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3, 'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6, 'SUNDAY': 0 };
+  
+  const scheduleConfig = weeklySchedules.map(s => ({
+    dayOfWeekNum: dayOrder[s.dayOfWeek],
+    startTime: s.startTime,
+    endTime: s.endTime
+  }));
+
+  let currentDate = new Date(startDate.getTime());
+  let sessions = [];
+  let sessionsRemaining = totalSessions;
+  
+  const startDayOfWeekNum = currentDate.getDay();
+  const matchingConfig = scheduleConfig.find(c => c.dayOfWeekNum === startDayOfWeekNum);
+  if (matchingConfig) {
+    sessions.push({
+      date: new Date(currentDate),
+      startTime: matchingConfig.startTime,
+      endTime: matchingConfig.endTime
+    });
+    sessionsRemaining--;
+  }
+  
+  while (sessionsRemaining > 0) {
+    currentDate.setDate(currentDate.getDate() + 1);
+    const dayOfWeekNum = currentDate.getDay();
+    const currentConfig = scheduleConfig.find(c => c.dayOfWeekNum === dayOfWeekNum);
+    if (currentConfig) {
+      sessions.push({
+        date: new Date(currentDate),
+        startTime: currentConfig.startTime,
+        endTime: currentConfig.endTime
+      });
+      sessionsRemaining--;
+    }
+  }
+  
+  return sessions;
+};
+
 // =========================================================================
 // COMPONENT CHÍNH
 // =========================================================================
@@ -38,6 +86,93 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
     lateAfterMinutes: '',
     qrRotateSeconds: ''
   });
+
+  // --- STATE LỰA CHỌN BUỔI HỌC ---
+  const [sessionsList, setSessionsList] = useState([]);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [totalCreatedSessions, setTotalCreatedSessions] = useState(0);
+
+  const maxSessions = classDetail?.totalSessions || 15;
+
+  // --- TẢI DANH SÁCH CÁC PHIÊN HỌC (VÀ LỊCH TRÌNH ẢO) ---
+  useEffect(() => {
+    const fetchGroupSessions = async () => {
+      if (!groupId || groupId.startsWith('mock-')) return;
+      try {
+        const res = await classApi.getGroupSessions(groupId);
+        const allSessions = res?.items || [];
+        setTotalCreatedSessions(allSessions.length);
+        
+        const getLocalDateString = (dateObj) => {
+          return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        };
+
+        const expected = generateScheduledSessionsList(
+          classDetail?.startDate,
+          maxSessions,
+          classDetail?.weeklySchedules
+        );
+
+        const mapped = [];
+        const matchedActualIds = new Set();
+
+        expected.forEach((exp, idx) => {
+          const expYMD = getLocalDateString(exp.date);
+          const actualMatch = allSessions.find(s => {
+            const sDate = new Date(s.startAt || s.checkinOpenAt || s.createdAt);
+            return getLocalDateString(sDate) === expYMD;
+          });
+
+          if (actualMatch) {
+            matchedActualIds.add(actualMatch.id);
+            // Chỉ đưa vào danh sách chọn nếu không phải là phiên đang mở (activeSessionId)
+            if (actualMatch.id !== activeSessionId) {
+              mapped.push({
+                id: actualMatch.id,
+                isVirtual: false,
+                title: actualMatch.title || `Buổi ${idx + 1}: ${exp.startTime} - ${exp.endTime}`,
+                date: exp.date,
+                startTime: exp.startTime,
+                endTime: exp.endTime,
+                note: actualMatch.note
+              });
+            }
+          } else {
+            mapped.push({
+              id: `virtual-${idx + 1}`,
+              isVirtual: true,
+              title: `Buổi ${idx + 1}: ${exp.startTime} - ${exp.endTime}`,
+              date: exp.date,
+              startTime: exp.startTime,
+              endTime: exp.endTime,
+              note: `Buổi ${idx + 1} mở từ lịch học tuần`
+            });
+          }
+        });
+
+        // Đưa nốt các phiên thực tế không khớp lịch tuần vào danh sách chọn (để không bị sót)
+        allSessions.forEach(s => {
+          if (!matchedActualIds.has(s.id) && s.id !== activeSessionId) {
+            mapped.push({
+              id: s.id,
+              isVirtual: false,
+              title: s.title || `Buổi học bổ sung`,
+              date: new Date(s.startAt || s.checkinOpenAt || s.createdAt),
+              startTime: '',
+              endTime: '',
+              note: s.note
+            });
+          }
+        });
+
+        setSessionsList(mapped);
+        setSelectedSessionId('');
+      } catch (err) {
+        console.error("Lỗi tải danh sách phiên học:", err);
+      }
+    };
+    fetchGroupSessions();
+  }, [groupId, activeSessionId, classDetail]);
 
   // --- STATES THỐNG KÊ ---
   const [totalStudents, setTotalStudents] = useState(0); 
@@ -198,6 +333,14 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
     }
 
     try {
+      const maxSessions = classDetail?.totalSessions || 15;
+      const totalCreatedSessions = sessionsList.length + (activeSessionId ? 1 : 0);
+
+      if (!selectedSessionId && totalCreatedSessions >= maxSessions) {
+        toast.error(`Không thể tạo phiên học mới! Lớp học này đã đạt tối đa số buổi học kế hoạch (${maxSessions} buổi). Vui lòng chọn một buổi học có sẵn để mở lại.`);
+        return;
+      }
+
       const timeWindow = config.timeWindowMinutes ? parseInt(config.timeWindowMinutes) : 30;
       const lateAfter = config.lateAfterMinutes ? parseInt(config.lateAfterMinutes) : 15;
       const rotateSecs = config.qrRotateSeconds ? parseInt(config.qrRotateSeconds) : 11;
@@ -223,22 +366,77 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
         const now = new Date();
         const endTime = new Date(now.getTime() + timeWindow * 60000); 
         
-        const payload = {
-          title: titleStr,
-          startAt: now.toISOString(),
-          endAt: endTime.toISOString(),
-          timeWindowMinutes: timeWindow,
-          lateAfterMinutes: lateAfter,
-          qrRotateSeconds: rotateSecs,
-          checkinOpenAt: now.toISOString(),
-          checkinCloseAt: endTime.toISOString(),
-          allowManualOverride: true,
-          note: "Mở tự động từ Web Admin"
-        };
-        
-        const newSession = await classApi.createSession(groupId, payload);
-        currentSessionId = newSession.id;
-        toast.success("Đã tạo phiên điểm danh mới!");
+        if (selectedSessionId) {
+          const chosenSession = sessionsList.find(s => s.id === selectedSessionId);
+          
+          if (chosenSession?.isVirtual) {
+            const payload = {
+              title: chosenSession.title,
+              startAt: now.toISOString(),
+              endAt: endTime.toISOString(),
+              timeWindowMinutes: timeWindow,
+              lateAfterMinutes: lateAfter,
+              qrRotateSeconds: rotateSecs,
+              checkinOpenAt: now.toISOString(),
+              checkinCloseAt: endTime.toISOString(),
+              allowManualOverride: true,
+              note: chosenSession.note || "Mở tự động từ lịch học tuần"
+            };
+            
+            const newSession = await classApi.createSession(groupId, payload);
+            currentSessionId = newSession.id;
+            toast.success("Đã kích hoạt buổi học mới theo kế hoạch!");
+          } else {
+            const payload = {
+              title: chosenSession?.title || titleStr,
+              startAt: now.toISOString(),
+              endAt: endTime.toISOString(),
+              timeWindowMinutes: timeWindow,
+              lateAfterMinutes: lateAfter,
+              qrRotateSeconds: rotateSecs,
+              checkinOpenAt: now.toISOString(),
+              checkinCloseAt: endTime.toISOString(),
+              allowManualOverride: true,
+              note: "Mở lại từ Web Admin"
+            };
+            
+            await classApi.updateSession(selectedSessionId, payload);
+            currentSessionId = selectedSessionId;
+            toast.success("Đã mở lại buổi học thành công!");
+          }
+        } else {
+          if (totalCreatedSessions >= maxSessions) {
+            toast.error(`Không thể tạo phiên học mới! Lớp học này đã đạt tối đa số buổi học kế hoạch (${maxSessions} buổi). Vui lòng chọn một buổi học có sẵn để mở.`);
+            return;
+          }
+
+          const payload = {
+            title: titleStr,
+            startAt: now.toISOString(),
+            endAt: endTime.toISOString(),
+            timeWindowMinutes: timeWindow,
+            lateAfterMinutes: lateAfter,
+            qrRotateSeconds: rotateSecs,
+            checkinOpenAt: now.toISOString(),
+            checkinCloseAt: endTime.toISOString(),
+            allowManualOverride: true,
+            note: "Mở tự động từ Web Admin"
+          };
+          
+          const newSession = await classApi.createSession(groupId, payload);
+          currentSessionId = newSession.id;
+        }
+      }
+
+      // Tự động điểm danh cho người tạo lớp (User hiện tại)
+      try {
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const currentUserId = currentUser.userId || currentUser.id;
+        if (currentUserId && currentSessionId && !String(groupId).startsWith('mock-')) {
+          await classApi.submitAttendance(currentSessionId, currentUserId, { status: 'PRESENT' });
+        }
+      } catch (checkinErr) {
+        console.error("Lỗi tự động điểm danh cho người tạo:", checkinErr);
       }
 
       setActiveSessionId(currentSessionId);
@@ -309,9 +507,44 @@ export default function DynamicQRTab({ classDetail, onCheckInsUpdate }) {
                 <h4 className="font-bold text-gray-800 text-sm uppercase tracking-wider">Thông số phiên mới</h4>
               </div>
               <div className="space-y-4">
+                {totalCreatedSessions >= maxSessions && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 flex items-start gap-2 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                    <AlertTriangle size={16} className="shrink-0 text-amber-500 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-amber-800">Đã đạt giới hạn số buổi!</span> Lớp học đã tạo đủ {maxSessions}/{maxSessions} buổi học kế hoạch. Bạn chỉ có thể chọn một buổi học có sẵn bên dưới để mở lại điểm danh.
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Chọn buổi học để mở lại</label>
+                  <select 
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition-all text-gray-700 bg-white"
+                    value={selectedSessionId}
+                    onChange={e => setSelectedSessionId(e.target.value)}
+                  >
+                    <option value="">-- Tạo buổi học mới hoàn toàn --</option>
+                    {sessionsList.map(s => {
+                      const dateStr = s.date || s.startAt || s.checkinOpenAt || s.createdAt;
+                      const formattedDate = dateStr 
+                        ? new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) 
+                        : 'chưa xác định';
+                      const statusSuffix = s.isVirtual 
+                        ? '[Chưa bắt đầu]' 
+                        : '[Đã bắt đầu - Chọn để mở lại]';
+                      const displayTitle = s.title 
+                        ? `${s.title} (Ngày ${formattedDate}) ${statusSuffix}` 
+                        : `Buổi học ngày ${formattedDate} ${statusSuffix}`;
+                      return (
+                        <option key={s.id} value={s.id}>
+                          {displayTitle}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
                 <div>
                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tiêu đề (Tùy chọn)</label>
-                  <input type="text" placeholder={`VD: Điểm danh ngày ${new Date().toLocaleDateString('vi-VN')}`} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition-all text-gray-700" value={config.title} onChange={e => setConfig({...config, title: e.target.value})} />
+                  <input type="text" placeholder={`VD: Điểm danh ngày ${new Date().toLocaleDateString('vi-VN')}`} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition-all text-gray-700 disabled:bg-gray-50 disabled:text-gray-400" value={config.title} onChange={e => setConfig({...config, title: e.target.value})} disabled={!!selectedSessionId} />
                 </div>
                 <div className="flex gap-4">
                   <div className="flex-1">

@@ -607,6 +607,23 @@ export const classApi = {
   },
 
   /**
+   * Cập nhật thông tin phiên điểm danh (để mở lại)
+   */
+  updateSession: async (sessionId, data) => {
+    try {
+      const response = await fetch(`${BASE_URL_SESSIONS}/${sessionId}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Update session error:", error);
+      throw error;
+    }
+  },
+
+  /**
    * Xuất danh sách điểm danh
    */
   exportAttendance: async (groupId) => {

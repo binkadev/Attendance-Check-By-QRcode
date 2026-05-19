@@ -17,6 +17,54 @@ import JoinClassModal from '../components/JoinClassModal';
 import FraudTab from '../components/FraudTab';
 import AbsenceTab from '../components/AbsenceTab';
 
+const generateScheduledSessionsList = (startDateStr, totalSessions, weeklySchedules) => {
+  if (!startDateStr || !totalSessions || !weeklySchedules || weeklySchedules.length === 0) {
+    return [];
+  }
+  
+  const startDate = new Date(startDateStr);
+  if (isNaN(startDate.getTime())) return [];
+
+  const dayOrder = { 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3, 'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6, 'SUNDAY': 0 };
+  
+  const scheduleConfig = weeklySchedules.map(s => ({
+    dayOfWeekNum: dayOrder[s.dayOfWeek],
+    startTime: s.startTime,
+    endTime: s.endTime
+  }));
+
+  let currentDate = new Date(startDate.getTime());
+  let sessions = [];
+  let sessionsRemaining = totalSessions;
+  
+  const startDayOfWeekNum = currentDate.getDay();
+  const matchingConfig = scheduleConfig.find(c => c.dayOfWeekNum === startDayOfWeekNum);
+  if (matchingConfig) {
+    sessions.push({
+      date: new Date(currentDate),
+      startTime: matchingConfig.startTime,
+      endTime: matchingConfig.endTime
+    });
+    sessionsRemaining--;
+  }
+  
+  while (sessionsRemaining > 0) {
+    currentDate.setDate(currentDate.getDate() + 1);
+    const dayOfWeekNum = currentDate.getDay();
+    const currentConfig = scheduleConfig.find(c => c.dayOfWeekNum === dayOfWeekNum);
+    if (currentConfig) {
+      sessions.push({
+        date: new Date(currentDate),
+        startTime: currentConfig.startTime,
+        endTime: currentConfig.endTime
+      });
+      sessionsRemaining--;
+    }
+  }
+  
+  return sessions;
+};
+
 // --- MOCK DATA CHO THÔNG TIN LỚP ---
 const MOCK_CLASSES_LIST = [
   { 
@@ -77,37 +125,59 @@ export default function ClassDetail() {
     console.log("Dynamic attendance count:", latestAttendance);
   }, [latestAttendance]);
 
+  // TÍNH TOÁN NGÀY HỌC TIẾP THEO THEO LỊCH TUẦN THỰC TẾ
   useEffect(() => {
-    const nextDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN');
-    Promise.resolve().then(() => {
-      setNextSessionDate(nextDate);
-    });
-  }, []);
+    if (!classDetail || !classDetail.weeklySchedules || classDetail.weeklySchedules.length === 0) {
+      setNextSessionDate('---');
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const dayOrder = { 0: 'SUNDAY', 1: 'MONDAY', 2: 'TUESDAY', 3: 'WEDNESDAY', 4: 'THURSDAY', 5: 'FRIDAY', 6: 'SATURDAY' };
+      const daysOfWeekVi = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+      
+      let foundNextDate = null;
+      let minDiff = Infinity;
+      let nextSchedInfo = null;
+
+      // Quét 14 ngày tới để tìm mốc thời gian khớp lịch học gần nhất
+      for (let offset = 0; offset <= 14; offset++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() + offset);
+        
+        const dayOfWeekName = dayOrder[d.getDay()];
+        const sched = classDetail.weeklySchedules.find(s => s.dayOfWeek === dayOfWeekName);
+
+        if (sched) {
+          const [startH, startM] = sched.startTime.split(':').map(Number);
+          const schedDateTime = new Date(d);
+          schedDateTime.setHours(startH, startM, 0, 0);
+
+          const diff = schedDateTime.getTime() - now.getTime();
+          if (diff > 0 && diff < minDiff) {
+            minDiff = diff;
+            foundNextDate = schedDateTime;
+            nextSchedInfo = sched;
+          }
+        }
+      }
+
+      if (foundNextDate && nextSchedInfo) {
+        const dayNameVi = daysOfWeekVi[foundNextDate.getDay()];
+        const formattedDate = foundNextDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        setNextSessionDate(`${dayNameVi}, ${formattedDate} (${nextSchedInfo.startTime} - ${nextSchedInfo.endTime})`);
+      } else {
+        setNextSessionDate('---');
+      }
+    } catch (err) {
+      console.error("Lỗi tính lịch học tiếp theo:", err);
+      setNextSessionDate('---');
+    }
+  }, [classDetail]);
 
   // GỌI API LẤY THÔNG TIN TỔNG QUAN LỚP HỌC
   useEffect(() => {
-    const loadClassDetail = async () => {
-      setIsLoadingDetail(true);
-      
-      // Nếu là ID giả lập
-      if (classId?.startsWith('mock-')) {
-        setClassDetail(MOCK_CLASSES_LIST.find(c => c.groupId === classId) || null);
-        setIsLoadingDetail(false);
-        return;
-      }
-
-      // Nếu là ID thật
-      try {
-        const res = await classApi.getClassDetail(classId);
-        setClassDetail(res);
-      } catch (error) {
-        console.error("Lỗi lấy chi tiết lớp", error);
-        toast.error("Không thể tải thông tin lớp học.");
-      } finally {
-        setIsLoadingDetail(false);
-      }
-    };
-    
     const fetchClassStats = async () => {
       if (!classId || classId.startsWith('mock-')) {
         setFraudCount(0);
@@ -163,6 +233,28 @@ export default function ClassDetail() {
         }
       } catch (error) {
         console.error("Lỗi lấy thông tin thống kê:", error);
+      }
+    };
+
+    const loadClassDetail = async () => {
+      setIsLoadingDetail(true);
+      
+      // Nếu là ID giả lập
+      if (classId?.startsWith('mock-')) {
+        setClassDetail(MOCK_CLASSES_LIST.find(c => c.groupId === classId) || null);
+        setIsLoadingDetail(false);
+        return;
+      }
+
+      // Nếu là ID thật
+      try {
+        const res = await classApi.getClassDetail(classId);
+        setClassDetail(res);
+      } catch (error) {
+        console.error("Lỗi lấy chi tiết lớp", error);
+        toast.error("Không thể tải thông tin lớp học.");
+      } finally {
+        setIsLoadingDetail(false);
       }
     };
 

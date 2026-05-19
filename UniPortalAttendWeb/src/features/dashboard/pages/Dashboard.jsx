@@ -138,6 +138,10 @@ const MOCK_ALERTS = [
 export default function Dashboard() {
   const navigate = useNavigate();
   const [chartPeriod, setChartPeriod] = useState('day');
+  const [classes, setClasses] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedSemester, setSelectedSemester] = useState('all');
+  const [isLoadingChart, setIsLoadingChart] = useState(false);
   const [classSessions, setClassSessions] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [chartKeys, setChartKeys] = useState([]);
@@ -216,7 +220,8 @@ export default function Dashboard() {
       try {
         setIsLoadingAlerts(true);
         const classesData = await classApi.getTeachingClasses();
-        const classes = classesData.items || [];
+        const classesList = classesData.items || [];
+        setClasses(classesList);
         
         let allAlerts = [];
         // Theo dõi class có nhiều sự cố gian lận nhất để điều hướng "Xem chi tiết"
@@ -226,7 +231,7 @@ export default function Dashboard() {
         let totalPresent = 0;
         let totalExpected = 0;
 
-        await Promise.all(classes.map(async (cls) => {
+        await Promise.all(classesList.map(async (cls) => {
           try {
             const classId = cls.groupId || cls.id;
             const [fraudRes, absenceRes, summaryRes] = await Promise.all([
@@ -301,10 +306,116 @@ export default function Dashboard() {
         } else {
           setTopFraudClassId(null);
         }
+      } catch (error) {
+        console.error("Failed to fetch teaching classes for alerts:", error);
+        setAlerts([]);
+        setDashboardStats({ fraudCount: 0, absenceCount: 0 });
+        setAttendanceRate(null);
+      } finally {
+        setIsLoadingAlerts(false);
+      }
+    };
 
-        // Fetch sessions for top classes to build chartData dynamically
-        const topClasses = classes.slice(0, 5);
-        const classSessionsPromises = topClasses.map(async (cls) => {
+    const getSemesterDateRange = (semester, academicYear) => {
+      if (!academicYear || !semester) return null;
+      const parts = academicYear.split('-');
+      if (parts.length !== 2) return null;
+      
+      const year1 = parseInt(parts[0]);
+      const year2 = parseInt(parts[1]);
+      
+      if (isNaN(year1) || isNaN(year2)) return null;
+      
+      let start = null;
+      let end = null;
+      
+      if (semester === 'HK1') {
+        // Học kỳ 1: Tháng 8 đến Tháng 12 năm học đầu
+        start = new Date(year1, 7, 1);
+        end = new Date(year1, 11, 31, 23, 59, 59);
+      } else if (semester === 'HK2') {
+        // Học kỳ 2: Tháng 1 đến Tháng 5 năm học sau
+        start = new Date(year2, 0, 1);
+        end = new Date(year2, 4, 31, 23, 59, 59);
+      } else if (semester === 'HK3' || semester === 'SUMMER') {
+        // Học kỳ Hè: Tháng 6 đến Tháng 8 năm học sau
+        start = new Date(year2, 5, 1);
+        end = new Date(year2, 7, 31, 23, 59, 59);
+      }
+      
+      return { start, end };
+    };
+
+    const findSemesterForDate = (date, semList) => {
+      for (const sem of semList) {
+        const range = getSemesterDateRange(sem.semester, sem.academicYear);
+        if (range && date >= range.start && date <= range.end) {
+          return sem;
+        }
+      }
+      return null;
+    };
+
+    const fetchSemesters = async () => {
+      try {
+        const res = await classApi.getSemesters();
+        const semList = Array.isArray(res) ? res : [];
+        setSemesters(semList);
+        
+        // Chọn mặc định học kỳ tương ứng với thời gian hiện tại
+        if (semList.length > 0) {
+          const now = new Date();
+          const matchedSem = findSemesterForDate(now, semList);
+          
+          if (matchedSem) {
+            setSelectedSemester(`${matchedSem.semester}|${matchedSem.academicYear}`);
+          } else {
+            // Fallback: chọn học kỳ mới nhất theo thời gian nếu không khớp học kỳ nào
+            const sorted = [...semList].sort((a, b) => {
+              if (a.academicYear !== b.academicYear) {
+                return b.academicYear.localeCompare(a.academicYear);
+              }
+              const semOrder = { 'HK3': 3, 'HK2': 2, 'HK1': 1 };
+              return (semOrder[b.semester] || 0) - (semOrder[a.semester] || 0);
+            });
+            setSelectedSemester(`${sorted[0].semester}|${sorted[0].academicYear}`);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch semesters:", error);
+      }
+    };
+
+    fetchSchedule();
+    fetchAlertsAndStats();
+    fetchSemesters();
+    
+    // Cập nhật lại UI mỗi 60 giây để status chuyển từ Future -> Now -> Past mượt mà
+    const interval = setInterval(() => setTimeTrigger(prev => prev + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Effect để tự động tải dữ liệu các phiên học cho biểu đồ khi classes hoặc selectedSemester thay đổi
+  useEffect(() => {
+    if (!classes || classes.length === 0) {
+      setClassSessions([]);
+      return;
+    }
+
+    const loadChartSessions = async () => {
+      try {
+        setIsLoadingChart(true);
+        let filteredClasses = classes;
+        
+        if (selectedSemester && selectedSemester !== 'all') {
+          const [sem, year] = selectedSemester.split('|');
+          filteredClasses = classes.filter(cls => cls.semester === sem && cls.academicYear === year);
+        }
+
+        // Hiện tối đa 10 môn học trong kỳ của giảng viên thay vì cứng 5 môn
+        const targetClasses = filteredClasses.slice(0, 10);
+
+        const classSessionsPromises = targetClasses.map(async (cls) => {
           try {
             const classId = cls.groupId || cls.id;
             const res = await classApi.getGroupSessions(classId);
@@ -334,17 +445,42 @@ export default function Dashboard() {
               uniqueRealSessionsMap.set(dateStr, daySessions[daySessions.length - 1]);
             });
 
-            // Lấy danh sách ngày dự kiến đã trôi qua
+            // Lấy danh sách ngày dự kiến đã trôi qua dựa trên lịch học hàng tuần và tổng số buổi học
             const scheduledDates = [];
             const now = new Date();
+            const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
             const startStr = cls.startDate || cls.createdAt || new Date().toISOString();
             const startDate = new Date(startStr);
+            startDate.setHours(0, 0, 0, 0);
+            
             const totalSessions = cls.totalSessions || 15;
-            for (let j = 0; j < totalSessions; j++) {
-              const expectedDate = new Date(startDate.getTime() + j * 7 * 24 * 60 * 60 * 1000);
-              if (expectedDate <= now) {
-                const ymd = `${expectedDate.getFullYear()}-${String(expectedDate.getMonth() + 1).padStart(2, '0')}-${String(expectedDate.getDate()).padStart(2, '0')}`;
-                scheduledDates.push(ymd);
+            const weeklySchedules = cls.weeklySchedules || [];
+
+            if (weeklySchedules.length > 0) {
+              let current = new Date(startDate);
+              let sessionCount = 0;
+              const dayOfWeekMap = {
+                'SUNDAY': 0, 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3,
+                'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6
+              };
+              const activeDays = weeklySchedules.map(s => dayOfWeekMap[s.dayOfWeek]);
+
+              while (current <= todayEnd && sessionCount < totalSessions) {
+                if (activeDays.includes(current.getDay())) {
+                  const ymd = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+                  scheduledDates.push(ymd);
+                  sessionCount++;
+                }
+                current.setDate(current.getDate() + 1);
+              }
+            } else {
+              // Fallback nếu không có weeklySchedules
+              for (let j = 0; j < totalSessions; j++) {
+                const expectedDate = new Date(startDate.getTime() + j * 7 * 24 * 60 * 60 * 1000);
+                if (expectedDate <= todayEnd) {
+                  const ymd = `${expectedDate.getFullYear()}-${String(expectedDate.getMonth() + 1).padStart(2, '0')}-${String(expectedDate.getDate()).padStart(2, '0')}`;
+                  scheduledDates.push(ymd);
+                }
               }
             }
 
@@ -413,23 +549,15 @@ export default function Dashboard() {
         const classSessionsResults = (await Promise.all(classSessionsPromises)).filter(Boolean);
         setClassSessions(classSessionsResults);
       } catch (error) {
-        console.error("Failed to fetch teaching classes for alerts:", error);
+        console.error("Failed to load sessions for chart:", error);
         setClassSessions([]);
-        setAlerts([]);
-        setDashboardStats({ fraudCount: 0, absenceCount: 0 });
-        setAttendanceRate(null);
       } finally {
-        setIsLoadingAlerts(false);
+        setIsLoadingChart(false);
       }
     };
 
-    fetchSchedule();
-    fetchAlertsAndStats();
-    
-    // Cập nhật lại UI mỗi 60 giây để status chuyển từ Future -> Now -> Past mượt mà
-    const interval = setInterval(() => setTimeTrigger(prev => prev + 1), 60000);
-    return () => clearInterval(interval);
-  }, []);
+    loadChartSessions();
+  }, [classes, selectedSemester]);
 
   useEffect(() => {
     if (!classSessions || classSessions.length === 0) {
@@ -462,7 +590,7 @@ export default function Dashboard() {
         (a, b) => new Date(a) - new Date(b)
       );
 
-      const finalGlobalDates = sortedGlobalDates.slice(-10);
+      const finalGlobalDates = sortedGlobalDates;
 
       if (finalGlobalDates.length > 0) {
         finalGlobalDates.forEach(dateStr => {
@@ -518,7 +646,7 @@ export default function Dashboard() {
         (a, b) => new Date(a) - new Date(b)
       );
 
-      const finalGlobalWeeks = sortedGlobalWeeks.slice(-10);
+      const finalGlobalWeeks = sortedGlobalWeeks;
 
       if (finalGlobalWeeks.length > 0) {
         finalGlobalWeeks.forEach(mondayStr => {
@@ -813,40 +941,66 @@ export default function Dashboard() {
             {/* LEFT COLUMN */}
             <div className="lg:col-span-8 flex flex-col gap-6">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
                   <div>
                     <h3 className="text-lg font-bold text-gray-900">Xu hướng điểm danh</h3>
                     <p className="text-sm text-gray-500">So sánh hàng tuần giữa các khóa học</p>
                   </div>
-                  <div className="flex bg-gray-50 border border-gray-200 rounded-lg p-1">
-                    <button 
-                      onClick={() => setChartPeriod('day')}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'day' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Theo ngày
-                    </button>
-                    <button 
-                      onClick={() => setChartPeriod('week')}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'week' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Theo tuần
-                    </button>
-                    <button 
-                      onClick={() => setChartPeriod('month')}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'month' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Theo tháng
-                    </button>
-                    <button 
-                      onClick={() => setChartPeriod('semester')}
-                      className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'semester' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      Theo học kỳ
-                    </button>
+                  <div className="flex items-center gap-3">
+                    {/* HỘP CHỌN HỌC KỲ DƯỚI DẠNG SELECT DROPDOWN */}
+                    {semesters.length > 0 && (
+                      <select
+                        value={selectedSemester}
+                        onChange={(e) => setSelectedSemester(e.target.value)}
+                        className="bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold rounded-lg px-3 py-1.5 focus:bg-white focus:border-red-300 focus:ring-2 focus:ring-red-100 outline-none transition-all cursor-pointer shadow-sm"
+                      >
+                        <option value="all">Tất cả học kỳ</option>
+                        {semesters.map((sem) => {
+                          const label = `${sem.semester === 'HK1' ? 'Kỳ 1' : sem.semester === 'HK2' ? 'Kỳ 2' : 'Kỳ Hè'} (${sem.academicYear})`;
+                          return (
+                            <option key={`${sem.semester}|${sem.academicYear}`} value={`${sem.semester}|${sem.academicYear}`}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+
+                    <div className="flex bg-gray-50 border border-gray-200 rounded-lg p-1">
+                      <button 
+                        onClick={() => setChartPeriod('day')}
+                        className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'day' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        Theo ngày
+                      </button>
+                      <button 
+                        onClick={() => setChartPeriod('week')}
+                        className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'week' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        Theo tuần
+                      </button>
+                      <button 
+                        onClick={() => setChartPeriod('month')}
+                        className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'month' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        Theo tháng
+                      </button>
+                      <button 
+                        onClick={() => setChartPeriod('semester')}
+                        className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${chartPeriod === 'semester' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        Theo học kỳ
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="h-72 w-full" style={{ minHeight: '288px' }}>
+                <div className="h-72 w-full relative" style={{ minHeight: '288px' }}>
+                  {isLoadingChart && (
+                    <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex justify-center items-center z-10 rounded-xl">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                    </div>
+                  )}
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <defs>
