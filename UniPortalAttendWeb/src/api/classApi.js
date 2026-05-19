@@ -22,6 +22,11 @@ const handleResponse = async (response) => {
   const data = isJson ? await response.json() : null;
   
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('unauthorized-api-error', {
+        detail: { message: data?.message || 'Phiên làm việc của bạn đã hết hạn. Vui lòng đăng xuất và đăng nhập lại!' }
+      }));
+    }
     const error = new Error(data?.message || `HTTP ${response.status}: ${response.statusText}`);
     error.status = response.status;
     error.code = data?.code;
