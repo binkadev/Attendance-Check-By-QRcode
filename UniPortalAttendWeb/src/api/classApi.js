@@ -188,6 +188,42 @@ export const classApi = {
   },
 
   /**
+   * Chạy thử (Dry-Run) để phân tích đối chiếu danh sách sinh viên trước khi import
+   */
+  validateImportMembers: async (groupId, payload) => {
+    try {
+      const url = `${BASE_URL_GROUPS}/${groupId}/members/validate-import`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Validate import members error:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Thực hiện import danh sách sinh viên chính thức
+   */
+  importMembers: async (groupId, payload) => {
+    try {
+      const url = `${BASE_URL_GROUPS}/${groupId}/members/import`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Import members error:", error);
+      throw error;
+    }
+  },
+
+  /**
    * Rời khỏi lớp học (Dành cho Sinh viên)
    */
   leaveClass: async (groupId) => {
