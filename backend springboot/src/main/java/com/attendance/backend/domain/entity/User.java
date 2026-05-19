@@ -47,6 +47,9 @@ public class User {
     @Column(name = "primary_device_id", length = 120)
     private String primaryDeviceId;
 
+    @Column(name = "require_password_change", nullable = false)
+    private boolean requirePasswordChange = false;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -159,6 +162,14 @@ public class User {
 
     public void setPrimaryDeviceId(String primaryDeviceId) {
         this.primaryDeviceId = primaryDeviceId;
+    }
+
+    public boolean isRequirePasswordChange() {
+        return requirePasswordChange;
+    }
+
+    public void setRequirePasswordChange(boolean requirePasswordChange) {
+        this.requirePasswordChange = requirePasswordChange;
     }
 
     public Instant getCreatedAt() {

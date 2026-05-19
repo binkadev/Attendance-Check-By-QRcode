@@ -29,7 +29,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("""
         select (count(u) > 0)
         from User u
-        where u.userCode = :userCode
+        where upper(u.userCode) = :userCode
           and u.deletedAt is null
     """)
     boolean existsByUserCode(@Param("userCode") String userCode);
@@ -41,6 +41,15 @@ public interface UserRepository extends JpaRepository<User, UUID> {
           and u.deletedAt is null
     """)
     Optional<User> findByEmailNorm(@Param("emailNorm") String emailNorm);
+
+
+    @Query("""
+        select u
+        from User u
+        where upper(u.userCode) = :userCode
+          and u.deletedAt is null
+    """)
+    Optional<User> findByUserCodeAndDeletedAtIsNull(@Param("userCode") String userCode);
 
     Optional<User> findByIdAndDeletedAtIsNull(UUID id);
 }

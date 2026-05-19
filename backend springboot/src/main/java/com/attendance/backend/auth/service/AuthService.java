@@ -3,6 +3,7 @@ package com.attendance.backend.auth.service;
 import com.attendance.backend.auth.config.PasswordResetProperties;
 import com.attendance.backend.auth.dto.AuthDtos;
 import com.attendance.backend.auth.dto.ChangePasswordRequest;
+import com.attendance.backend.auth.dto.ForceChangePasswordRequest;
 import com.attendance.backend.auth.dto.RegisterRequest;
 import com.attendance.backend.auth.dto.RegisterResponse;
 import com.attendance.backend.auth.dto.UpdateMeRequest;
@@ -156,6 +157,21 @@ public class AuthService {
             );
         }
 
+        if (user.isRequirePasswordChange()) {
+            loginRedisRateLimitService.clearOnSuccess(emailNorm, normalizedIp);
+            loginAttemptService.record(
+                    emailNorm,
+                    user.getId(),
+                    normalizedIp,
+                    normalizedUserAgent,
+                    LoginAttemptService.OUTCOME_REQUIRE_PASSWORD_CHANGE
+            );
+            throw ApiException.preconditionRequired(
+                    "REQUIRE_PASSWORD_CHANGE",
+                    "You must change the default password before continuing."
+            );
+        }
+
         loginRedisRateLimitService.clearOnSuccess(emailNorm, normalizedIp);
         loginAttemptService.record(
                 emailNorm,
@@ -252,6 +268,7 @@ public class AuthService {
             user.setPrimaryDeviceId(deviceId);
             user.setPlatformRole(PlatformRole.USER);
             user.setStatus(UserStatus.ACTIVE);
+            user.setRequirePasswordChange(false);
 
             userRepository.saveAndFlush(user);
 
@@ -290,6 +307,82 @@ public class AuthService {
         } catch (DataIntegrityViolationException ex) {
             throw mapRegisterConflict(ex);
         }
+    }
+
+
+    @Transactional
+    public AuthDtos.LoginResponse forceChangePassword(ForceChangePasswordRequest req, String ipAddress, String userAgent) {
+        String emailNorm = normalizeEmail(req.email());
+        String normalizedIp = normalizeNullable(ipAddress);
+        String normalizedUserAgent = truncateUserAgent(userAgent);
+
+        if (!StringUtils.hasText(emailNorm)) {
+            throw ApiException.badRequest("EMAIL_REQUIRED", "email is required");
+        }
+
+        User user = userRepository.findForLogin(emailNorm)
+                .orElseThrow(() -> ApiException.unauthorized("INVALID_CREDENTIALS", "Invalid email or password"));
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw ApiException.unauthorized("USER_DISABLED", "User is not active");
+        }
+
+        if (!user.isRequirePasswordChange()) {
+            throw ApiException.conflict("PASSWORD_CHANGE_NOT_REQUIRED", "Password change is not required for this account");
+        }
+
+        if (!passwordEncoder.matches(req.currentPassword(), user.getPasswordHash())) {
+            loginAttemptService.record(
+                    emailNorm,
+                    user.getId(),
+                    normalizedIp,
+                    normalizedUserAgent,
+                    LoginAttemptService.OUTCOME_INVALID_CREDENTIALS
+            );
+            throw ApiException.unauthorized("INVALID_CREDENTIALS", "Invalid email or password");
+        }
+
+        if (req.currentPassword().equals(req.newPassword())) {
+            throw ApiException.unprocessable(
+                    "NEW_PASSWORD_MUST_BE_DIFFERENT",
+                    "New password must be different from current password"
+            );
+        }
+
+        passwordPolicyService.validateOrThrow(req.newPassword());
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        user.setRequirePasswordChange(false);
+        userRepository.save(user);
+
+        Instant now = Instant.now(clock);
+        userSessionRepository.revokeAllActiveByUserId(user.getId(), now, REVOKE_REASON_PASSWORD_CHANGED);
+
+        UUID sessionId = UUID.randomUUID();
+        JwtService.TokenBundle tokenBundle = jwtService.issueTokenBundle(user, sessionId, now);
+
+        UserSession session = new UserSession();
+        session.setId(sessionId);
+        session.setUserId(user.getId());
+        session.setRefreshTokenHash(jwtService.hashRefreshToken(tokenBundle.refreshToken()));
+        session.setDeviceId(normalizeNullable(req.deviceId()));
+        session.setIpAddress(normalizedIp);
+        session.setUserAgent(normalizedUserAgent);
+        session.setIssuedAt(now);
+        session.setExpiresAt(tokenBundle.refreshTokenExpiresAt());
+
+        userSessionRepository.save(session);
+
+        loginRedisRateLimitService.clearOnSuccess(emailNorm, normalizedIp);
+        loginAttemptService.record(
+                emailNorm,
+                user.getId(),
+                normalizedIp,
+                normalizedUserAgent,
+                LoginAttemptService.OUTCOME_SUCCESS
+        );
+
+        return toLoginResponse(user, tokenBundle);
     }
 
     @Transactional
@@ -562,6 +655,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        user.setRequirePasswordChange(false);
         userRepository.save(user);
 
         token.markUsed(now);
@@ -654,6 +748,7 @@ public class AuthService {
         passwordPolicyService.validateOrThrow(req.getNewPassword());
 
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setRequirePasswordChange(false);
         userRepository.save(user);
 
         Instant now = Instant.now(clock);

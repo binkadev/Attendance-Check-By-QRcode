@@ -1,6 +1,8 @@
 package com.attendance.backend.group.api;
 
 import com.attendance.backend.common.exception.ApiException;
+import com.attendance.backend.group.dto.ImportMembersRequest;
+import com.attendance.backend.group.dto.ImportMembersResponse;
 import com.attendance.backend.group.dto.JoinGroupRequest;
 import com.attendance.backend.group.dto.MemberActionRequest;
 import com.attendance.backend.group.dto.MemberResponse;
@@ -51,6 +53,19 @@ public class GroupMemberController {
             throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
         }
         return groupMemberService.listMembers(me.getUserId(), groupId, page, size);
+    }
+
+
+    @PostMapping("/{groupId}/members/import")
+    public ImportMembersResponse importMembers(
+            @PathVariable UUID groupId,
+            @AuthenticationPrincipal UserPrincipal me,
+            @Valid @RequestBody ImportMembersRequest request
+    ) {
+        if (me == null || me.getUserId() == null) {
+            throw ApiException.unauthorized("UNAUTHORIZED", "Missing JWT principal");
+        }
+        return groupMemberService.importMembers(me.getUserId(), groupId, request);
     }
 
     @PatchMapping("/{groupId}/members/{userId}")

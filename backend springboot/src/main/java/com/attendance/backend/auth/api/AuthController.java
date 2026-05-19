@@ -2,6 +2,7 @@ package com.attendance.backend.auth.api;
 
 import com.attendance.backend.auth.dto.AuthDtos;
 import com.attendance.backend.auth.dto.ChangePasswordRequest;
+import com.attendance.backend.auth.dto.ForceChangePasswordRequest;
 import com.attendance.backend.auth.dto.RegisterRequest;
 import com.attendance.backend.auth.dto.RegisterResponse;
 import com.attendance.backend.auth.service.AuthService;
@@ -39,6 +40,13 @@ public class AuthController {
     public RegisterResponse register(@Valid @RequestBody RegisterRequest request,
                                      HttpServletRequest httpRequest) {
         return authService.register(request, resolveClientIp(httpRequest), resolveUserAgent(httpRequest));
+    }
+
+
+    @PostMapping("/force-change-password")
+    public AuthDtos.LoginResponse forceChangePassword(@Valid @RequestBody ForceChangePasswordRequest req,
+                                                      HttpServletRequest request) {
+        return authService.forceChangePassword(req, resolveClientIp(request), resolveUserAgent(request));
     }
 
     @PostMapping("/refresh")

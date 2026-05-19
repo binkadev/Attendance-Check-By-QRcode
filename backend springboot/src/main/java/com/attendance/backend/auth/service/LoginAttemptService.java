@@ -14,6 +14,7 @@ public class LoginAttemptService {
     public static final String OUTCOME_SUCCESS = "SUCCESS";
     public static final String OUTCOME_INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
     public static final String OUTCOME_USER_NOT_ACTIVE = "USER_NOT_ACTIVE";
+    public static final String OUTCOME_REQUIRE_PASSWORD_CHANGE = "REQUIRE_PASSWORD_CHANGE";
     public static final String OUTCOME_THROTTLED_IP = "THROTTLED_IP";
     public static final String OUTCOME_THROTTLED_EMAIL_IP = "THROTTLED_EMAIL_IP";
 
