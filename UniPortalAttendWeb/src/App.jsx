@@ -12,10 +12,12 @@ import HistoryAndManualEdit from './features/attendance-history/pages/HistoryAnd
 import TermsOfService from './features/legal/TermsOfService';
 import PrivacyPolicy from './features/legal/PrivacyPolicy';
 import HelpCenter from './features/support/HelpCenter'; 
+import About from './features/about/About';
 import Profile from './features/auth/pages/Profile';
 import ForgotPassword from './features/auth/pages/ForgotPassword';
 import ResetPassword from './features/auth/pages/ResetPassword';
 import TokenCountdownWidget from './features/auth/components/TokenCountdownWidget';
+import ForceChangePassword from './features/auth/pages/ForceChangePassword';
 
 // Hàm kiểm tra Token
 const isTokenValid = (token) => {
@@ -40,6 +42,7 @@ const isTokenValid = (token) => {
 // Component bảo vệ các trang yêu cầu đăng nhập (Chặn khách)
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('accessToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   
   if (!token || !isTokenValid(token)) {
     // Xóa rác nếu token hết hạn
@@ -47,6 +50,28 @@ const ProtectedRoute = ({ children }) => {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     return <Navigate to="/login" replace />;
+  }
+  
+  // Nếu là Ghost Account chưa đổi mật khẩu -> Bắt buộc đẩy vào trang đổi mật khẩu
+  if (user.isFirstLogin || user.requirePasswordChange) {
+    return <Navigate to="/force-change-password" replace />;
+  }
+  
+  return children;
+};
+
+// Component bảo vệ trang Ép Đổi Mật Khẩu
+const ForceChangePasswordRoute = ({ children }) => {
+  const token = localStorage.getItem('accessToken');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  if (!token || !isTokenValid(token)) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  // Nếu đã đổi mật khẩu thành công rồi -> Trả về dashboard
+  if (!user.isFirstLogin && !user.requirePasswordChange) {
+    return <Navigate to="/dashboard" replace />;
   }
   
   return children;
@@ -125,8 +150,17 @@ function App() {
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} /> 
         <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+        <Route 
+          path="/force-change-password" 
+          element={
+            <ForceChangePasswordRoute>
+              <ForceChangePassword />
+            </ForceChangePasswordRoute>
+          } 
+        />
 
         {/* Các trang phụ trợ */}
+        <Route path="/about" element={<About />} />
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/help" element={<HelpCenter />} />

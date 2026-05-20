@@ -8,9 +8,12 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../../../api/authApi';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../../../context/LanguageContext';
+import LanguageSwitcher from '../../../components/layout/LanguageSwitcher';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +39,7 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    const loadingToastId = toast.loading('Đang xác thực...');
+    const loadingToastId = toast.loading(t('login.toast_loading'));
 
     try {
       const payload = {
@@ -57,14 +60,19 @@ export default function Login() {
       localStorage.setItem('refreshToken', response.refreshToken);
       localStorage.setItem('user', JSON.stringify(response.user));
 
-      toast.success('Đăng nhập thành công!', { id: loadingToastId });
+      toast.success(t('login.toast_success'), { id: loadingToastId });
       
       setTimeout(() => {
-        navigate('/dashboard');
+        if (response.user?.isFirstLogin || response.user?.requirePasswordChange) {
+          toast.success("Tài khoản của bạn cần đổi mật khẩu mặc định trước khi sử dụng!", { duration: 4000 });
+          navigate('/force-change-password');
+        } else {
+          navigate('/dashboard');
+        }
       }, 500);
       
     } catch (err) {
-      toast.error(err.message || 'Sai email hoặc mật khẩu!', { id: loadingToastId });
+      toast.error(err.message || t('login.toast_error'), { id: loadingToastId });
     } finally {
       setIsLoading(false);
     }
@@ -82,18 +90,19 @@ export default function Login() {
     <div className="min-h-screen bg-white font-sans flex flex-col">
       
       {/* 1. Header Navigation - Tối giản */}
-      <header className="w-full h-20 bg-white flex items-center px-8 lg:px-24">
+      <header className="w-full h-20 bg-white flex items-center px-8 lg:px-24 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-sm">
             <Shield className="text-white" size={24} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">UniAttend</h1>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{t('common.brand')}</h1>
           </div>
         </div>
-        <div className="ml-auto hidden md:flex items-center gap-6 text-sm text-gray-500">
-          <Link to="/" className="hover:text-red-600 transition-colors">Trang chủ</Link>
-          <Link to="/help" className="hover:text-red-600 transition-colors">Trung tâm trợ giúp</Link>
+        <div className="ml-auto flex items-center gap-6 text-sm text-gray-500">
+          <Link to="/" className="hidden md:block hover:text-red-600 transition-colors">{t('common.home')}</Link>
+          <Link to="/help" className="hidden md:block hover:text-red-600 transition-colors">{t('common.help')}</Link>
+          <LanguageSwitcher />
         </div>
       </header>
 
@@ -110,24 +119,24 @@ export default function Login() {
           {/* Left Side - Promo Content (Hidden on small screens) */}
           <div className="hidden lg:block w-1/2 pr-12">
             <h2 className="text-4xl font-extrabold text-gray-900 leading-tight mb-4">
-              Quản lý điểm danh <br />
-              <span className="text-red-600">Thông minh & Bảo mật</span>
+              {t('login.subtitle')} <br />
+              <span className="text-red-600">{t('login.highlight')}</span>
             </h2>
             <p className="text-gray-600 text-lg mb-8 max-w-md">
-              Hệ thống điểm danh bằng QR Code động. Sinh viên sử dụng App để quét mã, Giảng viên quản lý toàn diện trên nền tảng Web.
+              {t('login.desc')}
             </p>
             <div className="flex gap-6">
               <div className="flex items-center gap-2 text-gray-700">
                 <Zap className="text-orange-500" size={20} />
-                <span className="font-medium">Real-time</span>
+                <span className="font-medium">{t('login.realtime')}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-700">
                 <MonitorPlay className="text-blue-500" size={20} />
-                <span className="font-medium">Đa nền tảng</span>
+                <span className="font-medium">{t('login.multiplatform')}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-700">
                 <Shield className="text-green-500" size={20} />
-                <span className="font-medium">Anti-fraud</span>
+                <span className="font-medium">{t('login.antifraud')}</span>
               </div>
             </div>
           </div>
@@ -154,14 +163,14 @@ export default function Login() {
                     onClick={() => setActiveTab('password')}
                     className={`relative transition-colors ${activeTab === 'password' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
                   >
-                    Đăng nhập
+                    {t('login.title')}
                     {activeTab === 'password' && <span className="absolute -bottom-[13px] left-0 right-0 h-0.5 bg-red-600 rounded-full"></span>}
                   </button>
                   <button 
                     onClick={() => setActiveTab('qrcode')}
                     className={`relative transition-colors ${activeTab === 'qrcode' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
                   >
-                    Mã QR
+                    {t('login.qr_tab')}
                     {activeTab === 'qrcode' && <span className="absolute -bottom-[13px] left-0 right-0 h-0.5 bg-red-600 rounded-full"></span>}
                   </button>
                 </div>
@@ -182,7 +191,7 @@ export default function Login() {
                           onBlur={() => setFocusedField(null)}
                           required
                           className="w-full px-3 py-3 bg-transparent text-gray-900 focus:outline-none placeholder-gray-400"
-                          placeholder="Email đăng nhập"
+                          placeholder={t('login.email_placeholder')}
                         />
                       </div>
                     </div>
@@ -200,12 +209,12 @@ export default function Login() {
                           onBlur={() => setFocusedField(null)}
                           required
                           className="w-full px-3 py-3 bg-transparent text-gray-900 focus:outline-none placeholder-gray-400"
-                          placeholder="Mật khẩu"
+                          placeholder={t('login.password_placeholder')}
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="p-1 focus:outline-none"
+                          className="p-1 focus:outline-none shrink-0"
                         >
                           {showPassword ? 
                             <EyeOff size={20} className="text-gray-400 hover:text-gray-600" /> : 
@@ -224,10 +233,10 @@ export default function Login() {
                           onChange={(e) => setRememberMe(e.target.checked)}
                           className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer" 
                         />
-                        <span className="text-gray-600 group-hover:text-gray-900">Ghi nhớ tôi</span>
+                        <span className="text-gray-600 group-hover:text-gray-900">{t('login.remember_me')}</span>
                       </label>
                       <Link to="/forgot-password" className="text-gray-500 hover:text-red-600 transition-colors">
-                        Quên mật khẩu?
+                        {t('login.forgot_password')}
                       </Link>
                     </div>
 
@@ -240,21 +249,21 @@ export default function Login() {
                       {isLoading ? (
                         <>
                           <Loader2 size={20} className="animate-spin" /> 
-                          Đang xác thực...
+                          {t('login.authenticating')}
                         </>
                       ) : (
-                        'Đăng nhập'
+                        t('login.login_btn')
                       )}
                     </button>
 
                     {/* Other Logins */}
                     <div className="mt-6 flex items-center justify-between gap-4 text-sm text-gray-500">
                       <div className="flex items-center gap-4">
-                        <span className="cursor-pointer hover:text-red-600 transition-colors flex items-center gap-1"><Smartphone size={16}/> SMS</span>
+                        <span className="cursor-pointer hover:text-red-600 transition-colors flex items-center gap-1"><Smartphone size={16}/> {t('login.sms_login')}</span>
                         <span className="w-px h-3 bg-gray-300"></span>
-                        <span className="cursor-pointer hover:text-red-600 transition-colors flex items-center gap-1"><MonitorPlay size={16}/> App</span>
+                        <span className="cursor-pointer hover:text-red-600 transition-colors flex items-center gap-1"><MonitorPlay size={16}/> {t('login.app_login')}</span>
                       </div>
-                      <Link to="/register" className="text-red-600 hover:text-red-700 font-medium">Đăng ký ngay</Link>
+                      <Link to="/register" className="text-red-600 hover:text-red-700 font-medium">{t('login.register_now')}</Link>
                     </div>
                   </form>
                 )}
@@ -262,21 +271,21 @@ export default function Login() {
                 {/* QR Code Login Tab */}
                 {activeTab === 'qrcode' && (
                   <div className="text-center py-6">
-                    <h3 className="text-gray-800 font-medium mb-6">Mở ứng dụng UniAttend để quét mã</h3>
+                    <h3 className="text-gray-800 font-medium mb-6">{t('login.qr_instruction')}</h3>
                     <div className="w-48 h-48 mx-auto bg-white p-2 rounded-xl shadow-sm border border-gray-100 flex items-center justify-center mb-6 relative group">
                       <QrCode size={160} className="text-gray-800" />
                       {/* Overlay on hover for refreshing */}
                       <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                        <span className="text-white text-sm font-medium">Làm mới mã QR</span>
+                        <span className="text-white text-sm font-medium">{t('login.qr_refresh')}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
                       <Scan size={16} />
-                      <p>Sử dụng App để quét, an toàn hơn</p>
+                      <p>{t('login.qr_safer')}</p>
                     </div>
                     
                     <div className="mt-8 pt-6 border-t border-gray-100 text-sm">
-                      <Link to="/register" className="text-gray-500 hover:text-red-600">Đăng ký tài khoản miễn phí</Link>
+                      <Link to="/register" className="text-gray-500 hover:text-red-600">{t('login.register_free')}</Link>
                     </div>
                   </div>
                 )}
@@ -289,19 +298,19 @@ export default function Login() {
       </main>
 
       {/* 3. Footer - Enterprise Style */}
-      <footer className="py-6 bg-white border-t border-gray-100">
+      <footer className="py-6 bg-white border-t border-gray-100 shrink-0">
         <div className="container mx-auto px-4 text-center">
           <div className="flex items-center justify-center gap-4 text-sm text-gray-500 mb-2">
-            <Link to="#" className="hover:text-gray-900">Giới thiệu</Link>
+            <Link to="/about" className="hover:text-gray-900">{t('common.about')}</Link>
             <span>|</span>
-            <Link to="/terms" className="hover:text-gray-900">Điều khoản sử dụng</Link>
+            <Link to="/terms" className="hover:text-gray-900">{t('common.terms')}</Link>
             <span>|</span>
-            <Link to="/privacy" className="hover:text-gray-900">Chính sách bảo mật</Link>
+            <Link to="/privacy" className="hover:text-gray-900">{t('common.privacy')}</Link>
             <span>|</span>
-            <Link to="#" className="hover:text-gray-900">Hỗ trợ khách hàng</Link>
+            <Link to="#" className="hover:text-gray-900">{t('common.support')}</Link>
           </div>
           <p className="text-xs text-gray-400">
-            © 2026 UniAttend Inc. All rights reserved.
+            {t('common.copyright')}
           </p>
         </div>
       </footer>

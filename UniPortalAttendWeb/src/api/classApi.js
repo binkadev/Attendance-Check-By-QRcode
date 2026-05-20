@@ -190,13 +190,19 @@ export const classApi = {
   /**
    * Chạy thử (Dry-Run) để phân tích đối chiếu danh sách sinh viên trước khi import
    */
-  validateImportMembers: async (groupId, payload) => {
+  validateImportMembers: async (groupId, payload, notifyStudents = true) => {
     try {
-      const url = `${BASE_URL_GROUPS}/${groupId}/members/validate-import`;
+      const url = `${BASE_URL_GROUPS}/${groupId}/members/import`;
       const response = await fetch(url, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          importMode: 'VALIDATE_ONLY',
+          syncMode: 'APPEND_ONLY',
+          accountProvisioningMode: 'CREATE_REQUIRE_PASSWORD_CHANGE',
+          notifyStudents,
+          members: payload
+        })
       });
       return handleResponse(response);
     } catch (error) {
@@ -208,13 +214,19 @@ export const classApi = {
   /**
    * Thực hiện import danh sách sinh viên chính thức
    */
-  importMembers: async (groupId, payload) => {
+  importMembers: async (groupId, payload, notifyStudents = true) => {
     try {
       const url = `${BASE_URL_GROUPS}/${groupId}/members/import`;
       const response = await fetch(url, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          importMode: 'COMMIT',
+          syncMode: 'APPEND_ONLY',
+          accountProvisioningMode: 'CREATE_REQUIRE_PASSWORD_CHANGE',
+          notifyStudents,
+          members: payload
+        })
       });
       return handleResponse(response);
     } catch (error) {

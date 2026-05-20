@@ -165,6 +165,31 @@ export const authApi = {
   },
 
   // ==========================================
+  // 5b. API ÉP ĐỔI MẬT KHẨU (GHOST ACCOUNT ĐĂNG NHẬP LẦN ĐẦU)
+  // ==========================================
+  forceChangePassword: async (payload) => {
+    try {
+      const response = await fetch(`${BASE_URL}/force-change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: JSON.stringify(payload), // { currentPassword, newPassword }
+      });
+
+      if (response.status === 204 || response.ok) {
+        return true;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || 'Lỗi khi đổi mật khẩu mặc định');
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ==========================================
   // 6. API QUÊN MẬT KHẨU
   // ==========================================
   forgotPassword: async (payload) => {

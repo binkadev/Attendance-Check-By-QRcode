@@ -83,45 +83,229 @@ export default function StudentsTab({ classId }) {
   const [validatedRows, setValidatedRows] = useState([]);
   const [isValidating, setIsValidating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
+  const [hasCriticalConflict, setHasCriticalConflict] = useState(false);
 
   const MOCK_IMPORT_PAYLOAD = [
-    { studentCode: "N22DCCN160", name: "Phạm Văn Phú", email: "phu.pvn22@ptit.edu.vn" },
-    { studentCode: "N22DCCN001", name: "Nguyễn Văn A", email: "a.nguyen@gmail.com" },
-    { studentCode: "N22DCCN002", name: "Trần Thị B", email: "b.tran@gmail.com" },
-    { studentCode: "N22DCCN003", name: "Lê Văn C", email: "c.le@gmail.com" },
-    { studentCode: "", name: "Trần Văn Thiếu MSV", email: "thieu.msv@gmail.com" }, // Lỗi: Thiếu MSV
-    { studentCode: "N22DCCN999", name: "Lâm Nhật Lỗi Email", email: "email_sai_dinh_dang" }, // Lỗi: Sai định dạng Email
-    { studentCode: "N22DCCN001", name: "Nguyễn Văn A (Dòng trùng)", email: "a.nguyen@gmail.com" } // Lỗi: Trùng MSV trong file
+    { rowIndex: 0, studentCode: "N22DCCN160", fullName: "Phạm Văn Phú", email: "phu.pvn22@ptit.edu.vn" },
+    { rowIndex: 1, studentCode: "N22DCCN001", fullName: "Nguyễn Văn A", email: "a.nguyen@gmail.com" },
+    { rowIndex: 2, studentCode: "N22DCCN002", fullName: "Trần Thị B", email: "b.tran@gmail.com" },
+    { rowIndex: 3, studentCode: "STU-8921", fullName: "Lê Thị Hồng", email: "hong.lt@university.edu" }, // Đã là member -> SKIPPED (Rule 11)
+    { rowIndex: 4, studentCode: "STU-1213", fullName: "Lâm Nhật Vượng", email: "vuong.ln@university.edu" }, // Từng bị REJECTED -> RESTORED (Rule 12)
+    { rowIndex: 5, studentCode: "", fullName: "Trần Văn Thiếu MSV", email: "thieu.msv@gmail.com" }, // Lỗi: Thiếu MSV
+    { rowIndex: 6, studentCode: "N22DCCN999", fullName: "Lâm Nhật Lỗi Email", email: "email_sai_dinh_dang" }, // Lỗi: Sai định dạng Email
+    { rowIndex: 7, studentCode: "N22DCCN001", fullName: "Nguyễn Văn A (Dòng trùng)", email: "a.nguyen@gmail.com" }, // Lỗi: Trùng trong file (Rule 3)
+    { rowIndex: 8, studentCode: "STU-7743", fullName: "Xung Đột Chéo", email: "manh.nv@university.edu" } // Lỗi: MSSV match Khoa, email match Mạnh -> Conflict (Rule 6)
   ];
 
   const simulateDryRun = (payload) => {
-    const seenCodes = new Set();
-    return payload.map(row => {
-      const code = (row.studentCode || '').trim();
-      const email = (row.email || '').trim();
-      const name = (row.name || '').trim();
-      
-      // 1. Kiểm tra Lỗi (ERROR)
-      if (!code) {
-        return { ...row, status: 'ERROR', errorMsg: 'Mã sinh viên không được để trống' };
-      }
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return { ...row, status: 'ERROR', errorMsg: 'Email không đúng định dạng' };
-      }
-      if (seenCodes.has(code)) {
-        return { ...row, status: 'ERROR', errorMsg: 'Mã sinh viên bị lặp lại trong file' };
-      }
-      seenCodes.add(code);
+    const seenCodes = new Map();
+    const seenEmails = new Map();
+    
+    // Tạo cơ sở dữ liệu giả lập hệ thống
+    const mockSystemUsers = [
+      { studentCode: "N22DCCN160", email: "phu.pvn22@ptit.edu.vn", fullName: "Phạm Văn Phú" },
+      { studentCode: "N22DCCN001", email: "a.nguyen@gmail.com", fullName: "Nguyễn Văn A" },
+      { studentCode: "N22DCCN002", email: "b.tran@gmail.com", fullName: "Trần Thị B" },
+      { studentCode: "N22DCCN003", email: "c.le@gmail.com", fullName: "Lê Văn C" },
+      ...students.map(s => ({
+        studentCode: s.id,
+        email: s.email,
+        fullName: s.name,
+        memberStatus: s.memberStatus
+      }))
+    ];
 
-      // 2. Kiểm tra EXISTING (Đã có tài khoản)
-      const isExisting = code === 'N22DCCN160' || students.some(s => s.id === code);
-      if (isExisting) {
-        return { ...row, status: 'EXISTING', errorMsg: null };
-      }
-
-      // 3. NEW (Tạo mới tài khoản ma)
-      return { ...row, status: 'NEW', errorMsg: null };
+    const userByCodeMap = new Map();
+    const userByEmailMap = new Map();
+    mockSystemUsers.forEach(u => {
+      if (u.studentCode) userByCodeMap.set(u.studentCode.trim().toUpperCase(), u);
+      if (u.email) userByEmailMap.set(u.email.trim().toLowerCase(), u);
     });
+
+    let localConflict = false;
+    const fileDuplicates = new Set();
+
+    // 1. Quét tìm phần tử trùng lặp trong file (Rule 3)
+    payload.forEach((row, idx) => {
+      const code = (row.studentCode || '').trim().toUpperCase();
+      const email = (row.email || '').trim().toLowerCase();
+
+      if (code) {
+        if (seenCodes.has(code)) {
+          fileDuplicates.add(idx);
+          fileDuplicates.add(seenCodes.get(code));
+        } else {
+          seenCodes.set(code, idx);
+        }
+      }
+      if (email) {
+        if (seenEmails.has(email)) {
+          fileDuplicates.add(idx);
+          fileDuplicates.add(seenEmails.get(email));
+        } else {
+          seenEmails.set(email, idx);
+        }
+      }
+    });
+
+    // 2. Chạy logic đối chiếu chi tiết từng dòng
+    const resultItems = payload.map((row, idx) => {
+      const code = (row.studentCode || '').trim().toUpperCase();
+      const email = (row.email || '').trim().toLowerCase();
+      const fullName = (row.fullName || row.name || '').trim();
+
+      if (fileDuplicates.has(idx)) {
+        return {
+          ...row,
+          rowIndex: idx,
+          studentCode: code,
+          fullName: fullName,
+          email: email,
+          action: 'ERROR',
+          errorMsg: 'Trùng lặp mã sinh viên hoặc email trong tệp tải lên'
+        };
+      }
+
+      if (!code && !email) {
+        return {
+          ...row,
+          rowIndex: idx,
+          studentCode: code,
+          fullName: fullName,
+          email: email,
+          action: 'ERROR',
+          errorMsg: 'Mã sinh viên hoặc email không được trống'
+        };
+      }
+
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return {
+          ...row,
+          rowIndex: idx,
+          studentCode: code,
+          fullName: fullName,
+          email: email,
+          action: 'ERROR',
+          errorMsg: 'Email không đúng định dạng'
+        };
+      }
+
+      // Rule 4: Match theo studentCode trước
+      let matchedUser = null;
+      let matchedByCode = false;
+      let matchedByEmail = false;
+
+      if (code && userByCodeMap.has(code)) {
+        matchedUser = userByCodeMap.get(code);
+        matchedByCode = true;
+      }
+
+      // Rule 5: Match theo email sau (nếu không khớp MSSV)
+      let userByEmailMatch = null;
+      if (email && userByEmailMap.has(email)) {
+        userByEmailMatch = userByEmailMap.get(email);
+        matchedByEmail = true;
+      }
+
+      // Rule 6: Trùng chéo (Code matches User A, Email matches User B) => reject toàn bộ
+      if (matchedByCode && matchedByEmail && matchedUser.studentCode !== userByEmailMatch.studentCode) {
+        localConflict = true;
+        return {
+          ...row,
+          rowIndex: idx,
+          studentCode: code,
+          fullName: fullName,
+          email: email,
+          action: 'ERROR',
+          errorMsg: `Xung đột chéo: MSSV khớp với "${matchedUser.fullName}" nhưng Email khớp với "${userByEmailMatch.fullName}"`
+        };
+      }
+
+      if (!matchedUser && matchedByEmail) {
+        matchedUser = userByEmailMatch;
+      }
+
+      if (matchedUser) {
+        // Kiểm tra xem đã là thành viên trong lớp chưa
+        const inClass = students.find(s => s.id === matchedUser.studentCode || s.email === matchedUser.email);
+        if (inClass) {
+          const status = inClass.memberStatus;
+          if (status === 'ACTIVE' || status === 'APPROVED') {
+            // Rule 11: Đã là member => skip
+            return {
+              ...row,
+              rowIndex: idx,
+              studentCode: code || matchedUser.studentCode,
+              fullName: fullName || matchedUser.fullName,
+              email: email || matchedUser.email,
+              userId: matchedUser.studentCode,
+              memberStatus: status,
+              accountStatus: 'ACTIVE',
+              action: 'SKIPPED_EXISTING_MEMBER',
+              errorMsg: null
+            };
+          } else {
+            // Rule 12: Từng bị REMOVED/REJECTED => restore
+            return {
+              ...row,
+              rowIndex: idx,
+              studentCode: code || matchedUser.studentCode,
+              fullName: fullName || matchedUser.fullName,
+              email: email || matchedUser.email,
+              userId: matchedUser.studentCode,
+              memberStatus: 'APPROVED',
+              accountStatus: 'ACTIVE',
+              action: 'RESTORED_MEMBER',
+              errorMsg: null
+            };
+          }
+        }
+
+        // Rule 7: Đã có tài khoản hệ thống nhưng chưa vào lớp => Thêm
+        return {
+          ...row,
+          rowIndex: idx,
+          studentCode: code || matchedUser.studentCode,
+          fullName: fullName || matchedUser.fullName,
+          email: email || matchedUser.email,
+          userId: matchedUser.studentCode,
+          memberStatus: 'APPROVED',
+          accountStatus: 'ACTIVE',
+          action: 'LINKED_EXISTING_USER_AND_ADDED',
+          errorMsg: null
+        };
+      }
+
+      // Rule 8 & 9 & 10: Chưa có tài khoản => tạo mới (Ghost Account)
+      const cleanName = fullName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '');
+      const defaultPassword = `${code || 'GUEST'}${cleanName}`;
+      return {
+        ...row,
+        rowIndex: idx,
+        studentCode: code,
+        fullName: fullName,
+        email: email,
+        userId: code || `NEW-${idx}`,
+        memberStatus: 'APPROVED',
+        accountStatus: 'ACTIVE',
+        action: 'CREATED_USER_AND_ADDED',
+        defaultPasswordRule: defaultPassword,
+        errorMsg: null
+      };
+    });
+
+    return {
+      items: resultItems,
+      hasCriticalConflict: localConflict,
+      totalRows: payload.length,
+      createdUsers: resultItems.filter(r => r.action === 'CREATED_USER_AND_ADDED').length,
+      linkedExistingUsers: resultItems.filter(r => r.action === 'LINKED_EXISTING_USER_AND_ADDED').length,
+      addedMembers: resultItems.filter(r => r.action === 'LINKED_EXISTING_USER_AND_ADDED' || r.action === 'CREATED_USER_AND_ADDED' || r.action === 'RESTORED_MEMBER').length,
+      skippedExistingMembers: resultItems.filter(r => r.action === 'SKIPPED_EXISTING_MEMBER').length,
+      restoredMembers: resultItems.filter(r => r.action === 'RESTORED_MEMBER').length,
+      invitationEmailsQueued: resultItems.filter(r => r.action === 'CREATED_USER_AND_ADDED').length
+    };
   };
 
   // Trình xử lý tải file Excel / CSV giả lập
@@ -158,6 +342,7 @@ export default function StudentsTab({ classId }) {
         const headers = firstLine.split(separator).map(h => h.trim().replace(/^["']|["']$/g, ''));
         
         const parsedRows = [];
+        let rIndex = 0;
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
@@ -200,8 +385,9 @@ export default function StudentsTab({ classId }) {
 
           if (rowData.studentCode || rowData.name || rowData.email) {
             parsedRows.push({
+              rowIndex: rIndex++,
               studentCode: rowData.studentCode || '',
-              name: rowData.name || '',
+              fullName: rowData.name || '',
               email: rowData.email || ''
             });
           }
@@ -247,10 +433,19 @@ export default function StudentsTab({ classId }) {
       if (classId && !classId.startsWith('mock-')) {
         try {
           const res = await classApi.validateImportMembers(classId, payload);
-          if (Array.isArray(res)) {
-            setValidatedRows(res);
-            setIsValidating(false);
-            return;
+          const items = res?.items || (Array.isArray(res) ? res : null);
+          if (items && items.length > 0) {
+            // Kiểm tra xem backend đã phân loại (action hoặc status) cho các phần tử chưa
+            const hasClassification = items.some(item => item.action || item.status);
+            if (hasClassification) {
+              setValidatedRows(items);
+              setImportSummary(res?.items ? res : null);
+              setHasCriticalConflict(!!res?.hasCriticalConflict || items.some(item => item.action === 'ERROR' && item.errorMsg?.includes('Xung đột')));
+              setIsValidating(false);
+              return;
+            } else {
+              console.warn("Backend trả về danh sách thô không có phân loại action/status. Tự động chuyển sang Client-side Simulator.");
+            }
           }
         } catch (apiErr) {
           console.warn("API validate-import failed or not implemented, fallback to local simulator:", apiErr);
@@ -258,8 +453,10 @@ export default function StudentsTab({ classId }) {
       }
       
       // Fallback tự động sang Client-side Simulator
-      const simulated = simulateDryRun(payload);
-      setValidatedRows(simulated);
+      const simulatedResult = simulateDryRun(payload);
+      setValidatedRows(simulatedResult.items);
+      setImportSummary(simulatedResult);
+      setHasCriticalConflict(simulatedResult.hasCriticalConflict);
     } catch (err) {
       console.error("Lỗi validate import:", err);
       toast.error("Lỗi phân tích dữ liệu kiểm tra.");
@@ -270,14 +467,25 @@ export default function StudentsTab({ classId }) {
 
   // Bước 3: Xác nhận thực thi Import chính thức
   const handleConfirmImport = async () => {
-    // Chỉ lấy dòng EXISTING + NEW để import, loại bỏ hoàn toàn các dòng ERROR
-    const validPayload = validatedRows
-      .filter(row => row.status === 'EXISTING' || row.status === 'NEW')
-      .map(row => ({
-        studentCode: row.studentCode,
-        name: row.name,
-        email: row.email
-      }));
+    // Chỉ lấy dòng EXISTING + NEW + RESTORED để import, loại bỏ hoàn toàn các dòng ERROR
+    const validRows = validatedRows.filter(row => {
+      const action = row.action;
+      const status = row.status;
+      return (
+        action === 'CREATED_USER_AND_ADDED' ||
+        action === 'LINKED_EXISTING_USER_AND_ADDED' ||
+        action === 'RESTORED_MEMBER' ||
+        status === 'NEW' ||
+        status === 'EXISTING'
+      );
+    });
+
+    const validPayload = validRows.map(row => ({
+      rowIndex: row.rowIndex !== undefined ? row.rowIndex : 0,
+      studentCode: row.studentCode || '',
+      fullName: row.fullName || row.name || '',
+      email: row.email || ''
+    }));
 
     if (validPayload.length === 0) {
       toast.error("Không có sinh viên hợp lệ để Import!");
@@ -294,8 +502,9 @@ export default function StudentsTab({ classId }) {
       let isMockSuccess = true;
       if (classId && !classId.startsWith('mock-')) {
         try {
-          await classApi.importMembers(classId, validPayload);
+          const res = await classApi.importMembers(classId, validPayload);
           isMockSuccess = false;
+          setImportSummary(res);
         } catch (apiErr) {
           console.warn("API import failed or not implemented, fallback to local mockup simulator:", apiErr);
         }
@@ -306,9 +515,9 @@ export default function StudentsTab({ classId }) {
         const newMembersMapped = validPayload.map(row => ({
           id: row.studentCode,
           rawId: `STU-${Math.floor(Math.random() * 10000)}`,
-          name: row.name,
+          name: row.fullName,
           email: row.email,
-          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}&background=random`,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(row.fullName)}&background=random`,
           joinedAt: new Date().toISOString(),
           attendanceRate: 100,
           memberStatus: 'ACTIVE',
@@ -341,14 +550,18 @@ export default function StudentsTab({ classId }) {
     setImportStep(1);
     setSelectedFile(null);
     setValidatedRows([]);
+    setImportSummary(null);
+    setHasCriticalConflict(false);
   };
 
   // Tính toán số lượng dòng tổng kết
   const totalImport = validatedRows.length;
-  const existingCount = validatedRows.filter(r => r.status === 'EXISTING').length;
-  const newCount = validatedRows.filter(r => r.status === 'NEW').length;
-  const errorCount = validatedRows.filter(r => r.status === 'ERROR').length;
-  const canConfirmImport = (existingCount + newCount) > 0;
+  const existingCount = validatedRows.filter(r => r.status === 'EXISTING' || r.action === 'LINKED_EXISTING_USER_AND_ADDED').length;
+  const newCount = validatedRows.filter(r => r.status === 'NEW' || r.action === 'CREATED_USER_AND_ADDED').length;
+  const skippedCount = validatedRows.filter(r => r.action === 'SKIPPED_EXISTING_MEMBER').length;
+  const restoredCount = validatedRows.filter(r => r.action === 'RESTORED_MEMBER').length;
+  const errorCount = validatedRows.filter(r => r.status === 'ERROR' || r.action === 'ERROR').length;
+  const canConfirmImport = (existingCount + newCount + restoredCount) > 0 && !hasCriticalConflict;
 
   const handleDeleteStudent = (student) => {
     // Không thể xóa giảng viên/người tạo lớp khỏi lớp học
@@ -1075,6 +1288,21 @@ export default function StudentsTab({ classId }) {
                     </div>
                   ) : (
                     <>
+                      {/* Rule 6 Critical Conflict Red Alert */}
+                      {hasCriticalConflict && (
+                        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-left flex gap-3 shadow-sm animate-pulse">
+                          <XCircle className="text-red-500 shrink-0 mt-0.5" size={20} />
+                          <div>
+                            <h4 className="text-xs font-bold text-red-950 uppercase tracking-wide">
+                              PHÁT HIỆN XUNG ĐỘT TÀI KHOẢN CHÉO NGHIÊM TRỌNG (RULE 6):
+                            </h4>
+                            <p className="text-xs text-red-900 leading-relaxed mt-1">
+                              Một học sinh trong tệp khớp với **User A** qua Mã Sinh Viên nhưng lại khớp với **User B** qua địa chỉ Email. Theo chính sách an ninh bảo mật hệ thống, **toàn bộ tiến trình nhập danh sách này sẽ bị từ chối** để bảo đảm an toàn dữ liệu. Vui lòng kiểm tra và hiệu chỉnh lại tệp tin trước khi thử lại!
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Summary Statistics Dashboard */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
                         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm text-left">
@@ -1082,8 +1310,8 @@ export default function StudentsTab({ classId }) {
                           <span className="text-2xl font-extrabold text-gray-900 block mt-1">{totalImport}</span>
                         </div>
                         <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4 shadow-sm text-left">
-                          <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider block">Đã có tài khoản (EXISTING)</span>
-                          <span className="text-2xl font-extrabold text-emerald-600 block mt-1">{existingCount}</span>
+                          <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-wider block">Liên kết & Khôi phục</span>
+                          <span className="text-2xl font-extrabold text-emerald-600 block mt-1">{existingCount + restoredCount}</span>
                         </div>
                         <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 shadow-sm text-left">
                           <span className="text-[11px] font-bold text-blue-500 uppercase tracking-wider block">Sẽ tạo mới (NEW)</span>
@@ -1096,7 +1324,7 @@ export default function StudentsTab({ classId }) {
                       </div>
 
                       {/* Info Alert Box */}
-                      {errorCount > 0 && (
+                      {errorCount > 0 && !hasCriticalConflict && (
                         <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl text-left flex gap-2.5 items-start">
                           <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
                           <p className="text-xs text-amber-800 leading-relaxed">
@@ -1114,7 +1342,7 @@ export default function StudentsTab({ classId }) {
                               <th className="p-3">Mã Sinh Viên</th>
                               <th className="p-3">Họ và Tên</th>
                               <th className="p-3">Email</th>
-                              <th className="p-3 w-40">Phân Loại Trạng Thái</th>
+                              <th className="p-3 w-40">Phân Loại Trạng Thế</th>
                               <th className="p-3">Chi tiết lỗi / Chú thích</th>
                             </tr>
                           </thead>
@@ -1125,17 +1353,30 @@ export default function StudentsTab({ classId }) {
                               let badgeText = '';
                               let note = '';
 
-                              if (row.status === 'EXISTING') {
-                                rowClass = 'bg-emerald-50/15 hover:bg-emerald-50/30';
-                                badgeClass = 'bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold';
-                                badgeText = 'Đã có tài khoản';
-                                note = 'Khớp tài khoản hệ thống. Sẽ liên kết trực tiếp vào lớp.';
-                              } else if (row.status === 'NEW') {
+                              const action = row.action;
+                              const status = row.status;
+
+                              if (action === 'CREATED_USER_AND_ADDED' || status === 'NEW') {
                                 rowClass = 'bg-blue-50/15 hover:bg-blue-50/30';
-                                badgeClass = 'bg-blue-100 text-blue-800 border border-blue-200 font-bold';
+                                badgeClass = 'bg-blue-100 text-blue-850 border border-blue-200 font-bold';
                                 badgeText = 'Tạo tài khoản mới';
-                                note = '🔑 Ghost Account. Mật khẩu mặc định: MSV + tên (viết liền không dấu). Ép đổi mật khẩu lần đầu.';
-                              } else if (row.status === 'ERROR') {
+                                note = `🔑 Ghost Account. Mật khẩu mặc định: ${row.defaultPasswordRule || 'MSSV+tên viết liền'}. Bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên.`;
+                              } else if (action === 'LINKED_EXISTING_USER_AND_ADDED' || status === 'EXISTING') {
+                                rowClass = 'bg-emerald-50/15 hover:bg-emerald-50/30';
+                                badgeClass = 'bg-emerald-100 text-emerald-850 border border-emerald-200 font-bold';
+                                badgeText = 'Liên kết tài khoản';
+                                note = 'Khớp tài khoản hệ thống. Sẽ tự động liên kết trực tiếp vào lớp học.';
+                              } else if (action === 'RESTORED_MEMBER') {
+                                rowClass = 'bg-teal-50/15 hover:bg-teal-50/30';
+                                badgeClass = 'bg-teal-100 text-teal-850 border border-teal-200 font-bold';
+                                badgeText = 'Khôi phục thành viên';
+                                note = 'Sinh viên từng bị xóa/từ chối khỏi lớp, nay được khôi phục về Approved.';
+                              } else if (action === 'SKIPPED_EXISTING_MEMBER') {
+                                rowClass = 'bg-gray-50 hover:bg-gray-100/80';
+                                badgeClass = 'bg-gray-150 text-gray-700 border border-gray-200 font-semibold';
+                                badgeText = 'Bỏ qua (Đã tham gia)';
+                                note = 'Sinh viên đã là thành viên đang hoạt động, hệ thống tự động bỏ qua.';
+                              } else if (action === 'ERROR' || status === 'ERROR') {
                                 rowClass = 'bg-red-50/20 hover:bg-red-50/40';
                                 badgeClass = 'bg-red-100 text-red-800 border border-red-200 font-bold';
                                 badgeText = 'Lỗi dữ liệu';
@@ -1145,16 +1386,16 @@ export default function StudentsTab({ classId }) {
                               return (
                                 <tr key={index} className={`transition-colors ${rowClass}`}>
                                   <td className="p-3 text-center text-gray-400 font-semibold">{index + 1}</td>
-                                  <td className="p-3 font-mono font-bold text-gray-900">{row.studentCode || <span className="text-red-500 italic font-bold">Rỗng</span>}</td>
-                                  <td className="p-3 font-semibold text-gray-800">{row.name || <span className="text-gray-400 italic">Chưa cập nhật</span>}</td>
+                                  <td className="p-3 font-mono font-bold text-gray-900">{row.studentCode || <span className="text-red-550 italic font-bold">Rỗng</span>}</td>
+                                  <td className="p-3 font-semibold text-gray-800">{row.fullName || row.name || <span className="text-gray-400 italic">Chưa cập nhật</span>}</td>
                                   <td className="p-3 text-gray-600 font-medium">{row.email || <span className="text-gray-400 italic">Chưa cập nhật</span>}</td>
                                   <td className="p-3">
                                     <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold inline-block tracking-wide ${badgeClass}`}>
                                       {badgeText}
                                     </span>
                                   </td>
-                                  <td className={`p-3 text-[11px] font-medium ${row.status === 'ERROR' ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
-                                    {row.status === 'ERROR' ? (
+                                  <td className={`p-3 text-[11px] font-medium ${badgeText === 'Lỗi dữ liệu' ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
+                                    {badgeText === 'Lỗi dữ liệu' ? (
                                       <span className="flex items-center gap-1">
                                         <AlertCircle size={12} className="shrink-0 animate-pulse text-red-500" />
                                         {note}
@@ -1175,7 +1416,11 @@ export default function StudentsTab({ classId }) {
                           <div>
                             <h4 className="text-xs font-bold text-red-950 uppercase tracking-wide">Không thể thực thi Import:</h4>
                             <p className="text-xs text-red-900 leading-relaxed mt-1">
-                              File của bạn không chứa bất kỳ dòng dữ liệu hợp lệ nào (Hợp lệ: 0). Vui lòng sửa lại các dòng lỗi (màu đỏ) hoặc chọn file khác!
+                              {hasCriticalConflict ? (
+                                "Tệp tin chứa xung đột tài khoản chéo nghiêm trọng. Bạn bắt buộc phải sửa đổi tệp tin để đảm bảo an ninh thông tin."
+                              ) : (
+                                "File của bạn không chứa bất kỳ dòng dữ liệu hợp lệ nào có thể nhập vào lớp. Vui lòng kiểm tra lại cấu trúc dữ liệu!"
+                              )}
                             </p>
                           </div>
                         </div>
@@ -1187,15 +1432,46 @@ export default function StudentsTab({ classId }) {
 
               {/* STEP 3: SUCCESS & REPORT PANEL */}
               {importStep === 3 && (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="flex flex-col items-center justify-center py-6 text-center animate-fade-in">
                   <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center mb-4 shadow-md shadow-emerald-50/50 animate-bounce">
                     <CheckCircle2 size={36} />
                   </div>
                   
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Nhập danh sách sinh viên thành công!</h3>
                   <p className="text-sm text-gray-600 max-w-md mb-6 leading-relaxed">
-                    Hệ thống đã thực hiện lưu trữ hoàn tất! Đã cập nhật sĩ số lớp học tăng thêm <strong className="text-emerald-600 font-extrabold">{existingCount + newCount} sinh viên</strong>.
+                    Hệ thống đã thực thi lưu trữ hoàn tất! Đã cập nhật sĩ số lớp học tăng thêm <strong className="text-emerald-600 font-extrabold">{existingCount + newCount + restoredCount} sinh viên</strong>.
                   </p>
+
+                  {/* Detailed statistics breakdown */}
+                  <div className="w-full max-w-lg bg-white rounded-2xl p-5 border border-gray-200 shadow-sm mb-6 text-left">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Kết quả thống kê thực thi chi tiết:</h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <span className="text-gray-400 block font-bold">Tổng số dòng xử lý</span>
+                        <span className="text-lg font-extrabold text-gray-900 block mt-0.5">
+                          {importSummary?.totalRows ?? totalImport}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-blue-50/40 rounded-xl border border-blue-100/50">
+                        <span className="text-blue-500 block font-bold">Tài khoản tạo mới</span>
+                        <span className="text-lg font-extrabold text-blue-600 block mt-0.5">
+                          {importSummary?.createdUsers ?? newCount}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100/50">
+                        <span className="text-emerald-500 block font-bold">Tài khoản liên kết</span>
+                        <span className="text-lg font-extrabold text-emerald-600 block mt-0.5">
+                          {importSummary?.linkedExistingUsers ?? existingCount}
+                        </span>
+                      </div>
+                      <div className="p-3 bg-teal-50/40 rounded-xl border border-teal-100/50">
+                        <span className="text-teal-500 block font-bold">Khôi phục quyền</span>
+                        <span className="text-lg font-extrabold text-teal-600 block mt-0.5">
+                          {importSummary?.restoredMembers ?? restoredCount}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="w-full max-w-lg bg-gray-50 rounded-2xl p-5 border border-gray-200 text-left space-y-4 shadow-inner">
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Thông tin bảo mật quan trọng (Default Password Strategy):</h4>
@@ -1205,9 +1481,9 @@ export default function StudentsTab({ classId }) {
                       <div>
                         <h5 className="text-xs font-bold text-gray-800">Cơ chế thiết lập mật khẩu mặc định (Ghost Accounts):</h5>
                         <p className="text-xs text-gray-500 leading-relaxed mt-1">
-                          Các tài khoản tạo mới được gán mật khẩu tự động theo công thức: <strong className="text-blue-600 font-extrabold">Mã Sinh Viên + Họ Tên</strong> viết liền không dấu.
+                          Các tài khoản tạo mới được gán mật khẩu tự động theo công thức: <strong className="text-blue-600 font-extrabold">Mã Sinh Viên + Họ Tên</strong> viết liền không dấu, chữ thường.
                           <br />
-                          <span className="text-[11px] text-gray-400 italic">Ví dụ: MSV 'N22DCCN160' + Tên 'Phạm Văn Phú' ➡️ Mật khẩu mặc định: 'N22DCCN160phamvanphu'.</span>
+                          <span className="text-[11px] text-gray-400 italic">Ví dụ: MSV 'N22DCCN160' + Tên 'Phạm Văn Phú' ➡️ Mật khẩu mặc định: 'n22dccn160phamvanphu'.</span>
                         </p>
                       </div>
                     </div>
@@ -1217,7 +1493,7 @@ export default function StudentsTab({ classId }) {
                       <div>
                         <h5 className="text-xs font-bold text-gray-800">Ép buộc thay đổi mật khẩu lần đăng nhập đầu tiên:</h5>
                         <p className="text-xs text-gray-500 leading-relaxed mt-1">
-                          Cờ bắt buộc đổi mật khẩu <strong className="font-mono text-amber-600 font-bold">isFirstLogin = true</strong> đã được bật. Sinh viên bắt buộc phải đổi mật khẩu ngay trong lần đầu tiên đăng nhập trước khi được quyền truy cập vào dashboard chính.
+                          Cờ bắt buộc đổi mật khẩu <strong className="font-mono text-amber-600 font-bold">requirePasswordChange = true</strong> đã được bật. Sinh viên bắt buộc phải đổi mật khẩu ngay trong lần đầu tiên đăng nhập trước khi được quyền truy cập vào các chức năng của cổng thông tin.
                         </p>
                       </div>
                     </div>
@@ -1258,7 +1534,7 @@ export default function StudentsTab({ classId }) {
                         <Loader2 className="animate-spin" size={16} /> Đang lưu thật...
                       </>
                     ) : (
-                      <>Nhập danh sách ({existingCount + newCount} SV)</>
+                      <>Nhập danh sách ({existingCount + newCount + restoredCount} SV)</>
                     )}
                   </button>
                 </>
