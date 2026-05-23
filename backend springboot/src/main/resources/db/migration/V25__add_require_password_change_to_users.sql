@@ -3,4 +3,3 @@ ALTER TABLE users
     ADD CONSTRAINT chk_users_require_password_change CHECK (require_password_change IN (0, 1));
 
 
-âsdasdas
