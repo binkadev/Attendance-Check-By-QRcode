@@ -39,6 +39,71 @@ const formatDate = (dateString) => {
   return { label: `${dayName}, ${formattedDate}`, isToday: false };
 };
 
+// Helper: Tìm buổi học tiếp theo từ cấu hình lịch giảng (fallback khi chưa có sessions nào được tạo)
+const getNextSessionFromSchedule = (weeklySchedules, startDateStr, roomStr) => {
+  if (!weeklySchedules || !startDateStr) return null;
+  
+  let schedules = weeklySchedules;
+  if (typeof schedules === 'string') {
+    try {
+      schedules = JSON.parse(schedules);
+    } catch (e) {
+      schedules = [];
+    }
+  }
+  
+  if (!Array.isArray(schedules) || schedules.length === 0) return null;
+  
+  const now = new Date();
+  const start = new Date(startDateStr);
+  const searchStart = start > now ? start : now;
+  
+  const daysMap = {
+    'SUNDAY': 0, 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3,
+    'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6
+  };
+  
+  let nextSession = null;
+  let minDiff = Infinity;
+  
+  // Quét tìm trong 14 ngày tới để tìm buổi học sớm nhất
+  for (let i = 0; i < 14; i++) {
+    const candidateDate = new Date(searchStart.getTime() + i * 24 * 60 * 60 * 1000);
+    const dayOfWeekStr = Object.keys(daysMap).find(
+      key => daysMap[key] === candidateDate.getDay()
+    );
+    
+    const matchingSchedules = schedules.filter(s => s.dayOfWeek === dayOfWeekStr);
+    
+    for (const sched of matchingSchedules) {
+      if (!sched.startTime || !sched.endTime) continue;
+      const [sh, sm] = sched.startTime.split(':').map(Number);
+      const [eh, em] = sched.endTime.split(':').map(Number);
+      
+      const sessionStart = new Date(candidateDate.getFullYear(), candidateDate.getMonth(), candidateDate.getDate(), sh, sm);
+      const sessionEnd = new Date(candidateDate.getFullYear(), candidateDate.getMonth(), candidateDate.getDate(), eh, em);
+      
+      if (sessionEnd > now) {
+        const diff = sessionStart.getTime() - now.getTime();
+        if (diff < minDiff) {
+          minDiff = diff;
+          nextSession = {
+            startTime: sessionStart.toISOString(),
+            endTime: sessionEnd.toISOString(),
+            room: sched.room || roomStr
+          };
+        }
+      }
+    }
+    
+    if (nextSession && i === 0) {
+      break;
+    }
+  }
+  
+  return nextSession;
+};
+
 const ClassCard = ({ data, onEdit, onDelete }) => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
@@ -580,6 +645,16 @@ export default function ClassManagementLayout() {
               endTime = upcomingSession.endAt || upcomingSession.checkinCloseAt;
               if (upcomingSession.room) {
                 room = upcomingSession.room;
+              }
+            } else {
+              // Tự động tính toán buổi học tiếp theo dựa trên ngày bắt đầu & lịch học tuần nếu chưa có phiên nào
+              const calculated = getNextSessionFromSchedule(cls.weeklySchedules, cls.startDate, cls.room);
+              if (calculated) {
+                startTime = calculated.startTime;
+                endTime = calculated.endTime;
+                if (calculated.room) {
+                  room = calculated.room;
+                }
               }
             }
 

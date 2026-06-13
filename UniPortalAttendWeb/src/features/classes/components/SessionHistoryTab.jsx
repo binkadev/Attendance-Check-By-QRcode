@@ -177,6 +177,27 @@ export default function SessionHistoryTab({ classId }) {
     return new Date(dateStr).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   };
 
+  const getSessionDateStr = (sess) => {
+    const dateObj = new Date(sess.checkinOpenAt || sess.createdAt);
+    return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+  };
+
+  const sessionsByDate = {};
+  sessions.forEach(sess => {
+    const dateStr = getSessionDateStr(sess);
+    if (!sessionsByDate[dateStr]) {
+      sessionsByDate[dateStr] = [];
+    }
+    sessionsByDate[dateStr].push(sess);
+  });
+
+  const lastSessionIdOfDate = {};
+  Object.keys(sessionsByDate).forEach(dateStr => {
+    const daySessions = sessionsByDate[dateStr];
+    daySessions.sort((a, b) => new Date(a.checkinOpenAt || a.createdAt) - new Date(b.checkinOpenAt || b.createdAt));
+    lastSessionIdOfDate[dateStr] = daySessions[daySessions.length - 1].id;
+  });
+
   const getLatestAttendanceMap = (allEvents) => {
     const map = new Map();
     const sortedEvents = [...allEvents].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
@@ -311,9 +332,18 @@ export default function SessionHistoryTab({ classId }) {
                   const rate = finalTotal > 0 ? Math.round((checkInCount / finalTotal) * 100) : 0;
                   const isOpen = sess.status === 'OPEN' || sess.status === 'ACTIVE';
 
+                  const dateStr = getSessionDateStr(sess);
+                  const isLastOfDate = lastSessionIdOfDate[dateStr] === sess.id;
+                  const hasMultipleSessions = sessionsByDate[dateStr]?.length > 1;
+
                   return (
                     <tr key={sess.id || idx} className="hover:bg-gray-50/50 transition-colors group">
-                      <td className="p-4 pl-6 font-bold text-gray-900">{formatDate(sess.checkinOpenAt)}</td>
+                      <td className="p-4 pl-6 font-bold text-gray-900">
+                        <div className="flex flex-col gap-1">
+                          <span>{formatDate(sess.checkinOpenAt)}</span>
+                          {sess.title && <span className="text-xs font-normal text-gray-400">{sess.title}</span>}
+                        </div>
+                      </td>
                       <td className="p-4 text-gray-500 font-medium">
                         <div className="flex items-center gap-1.5">
                           <Clock size={13} className="text-gray-400" />
@@ -321,15 +351,28 @@ export default function SessionHistoryTab({ classId }) {
                         </div>
                       </td>
                       <td className="p-4">
-                        {isOpen ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-md text-[10px] font-bold border border-red-100">
-                            <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-ping"></span> ĐANG MỞ
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 text-gray-500 rounded-md text-[10px] font-bold border border-gray-200">
-                            ĐÃ ĐÓNG
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isOpen ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-md text-[10px] font-bold border border-red-100">
+                              <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-ping"></span> ĐANG MỞ
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 text-gray-500 rounded-md text-[10px] font-bold border border-gray-200">
+                              ĐÃ ĐÓNG
+                            </span>
+                          )}
+                          {hasMultipleSessions && (
+                            isLastOfDate ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-extrabold border border-emerald-200" title="Kết quả điểm danh chính thức của ngày này sẽ dựa trên phiên này">
+                                Phiên cuối (Chính thức)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-md text-[10px] font-extrabold border border-amber-200" title="Đã có phiên điểm danh mới hơn cho ngày này. Kết quả điểm danh tính theo phiên cuối cùng.">
+                                Phiên phụ (Đã lưu trữ)
+                              </span>
+                            )
+                          )}
+                        </div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-3">

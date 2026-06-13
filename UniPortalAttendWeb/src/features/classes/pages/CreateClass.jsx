@@ -3,7 +3,7 @@ import Sidebar from '../../../components/layout/Sidebar';
 import { 
   ShieldAlert, Bell, UploadCloud, Info, Plus, Trash2, 
   Calendar, Users, UserCheck, Clock, MapPin, BookOpen, AlertCircle, FileText, AlertTriangle,
-  Upload, Sparkles, CheckCircle2, Loader2
+  Upload, Sparkles, CheckCircle2, Loader2, GraduationCap
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -51,6 +51,14 @@ const ACADEMIC_YEARS = [
   { value: '2026-2027', label: '2026-2027' }
 ];
 
+const CREDITS = [
+  { value: '1', label: '1 Tín chỉ' },
+  { value: '2', label: '2 Tín chỉ' },
+  { value: '3', label: '3 Tín chỉ' },
+  { value: '4', label: '4 Tín chỉ' },
+  { value: '5', label: '5 Tín chỉ' }
+];
+
 // Helper kiểm tra trùng khung giờ học (overlapping time intervals)
 const isTimeOverlap = (start1, end1, start2, end2) => {
   const parseTimeToMinutes = (timeStr) => {
@@ -65,12 +73,16 @@ const isTimeOverlap = (start1, end1, start2, end2) => {
   return s1 < e2 && s2 < e1;
 };
 
-// Cấu hình danh sách phòng học cho từng cơ sở để tự động đề xuất
-const CAMPUS_ROOMS = {
-  'Cơ sở 1': ['A1.101', 'A1.102', 'A1.201', 'A1.202', 'B2.101', 'B2.102', 'B2.201', 'B2.202'],
-  'Cơ sở 2': ['C3.101', 'C3.102', 'C3.201', 'C3.202', 'D4.101', 'D4.102', 'D4.201', 'D4.202'],
-  'Cơ sở 3': ['E5.101', 'E5.102', 'E5.201', 'E5.202', 'F6.101', 'F6.102', 'F6.201', 'F6.202'],
-  'default': ['A1.101', 'A1.102', 'B2.101', 'B2.102', 'C3.101', 'C3.102', 'D4.101', 'D4.102']
+
+
+const formatTimeForDisplay = (timeStr) => {
+  if (!timeStr) return '';
+  const [hourStr, minuteStr] = timeStr.split(':');
+  const hourVal = parseInt(hourStr);
+  const ampm = hourVal >= 12 ? 'PM' : 'AM';
+  const displayHour = hourVal % 12 === 0 ? 12 : hourVal % 12;
+  const formattedHour = displayHour.toString().padStart(2, '0');
+  return `${formattedHour}:${minuteStr} ${ampm}`;
 };
 
 // --- BỘ CHỌN THỜI GIAN CUSTOM CAO CẤP DẠNG ĐỒNG HỒ ---
@@ -123,12 +135,12 @@ const CustomTimePicker = ({ value, onChange }) => {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full pl-9 pr-7 py-2.5 border-2 border-gray-200 rounded-xl text-sm bg-white outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 font-semibold text-gray-700 cursor-pointer flex items-center justify-between transition-all"
+        className="w-full pl-9 pr-7 py-2.5 border border-gray-250 rounded-xl text-sm bg-white outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 font-semibold text-gray-700 cursor-pointer flex items-center justify-between transition-all"
       >
         <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-red-600">
           <Clock size={16} />
         </span>
-        <span>{value}</span>
+        <span>{formatTimeForDisplay(value)}</span>
         <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
         </svg>
@@ -196,10 +208,13 @@ const CustomTimePicker = ({ value, onChange }) => {
 
 export default function CreateClass() {
   const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [startDateError, setStartDateError] = useState('');
   const [absencesError, setAbsencesError] = useState('');
   const [hasDraft, setHasDraft] = useState(false);
+  const [scheduleTab, setScheduleTab] = useState('config'); // 'config' | 'free-slots'
+  const [livePersonalConflict, setLivePersonalConflict] = useState(null);
 
   // --- STATES & HANDLERS CHO IMPORT SINH VIÊN ---
   const [importStep, setImportStep] = useState(1);
@@ -394,11 +409,12 @@ export default function CreateClass() {
     classCode: '',
     joinCode: '',
     description: '',
-    semester: 'HK1',
-    academicYear: '2025-2026',
+    semester: 'HK2',
+    academicYear: '2024-2025',
     campus: 'Cơ sở 1',
     room: '',
     startDate: '',
+    credits: '3',
     approvalMode: 'AUTO',
     allowAutoJoinOnCheckin: true,
     totalSessions: 15,
@@ -473,37 +489,63 @@ export default function CreateClass() {
     fetchExistingClasses();
   }, []);
 
-  // Kiểm tra trùng phòng học của giảng viên (Bắt buộc trùng cả Phòng học VÀ Lịch/Giờ học mới tính)
-  const checkRoomConflict = (campusName, roomName, newSchedules) => {
-    if (!campusName || !roomName || !newSchedules || newSchedules.length === 0) {
-      return null;
+  // Real-time dynamic conflict checker for personal schedules
+  useEffect(() => {
+    if (formData.weeklySchedules && formData.weeklySchedules.length > 0) {
+      const personalConflict = checkPersonalScheduleConflict(formData.weeklySchedules);
+      if (personalConflict) {
+        setLivePersonalConflict(personalConflict);
+      } else {
+        setLivePersonalConflict(null);
+      }
+    } else {
+      setLivePersonalConflict(null);
+    }
+  }, [formData.weeklySchedules, existingClasses]);
+
+  // Đề xuất khung giờ rảnh trong ngày bị trùng lịch
+  const getAvailablePersonalTimeSlots = (dayOfWeek) => {
+    const STANDARD_TIME_SLOTS = [
+      { start: '07:00', end: '09:30', label: 'Ca 1 (07:00 - 09:30)' },
+      { start: '09:30', end: '12:00', label: 'Ca 2 (09:30 - 12:00)' },
+      { start: '13:00', end: '15:30', label: 'Ca 3 (13:00 - 15:30)' },
+      { start: '15:30', end: '18:00', label: 'Ca 4 (15:30 - 18:00)' },
+      { start: '18:00', end: '20:30', label: 'Ca tối (18:00 - 20:30)' }
+    ];
+
+    const busySchedules = [];
+    for (const group of existingClasses) {
+      if (!group.weeklySchedules) continue;
+      for (const s of group.weeklySchedules) {
+        if (s.dayOfWeek === dayOfWeek) {
+          busySchedules.push(s);
+        }
+      }
     }
 
-    const cleanCampus = campusName.trim().toLowerCase();
-    const cleanRoom = roomName.trim().toLowerCase();
+    return STANDARD_TIME_SLOTS.filter(slot => {
+      // Slot trống nếu KHÔNG trùng với bất kỳ lịch bận nào
+      return !busySchedules.some(busy => isTimeOverlap(slot.start, slot.end, busy.startTime, busy.endTime));
+    });
+  };
+
+  // Kiểm tra trùng lịch dạy cá nhân
+  const checkPersonalScheduleConflict = (newSchedules) => {
+    if (!newSchedules || newSchedules.length === 0) return null;
 
     for (const group of existingClasses) {
       if (!group.weeklySchedules) continue;
 
-      const groupCampus = (group.campus || '').trim().toLowerCase();
-      const groupRoom = (group.room || '').trim().toLowerCase();
-
-      // Chỉ xét nếu trùng Cơ sở VÀ Phòng học
-      if (groupCampus === cleanCampus && groupRoom === cleanRoom) {
-        // Kiểm tra trùng lịch học tuần (trùng ngày học + chồng lấn thời gian)
-        for (const newSched of newSchedules) {
-          for (const extSched of group.weeklySchedules) {
-            if (newSched.dayOfWeek === extSched.dayOfWeek) {
-              if (isTimeOverlap(newSched.startTime, newSched.endTime, extSched.startTime, extSched.endTime)) {
-                return {
-                  class: {
-                    ...group,
-                    isOwnClass: true
-                  },
-                  isOwnClass: true,
-                  conflictSchedule: `${DAYS_OF_WEEK.find(d => d.value === newSched.dayOfWeek)?.vi || newSched.dayOfWeek} ${newSched.startTime}-${newSched.endTime}`
-                };
-              }
+      for (const newSched of newSchedules) {
+        for (const extSched of group.weeklySchedules) {
+          if (newSched.dayOfWeek === extSched.dayOfWeek) {
+            if (isTimeOverlap(newSched.startTime, newSched.endTime, extSched.startTime, extSched.endTime)) {
+              return {
+                class: group,
+                conflictSchedule: `${DAYS_OF_WEEK.find(d => d.value === newSched.dayOfWeek)?.vi || newSched.dayOfWeek} ${newSched.startTime}-${newSched.endTime}`,
+                dayOfWeek: newSched.dayOfWeek,
+                newSchedule: newSched
+              };
             }
           }
         }
@@ -512,33 +554,6 @@ export default function CreateClass() {
     return null;
   };
 
-  // Tìm danh sách phòng học thay thế còn trống
-  const getAlternativeRooms = (campusName, newSchedules) => {
-    if (!campusName || !newSchedules || newSchedules.length === 0) return [];
-    
-    const cleanCampus = campusName.trim();
-    const roomsList = CAMPUS_ROOMS[cleanCampus] || CAMPUS_ROOMS['default'];
-
-    return roomsList.filter(roomCandidate => {
-      // Kiểm tra xem ứng viên phòng học này có bị trùng với bất cứ lớp học nào không
-      const hasConflict = existingClasses.some(group => {
-        const groupCampus = (group.campus || '').trim().toLowerCase();
-        const groupRoom = (group.room || '').trim().toLowerCase();
-
-        if (groupCampus === cleanCampus.toLowerCase() && groupRoom === roomCandidate.toLowerCase() && group.weeklySchedules) {
-          return newSchedules.some(newSched =>
-            group.weeklySchedules.some(extSched =>
-              newSched.dayOfWeek === extSched.dayOfWeek &&
-              isTimeOverlap(newSched.startTime, newSched.endTime, extSched.startTime, extSched.endTime)
-            )
-          );
-        }
-        return false;
-      });
-
-      return !hasConflict;
-    });
-  };
 
   // Lấy phạm vi ngày của học kỳ theo năm học
   const getSemesterDateRange = (semester, academicYear) => {
@@ -1013,8 +1028,57 @@ export default function CreateClass() {
     }
   };
 
+
+  const handleNextStep = () => {
+    if (currentStep === 1) {
+      if (!formData.name || !formData.courseCode || !formData.classCode) {
+        toast.error("Vui lòng nhập đầy đủ Tên môn học, Mã môn học và Mã nhóm lớp!");
+        return;
+      }
+    } else if (currentStep === 2) {
+      if (!formData.startDate) {
+        toast.error("Vui lòng chọn ngày bắt đầu!");
+        return;
+      }
+      if (startDateError) {
+        toast.error("Vui lòng kiểm tra lại ngày bắt đầu!");
+        return;
+      }
+      if (!formData.weeklySchedules || formData.weeklySchedules.length === 0) {
+        toast.error("Vui lòng thêm ít nhất một lịch giảng dạy!");
+        return;
+      }
+      if (absencesError) {
+        toast.error("Vui lòng kiểm tra lại số buổi vắng cho phép!");
+        return;
+      }
+      // Kiểm tra trùng lịch dạy cá nhân trước
+      const personalConflict = checkPersonalScheduleConflict(formData.weeklySchedules);
+      if (personalConflict) {
+        const availableSlots = getAvailablePersonalTimeSlots(personalConflict.dayOfWeek);
+        setConflictModal({
+          isOpen: true,
+          type: 'PERSONAL_CONFLICT',
+          title: 'Trùng Lịch Dạy Của Bạn!',
+          message: `Bạn đã có lịch dạy lớp "${personalConflict.class.name}" (${personalConflict.class.code}) vào khung giờ này. Vui lòng chọn khung giờ khác!`,
+          conflictingClass: personalConflict.class,
+          conflictingSchedule: personalConflict.conflictSchedule,
+          suggestedSlots: availableSlots,
+          dayOfWeek: personalConflict.dayOfWeek
+        });
+        toast.error('Trùng lịch dạy cá nhân!');
+        return;
+      }
+    }
+    setCurrentStep(prev => Math.min(prev + 1, 4));
+  };
+
+  const handlePrevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
+
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     
     // Validate cơ bản
     if (!formData.name || !formData.courseCode) {
@@ -1056,23 +1120,7 @@ export default function CreateClass() {
       return;
     }
 
-    // Kiểm tra trùng phòng học lớp do chính mình quản lý trước khi submit (Bắt buộc trùng cả Phòng học VÀ Lịch/Giờ học)
-    const roomConflict = checkRoomConflict(formData.campus, formData.room, formData.weeklySchedules);
-    if (roomConflict) {
-      const suggestions = getAlternativeRooms(formData.campus, formData.weeklySchedules);
-      setConflictModal({
-        isOpen: true,
-        type: 'ROOM_CONFLICT',
-        title: 'Trùng Phòng Lớp Của Bạn!',
-        message: `Phòng học ${formData.room} và khung giờ này đã được sử dụng bởi lớp "${roomConflict.class.name}" (${roomConflict.class.code}) do chính bạn tạo và quản lý!`,
-        conflictingClass: roomConflict.class,
-        conflictingRoom: formData.room,
-        conflictingSchedule: roomConflict.conflictSchedule,
-        suggestedRooms: suggestions
-      });
-      toast.error('Trùng lịch & phòng học lớp của bạn!');
-      return;
-    }
+
 
     setIsSubmitting(true);
     const loadingToastId = toast.loading('Đang khởi tạo lớp học...');
@@ -1093,6 +1141,7 @@ export default function CreateClass() {
         campus: formData.campus,
         room: formData.room,
         startDate: formData.startDate,
+        credits: parseInt(formData.credits) || 3,
         totalSessions: parseInt(formData.totalSessions),
         maxAllowedAbsences: parseInt(formData.maxAllowedAbsences),
         weeklySchedules: formData.weeklySchedules.map(schedule => ({
@@ -1154,35 +1203,14 @@ export default function CreateClass() {
         toast.error("Dữ liệu gửi lên không hợp lệ!", { id: loadingToastId });
       } else if (error.response?.status === 409 || error.status === 409 || error.code === 'SCHEDULE_CONFLICT' || error.message?.toLowerCase().includes("conflict")) {
         const errorData = error.response?.data;
-        const suggestions = getAlternativeRooms(formData.campus, formData.weeklySchedules);
-        
-        let serverClassName = 'Lớp học của giảng viên khác';
-        let serverClassCode = 'TRÙNG PHÒNG';
-        
-        const errMsg = errorData?.message || '';
-        if (errMsg) {
-          // Regular expression to parse group/class details like: Room occupies by 'Java Programming' (JAVA101)
-          const nameMatch = errMsg.match(/['"“](.+?)['"”]/);
-          const codeMatch = errMsg.match(/\((.+?)\)/);
-          if (nameMatch && nameMatch[1]) serverClassName = nameMatch[1];
-          if (codeMatch && codeMatch[1]) serverClassCode = codeMatch[1];
-        }
-
+        const errMsg = errorData?.message || "Dữ liệu bị trùng lặp trên hệ thống!";
         setConflictModal({
           isOpen: true,
-          type: 'ROOM_CONFLICT',
-          title: 'Trùng Phòng Giảng Viên Khác!',
-          message: errMsg || `Phòng học ${formData.room} tại ${formData.campus} đã được một giảng viên khác đăng ký sử dụng trong cùng khung giờ!`,
-          conflictingClass: { 
-            name: serverClassName, 
-            code: serverClassCode,
-            isOwnClass: false 
-          },
-          conflictingRoom: formData.room,
-          conflictingSchedule: formData.weeklySchedules.map(s => `${DAYS_OF_WEEK.find(d => d.value === s.dayOfWeek)?.vi || s.dayOfWeek} ${s.startTime}-${s.endTime}`).join(', '),
-          suggestedRooms: suggestions
+          type: 'SERVER_CONFLICT',
+          title: 'Không Thể Tạo Lớp Học!',
+          message: errMsg
         });
-        toast.error(errMsg || "Trùng phòng học với lớp của giảng viên khác!", { id: loadingToastId, duration: 6000 });
+        toast.error("Vui lòng kiểm tra chi tiết lỗi!", { id: loadingToastId });
       } else {
         const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra khi giao tiếp với máy chủ.';
         toast.error(`Lỗi tạo lớp: ${errorMsg}`, { id: loadingToastId });
@@ -1226,6 +1254,43 @@ export default function CreateClass() {
           
           {/* CỘT TRÁI - Form chính */}
           <div className="lg:col-span-8 space-y-6">
+            
+            {/* STEPPER */}
+            <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
+              <h2 className="text-3xl font-extrabold text-[#8B1D1D] mb-1.5 tracking-tight">Tạo Lớp Học Mới</h2>
+              <p className="text-sm text-gray-500 mb-10 leading-relaxed">Thiết lập thông tin học thuật để bắt đầu quản lý điểm danh.</p>
+              
+              <div className="flex items-center justify-between relative max-w-2xl mx-auto px-4">
+                <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[3px] bg-gray-200 rounded-full z-0"></div>
+                <div 
+                  className="absolute left-4 top-1/2 -translate-y-1/2 h-[3px] bg-red-65 rounded-full z-0 transition-all duration-500 ease-out"
+                  style={{ width: `calc(${((currentStep - 1) / 3) * 100}% - ${currentStep === 1 ? 0 : 2}rem)` }}
+                ></div>
+                
+                {[
+                  { step: 1, label: 'THÔNG TIN' },
+                  { step: 2, label: 'LỊCH GIẢNG' },
+                  { step: 3, label: 'SINH VIÊN' },
+                  { step: 4, label: 'CÀI ĐẶT' }
+                ].map((s) => (
+                  <div key={s.step} className="relative z-10 flex flex-col items-center gap-2">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-extrabold transition-all duration-300 ${
+                      currentStep === s.step 
+                        ? 'bg-[#8B1D1D] text-white shadow-lg shadow-red-700/30 scale-110' 
+                        : currentStep > s.step 
+                          ? 'bg-[#8B1D1D]/90 text-white' 
+                          : 'bg-gray-100 text-gray-400 border-2 border-white shadow-inner'
+                    }`}>
+                      {currentStep > s.step ? <CheckCircle2 size={20} className="animate-in zoom-in duration-300"/> : s.step}
+                    </div>
+                    <span className={`text-[10px] font-black tracking-widest whitespace-nowrap transition-colors duration-300 ${currentStep >= s.step ? 'text-[#8B1D1D]' : 'text-gray-400'}`}>
+                      {s.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {hasDraft && (
               <div className="bg-gradient-to-r from-red-50 to-red-100/30 border-2 border-red-200/60 p-4 rounded-2xl flex items-center justify-between gap-4 shadow-sm animate-fade-in">
                 <div className="flex items-center gap-3">
@@ -1256,83 +1321,76 @@ export default function CreateClass() {
               </div>
             )}
             
+            {currentStep === 1 && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* 1. Thông tin cơ bản */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-              <div className="p-6 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-white to-red-50/20">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-red-800 text-white flex items-center justify-center text-sm font-bold shadow-md">
+            <div className="bg-white rounded-3xl border border-gray-150 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+              {/* Card Header with circular badge */}
+              <div className="p-6 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-white to-red-50/10">
+                <div className="w-8 h-8 rounded-full bg-[#FCE8E6] text-[#8B1D1D] flex items-center justify-center text-xs font-black border border-[#FAD2CD]">
                   1
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Thông tin cơ bản</h2>
+                <h2 className="text-base font-extrabold text-gray-900">Thông tin cơ bản</h2>
               </div>
-              <div className="p-6 space-y-5">
-                <div className="grid grid-cols-2 gap-5">
+
+              {/* Card Body */}
+              <div className="p-6 space-y-6 text-left">
+                {/* Tên môn học */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Tên môn học <span className="text-red-500">*</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    name="name" 
+                    value={formData.name} 
+                    onChange={handleChange} 
+                    placeholder="VD: Lập trình hướng đối tượng" 
+                    className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-semibold focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 outline-none transition-all bg-white text-gray-800 shadow-sm placeholder:text-gray-400 placeholder:font-normal" 
+                  />
+                </div>
+
+                {/* Mã môn học & Mã nhóm lớp */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Tên lớp <span className="text-red-500">*</span>
-                    </label>
-                    <input 
-                      type="text" 
-                      name="name" 
-                      value={formData.name} 
-                      onChange={handleChange} 
-                      placeholder="VD: Cấu trúc dữ liệu & Giải thuật" 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Mã học phần <span className="text-red-500">*</span>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                      Mã môn học <span className="text-red-500">*</span>
                     </label>
                     <input 
                       type="text" 
                       name="courseCode" 
                       value={formData.courseCode} 
                       onChange={handleChange} 
-                      placeholder="VD: CS204" 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all" 
+                      placeholder="VD: INT12345" 
+                      className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-semibold focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 outline-none transition-all bg-white text-gray-800 shadow-sm placeholder:text-gray-400 placeholder:font-normal" 
                     />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Mã lớp/Groups
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                      Mã nhóm lớp <span className="text-red-500">*</span>
                     </label>
                     <input 
                       type="text" 
                       name="classCode" 
                       value={formData.classCode} 
                       onChange={handleChange} 
-                      placeholder="VD: 01" 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Mã tự động (Code)
-                    </label>
-                    <input 
-                      type="text" 
-                      name="code" 
-                      value={formData.code} 
-                      disabled
-                      placeholder="Tự động tạo từ Mã HP & Lớp" 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm bg-gray-100 text-gray-500 cursor-not-allowed outline-none transition-all" 
+                      placeholder="VD: D22PM3" 
+                      className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-semibold focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 outline-none transition-all bg-white text-gray-800 shadow-sm placeholder:text-gray-400 placeholder:font-normal" 
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                {/* Học kỳ & Năm học */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                       Học kỳ
                     </label>
                     <select 
                       name="semester" 
                       value={formData.semester} 
                       onChange={handleChange} 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm bg-white outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                      className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-bold bg-white text-gray-700 outline-none focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 shadow-sm cursor-pointer"
                     >
                       {SEMESTERS.map(s => (
                         <option key={s.value} value={s.value}>{s.label}</option>
@@ -1340,211 +1398,388 @@ export default function CreateClass() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                       Năm học
                     </label>
                     <select 
                       name="academicYear" 
                       value={formData.academicYear} 
                       onChange={handleChange} 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm bg-white outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                      className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-bold bg-white text-gray-700 outline-none focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 shadow-sm cursor-pointer"
                     >
                       {ACADEMIC_YEARS.map(y => (
                         <option key={y.value} value={y.value}>{y.label}</option>
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Ngày bắt đầu <span className="text-red-500">*</span>
-                    </label>
-                    <input 
-                      type="date" 
-                      name="startDate" 
-                      value={formData.startDate} 
-                      onChange={handleStartDateChange} 
-                      min={minDateStr}
-                      max={maxDateStr}
-                      className={`w-full px-4 py-2.5 border-2 rounded-xl text-sm focus:ring-4 outline-none transition-all ${
-                        startDateError 
-                          ? 'border-red-400 focus:border-red-400 focus:ring-red-50' 
-                          : 'border-gray-200 focus:border-red-400 focus:ring-red-50'
-                      }`}
-                    />
-                    {startDateError && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-red-600">
-                        <AlertCircle size={12} />
-                        <span>{startDateError}</span>
-                      </div>
-                    )}
-                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-5">
+                {/* Số tín chỉ */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      <MapPin size={14} className="inline mr-1" /> Cơ sở
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                      Số tín chỉ
                     </label>
-                    <input 
-                      type="text" 
-                      name="campus" 
-                      value={formData.campus} 
+                    <select 
+                      name="credits" 
+                      value={formData.credits} 
                       onChange={handleChange} 
-                      placeholder="VD: Cơ sở 1, Cơ sở 2" 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all" 
-                    />
+                      className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-bold bg-white text-gray-700 outline-none focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 shadow-sm cursor-pointer"
+                    >
+                      {CREDITS.map(c => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Phòng học
-                    </label>
-                    <input 
-                      type="text" 
-                      name="room" 
-                      value={formData.room} 
-                      onChange={handleChange} 
-                      placeholder="VD: A1.102" 
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all" 
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    Mô tả
-                  </label>
-                  <textarea 
-                    name="description" 
-                    value={formData.description} 
-                    onChange={handleChange} 
-                    rows="3" 
-                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm outline-none resize-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all" 
-                    placeholder="Nhập mô tả chi tiết về môn học..."
-                  />
+                  <div className="hidden md:block"></div>
                 </div>
               </div>
             </div>
-
-            {/* 2. Lịch học */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-              <div className="p-6 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-white to-red-50/20">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600 to-red-800 text-white flex items-center justify-center text-sm font-bold shadow-md">
-                  2
+            </div>
+            )}
+            {currentStep === 2 && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+              {/* Tiêu đề & Subtitle của Thiết lập Lịch Giảng Dạy */}
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 pt-2">
+                <div className="space-y-1.5">
+                  <h2 className="text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight">
+                    Thiết lập Lịch Giảng Dạy
+                  </h2>
+                  <p className="text-sm text-gray-500 max-w-2xl leading-relaxed">
+                    Định cấu hình thời gian và địa điểm cho các buổi học. Sử dụng <span className="font-bold text-gray-800">Trợ lý lịch biểu</span> để tối ưu thời gian.
+                  </p>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Lịch học</h2>
+
+                {/* Sub-tabs toggle */}
+                <div className="flex bg-gray-100 p-1.5 rounded-full border border-gray-200 self-start md:self-center shadow-inner shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleTab('config')}
+                    className={`px-5 py-2.5 text-xs font-bold rounded-full transition-all cursor-pointer active:scale-95 ${
+                      scheduleTab === 'config'
+                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Thiết lập lịch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleTab('free-slots')}
+                    className={`px-5 py-2.5 text-xs font-bold rounded-full transition-all cursor-pointer active:scale-95 ${
+                      scheduleTab === 'free-slots'
+                        ? 'bg-white text-gray-900 shadow-sm border border-gray-100'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Thời gian biểu cá nhân
+                  </button>
+                </div>
               </div>
-              <div className="p-6 space-y-5">
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      <Clock size={14} className="inline mr-1" /> Tổng số buổi
-                    </label>
-                    <input 
-                      type="number" 
-                      name="totalSessions" 
-                      value={formData.totalSessions} 
-                      onChange={handleChange} 
-                      onBlur={handleTotalSessionsBlur}
-                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-4 focus:ring-red-50 outline-none transition-all" 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Số buổi được phép vắng
-                    </label>
-                    <input 
-                      type="number" 
-                      name="maxAllowedAbsences" 
-                      value={formData.maxAllowedAbsences} 
-                      onChange={handleChange} 
-                      onBlur={handleAbsencesBlur}
-                      className={`w-full px-4 py-2.5 border-2 rounded-xl text-sm focus:ring-4 outline-none transition-all ${
-                        absencesError 
-                          ? 'border-red-400 focus:border-red-400 focus:ring-red-50' 
-                          : 'border-gray-200 focus:border-red-400 focus:ring-red-50'
-                      }`}
-                    />
-                    {absencesError && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-red-600">
-                        <AlertCircle size={12} />
-                        <span>{absencesError}</span>
+
+              {/* Hộp thông báo cảnh báo trùng lịch dạy thời gian thực */}
+              {livePersonalConflict && (
+                <div className="bg-[#FFF5F5] border border-red-200 rounded-3xl p-5 text-left relative overflow-hidden animate-in fade-in slide-in-from-top-3 duration-300 shadow-sm">
+                  <div className="absolute -top-6 -right-6 w-20 h-20 bg-red-100/50 rounded-full blur-xl"></div>
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-2xl bg-red-100 text-[#8B1D1D] flex items-center justify-center shrink-0">
+                      <ShieldAlert size={20} className="stroke-[2.5]" />
+                    </div>
+                    <div className="space-y-2 flex-1">
+                      <h4 className="text-sm font-extrabold text-red-900 uppercase tracking-wider flex items-center gap-1.5">
+                        Trùng Lịch Dạy Của Chính Bạn!
+                      </h4>
+                      <p className="text-xs text-red-750 leading-relaxed font-semibold">
+                        Bạn đang có lịch giảng dạy trùng với lớp học của chính bạn: <span className="font-extrabold text-red-950 underline">{livePersonalConflict.class.name}</span> (Mã: {livePersonalConflict.class.courseCode}, Nhóm {livePersonalConflict.class.classCode || '01'}).
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1 text-[11px] font-bold">
+                        <span className="bg-red-200/50 text-[#8B1D1D] px-2.5 py-1 rounded-lg border border-red-200/80">
+                          Khung giờ trùng: {livePersonalConflict.conflictSchedule.startTime} - {livePersonalConflict.conflictSchedule.endTime}
+                        </span>
+                        <span className="bg-red-200/50 text-[#8B1D1D] px-2.5 py-1 rounded-lg border border-red-200/80">
+                          Thứ trong tuần: {DAYS_OF_WEEK.find(d => d.value === livePersonalConflict.dayOfWeek)?.label}
+                        </span>
                       </div>
-                    )}
+                      <div className="text-xs text-red-800 font-bold bg-white/70 border border-red-100 p-3 rounded-2xl mt-2 leading-relaxed">
+                        <p className="mb-1 text-gray-500 font-bold text-[10px] uppercase tracking-wider">💡 ĐỀ XUẤT GIỜ TRỐNG CHO KHUNG GIỜ KHÁC:</p>
+                        <span>{getAvailablePersonalTimeSlots(livePersonalConflict.dayOfWeek).map(s => s.label).join(', ')}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Lịch học trong tuần
-                  </label>
-                  <div className="space-y-3">
+              {/* VIEW 1: THIẾT LẬP LỊCH (MANUAL CONFIG) */}
+              {scheduleTab === 'config' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* Thông tin chung: Ngày bắt đầu, Tổng số buổi, Số buổi vắng */}
+                  <div className="bg-white rounded-3xl p-6 border border-gray-150 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-5 text-left">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                        Ngày bắt đầu <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+                          <Calendar size={16} />
+                        </span>
+                        <input 
+                          type="date" 
+                          name="startDate" 
+                          value={formData.startDate} 
+                          onChange={handleStartDateChange} 
+                          min={minDateStr}
+                          max={maxDateStr}
+                          className={`w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm font-semibold outline-none focus:border-red-400 focus:ring-4 focus:ring-red-50 transition-all shadow-sm ${
+                            startDateError 
+                              ? 'border-red-400 focus:border-red-400 focus:ring-red-50' 
+                              : 'border-gray-200 focus:border-[#8B1D1D] focus:ring-red-50'
+                          }`}
+                        />
+                      </div>
+                      {startDateError && (
+                        <div className="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                          <AlertCircle size={12} />
+                          <span>{startDateError}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                        Tổng số buổi <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+                          <FileText size={16} />
+                        </span>
+                        <input 
+                          type="number" 
+                          name="totalSessions" 
+                          value={formData.totalSessions} 
+                          onChange={handleChange} 
+                          onBlur={handleTotalSessionsBlur}
+                          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 outline-none transition-all shadow-sm bg-white" 
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                        Số buổi vắng tối đa <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+                          <AlertCircle size={16} />
+                        </span>
+                        <input 
+                          type="number" 
+                          name="maxAllowedAbsences" 
+                          value={formData.maxAllowedAbsences} 
+                          onChange={handleChange} 
+                          onBlur={handleAbsencesBlur}
+                          className={`w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm font-semibold focus:ring-4 outline-none transition-all shadow-sm bg-white ${
+                            absencesError 
+                              ? 'border-red-400 focus:border-red-400 focus:ring-red-50' 
+                              : 'border-gray-200 focus:border-[#8B1D1D] focus:ring-red-50'
+                          }`}
+                        />
+                      </div>
+                      {absencesError && (
+                        <div className="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                          <AlertCircle size={12} />
+                          <span>{absencesError}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Danh sách các buổi học (Session Cards) */}
+                  <div className="space-y-4">
                     {formData.weeklySchedules.map((schedule, idx) => (
-                      <div key={idx} className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-red-200 transition-all flex-wrap sm:flex-nowrap">
-                        {/* Thứ trong tuần */}
-                        <div className="relative flex-1 min-w-[120px]">
-                          <select 
-                            value={schedule.dayOfWeek} 
-                            onChange={(e) => handleScheduleChange(idx, 'dayOfWeek', e.target.value)} 
-                            className="w-full pl-3 pr-8 py-2.5 border-2 border-gray-200 rounded-xl text-sm bg-white outline-none focus:border-red-400 focus:ring-2 focus:ring-red-50 appearance-none font-semibold text-gray-700 cursor-pointer"
-                          >
-                            {DAYS_OF_WEEK.map(day => (
-                              <option key={day.value} value={day.value}>{day.vi}</option>
-                            ))}
-                          </select>
-                          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                      <div 
+                        key={idx} 
+                        className="bg-white rounded-3xl p-6 border border-gray-150 shadow-sm hover:shadow-md transition-shadow relative space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 text-left"
+                      >
+                        {/* Header của Buổi học */}
+                        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-red-55 text-[#8B1D1D] flex items-center justify-center border border-red-100 shadow-sm">
+                              <Calendar size={18} className="stroke-[2.5]" />
+                            </div>
+                            <div>
+                              <span className="text-base font-extrabold text-gray-900 block">Buổi học {idx + 1}</span>
+                              <span className="text-[9px] text-gray-400 font-extrabold tracking-widest block uppercase mt-0.5">
+                                {idx === 0 ? 'CƠ BẢN' : 'BỔ SUNG'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {formData.weeklySchedules.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeSchedule(idx)}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer active:scale-95"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Custom Weekday Selector (Monday to Saturday as shown in the design) */}
+                        <div>
+                          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ngày học trong tuần</label>
+                          <div className="flex flex-wrap gap-2.5">
+                            {DAYS_OF_WEEK.slice(0, 6).map((day) => {
+                              const isActive = schedule.dayOfWeek === day.value;
+                              return (
+                                <button
+                                  key={day.value}
+                                  type="button"
+                                  onClick={() => handleScheduleChange(idx, 'dayOfWeek', day.value)}
+                                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 border ${
+                                    isActive
+                                      ? 'bg-[#8B1D1D] text-white border-[#8B1D1D] shadow-sm'
+                                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {day.label}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                        
-                        {/* Giờ bắt đầu */}
-                        <div className="w-[130px]">
-                          <CustomTimePicker 
-                            value={schedule.startTime} 
-                            onChange={(val) => handleScheduleChange(idx, 'startTime', val)} 
-                          />
+
+                        {/* Thời gian & Địa điểm (Time Pickers & Room Input) */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Giờ bắt đầu</label>
+                            <CustomTimePicker
+                              value={schedule.startTime}
+                              onChange={(val) => handleScheduleChange(idx, 'startTime', val)}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Giờ kết thúc</label>
+                            <CustomTimePicker
+                              value={schedule.endTime}
+                              onChange={(val) => handleScheduleChange(idx, 'endTime', val)}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Phòng học</label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+                                <MapPin size={16} />
+                              </span>
+                              <input
+                                type="text"
+                                value={schedule.room || ''}
+                                onChange={(e) => handleScheduleChange(idx, 'room', e.target.value)}
+                                placeholder="VD: P.302-A2"
+                                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold outline-none focus:border-[#8B1D1D] focus:ring-4 focus:ring-red-50 text-gray-700 shadow-sm hover:border-gray-300 transition-all bg-white"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        
-                        <span className="text-gray-400 font-bold">→</span>
-                        
-                        {/* Giờ kết thúc */}
-                        <div className="w-[130px]">
-                          <CustomTimePicker 
-                            value={schedule.endTime} 
-                            onChange={(val) => handleScheduleChange(idx, 'endTime', val)} 
-                          />
-                        </div>
-                        
-                        {formData.weeklySchedules.length > 1 && (
-                          <button 
-                            onClick={() => removeSchedule(idx)} 
-                            className="ml-auto p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all shadow-sm border border-transparent hover:border-red-100"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
                       </div>
                     ))}
-                    
-                    <button 
-                      onClick={handleAddFirstSchedule} 
-                      className="text-sm font-semibold text-red-600 flex items-center gap-2 hover:gap-3 transition-all"
+
+                    {/* Dotted Schedule Adder */}
+                    <button
+                      type="button"
+                      onClick={handleAddFirstSchedule}
+                      className="w-full py-7 border-2 border-dashed border-red-200/60 hover:border-[#8B1D1D] rounded-3xl text-gray-500 hover:text-[#8B1D1D] bg-white flex flex-col items-center justify-center gap-3 cursor-pointer transition-all hover:bg-red-50/10 active:scale-98 group shadow-sm"
                     >
-                      <Plus size={16} /> Thêm buổi học trong tuần
-                    </button>
-                    
-                    {formData.weeklySchedules.length > 0 && formData.startDate && (
-                      <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                        <p className="text-xs text-blue-700">
-                          <Calendar size={12} className="inline mr-1" />
-                          Gợi ý: Ngày bắt đầu nên là {formData.weeklySchedules.map(s => getVietnameseDayName(s.dayOfWeek)).join(' hoặc ')}
-                        </p>
+                      <div className="w-12 h-12 rounded-full border border-gray-300 group-hover:border-[#8B1D1D] text-gray-400 group-hover:text-[#8B1D1D] flex items-center justify-center transition-all bg-gray-50/50">
+                        <Plus size={22} className="stroke-[2] group-hover:rotate-90 transition-transform duration-300" />
                       </div>
-                    )}
+                      <span className="text-xs font-black tracking-widest text-gray-600 group-hover:text-[#8B1D1D] uppercase">THÊM BUỔI HỌC KHÁC</span>
+                    </button>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
 
+              {/* VIEW 2: THỜI GIAN BIỂU CÁ NHÂN (FREE SLOTS / BUSY SLOTS TIMETABLE) */}
+              {scheduleTab === 'free-slots' && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="bg-[#EBF5FF] border border-[#BFDBFE] rounded-3xl p-5 text-left flex gap-3.5 relative overflow-hidden shadow-sm">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                      <Info size={20} className="stroke-[2.5]" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-black text-blue-900 uppercase tracking-widest">Trợ lý lịch biểu của bạn</p>
+                      <p className="text-xs text-blue-750 font-semibold leading-relaxed">
+                        Danh sách các ca dạy trong tuần hiện có của bạn. Hãy thiết lập các buổi học vào khung giờ trống (màu xanh lá) để tránh bị cảnh báo trùng lịch.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {DAYS_OF_WEEK.slice(0, 6).map((day) => {
+                      // Lookup classes of teacher on this dayOfWeek
+                      const busySlots = [];
+                      existingClasses.forEach((c) => {
+                        if (c.weeklySchedules) {
+                          c.weeklySchedules.forEach((s) => {
+                            if (s.dayOfWeek === day.value) {
+                              busySlots.push({
+                                className: c.name,
+                                courseCode: c.courseCode,
+                                room: s.room || 'P.302-A2',
+                                time: `${s.startTime} - ${s.endTime}`
+                              });
+                            }
+                          });
+                        }
+                      });
+
+                      return (
+                        <div 
+                          key={day.value} 
+                          className="bg-white rounded-3xl border border-gray-150 p-5 shadow-sm space-y-3.5 text-left hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex justify-between items-center pb-2.5 border-b border-gray-100">
+                            <span className="text-sm font-extrabold text-gray-900">{day.label}</span>
+                            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg border uppercase tracking-wider ${
+                              busySlots.length > 0
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              {busySlots.length > 0 ? `${busySlots.length} ca dạy bận` : 'Cả ngày trống ✨'}
+                            </span>
+                          </div>
+
+                          {busySlots.length > 0 ? (
+                            <div className="space-y-2.5">
+                              {busySlots.map((slot, i) => (
+                                <div 
+                                  key={i} 
+                                  className="flex justify-between items-center bg-[#FDF2F2]/60 border border-red-50 p-3 rounded-2xl text-xs font-semibold hover:bg-[#FDF2F2] transition-colors"
+                                >
+                                  <div className="space-y-1">
+                                    <p className="text-gray-900 font-extrabold leading-snug">{slot.className} <span className="text-gray-400 font-bold text-[10px]">({slot.courseCode})</span></p>
+                                    <p className="text-gray-400 font-bold text-[10px] flex items-center gap-1 mt-0.5"><MapPin size={11} /> {slot.room}</p>
+                                  </div>
+                                  <span className="text-xs font-black text-[#8B1D1D] bg-white border border-red-100 px-3 py-1 rounded-xl shadow-sm tracking-tight font-mono">{slot.time}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic pl-1">Không có lịch giảng dạy nào vào ngày này. Bạn có thể tự do lên lịch mới!</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            )}
+
+            {currentStep === 4 && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* 3. Cài đặt điểm danh (giữ nguyên) */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
               <div className="p-6 border-b border-gray-100 flex items-center gap-3 bg-gradient-to-r from-white to-red-50/20">
@@ -1588,6 +1823,10 @@ export default function CreateClass() {
               </div>
             </div>
 
+            </div>
+            )}
+            {currentStep === 3 && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* 4. Danh sách sinh viên */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow mb-8">
               <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-white to-red-50/20">
@@ -1828,113 +2067,355 @@ export default function CreateClass() {
 
               </div>
             </div>
+            </div>
+            )}
           </div>
 
           {/* CỘT PHẢI - Summary Sidebar */}
           <div className="lg:col-span-4">
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sticky top-24">
-              <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-                <Info size={18} className="text-red-600" />
-                Tổng quan lớp học
-              </h3>
+            <div className="bg-transparent rounded-2xl shadow-none p-0 sticky top-24">
               
-              <div className="space-y-5">
-                <div>
-                  <p className="text-xs font-bold text-gray-400 tracking-wider mb-2">TRẠNG THÁI</p>
-                  <span className="px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-lg">Bản nháp</span>
+              {currentStep === 1 && (
+                <div className="animate-in fade-in zoom-in-95 duration-300">
+                  {/* Live Preview capsule indicator */}
+                  <div className="flex items-center justify-center mb-5">
+                    <div className="flex items-center gap-1.5 bg-[#FDF2F2] px-3.5 py-1.5 rounded-full border border-red-150 text-[10px] font-black text-[#8B1D1D] uppercase tracking-widest shadow-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping"></span>
+                      ✦ LIVE PREVIEW
+                    </div>
+                  </div>
+
+                  {/* Card Container */}
+                  <div className="rounded-3xl overflow-hidden shadow-2xl shadow-red-100/40 border border-gray-200/50 bg-white">
+                    {/* Solid Maroon Header */}
+                    <div className="bg-[#8B1D1D] p-6 text-white text-left relative overflow-hidden">
+                      <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/5 rounded-full blur-2xl"></div>
+                      <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-red-600/20 rounded-full blur-2xl"></div>
+                      
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-center mb-4">
+                          <span className="text-[10px] font-bold text-white/80 uppercase tracking-widest">
+                            {(formData.courseCode || 'INT12345') + ' • ' + (formData.classCode || 'D22PM3')}
+                          </span>
+                          <span className="bg-white/15 backdrop-blur-md px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white border border-white/10 flex items-center gap-1">
+                            ✦ DỰ THẢO
+                          </span>
+                        </div>
+                        <h3 className="text-xl font-extrabold mb-3 leading-tight tracking-tight line-clamp-2">
+                          {formData.name || 'Lập trình hướng đối tượng'}
+                        </h3>
+                        <p className="text-white/60 text-[11px] font-bold tracking-wide">
+                          {SEMESTERS.find(s => s.value === formData.semester)?.label || 'Học kỳ 2'} • {formData.academicYear || '2024 - 2025'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="p-5 space-y-4 text-left bg-white">
+                      {/* Lịch học dự kiến */}
+                      <div className="flex gap-3.5 items-center p-3 rounded-2xl hover:bg-gray-50 transition-colors">
+                        <div className="w-10 h-10 rounded-full bg-red-50 text-[#8B1D1D] flex items-center justify-center border border-red-100 shrink-0">
+                          <Clock size={18} className="stroke-[2.5]" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lịch học dự kiến</p>
+                          <p className="text-xs font-black text-gray-900 mt-0.5">
+                            {formData.weeklySchedules[0] 
+                              ? `${DAYS_OF_WEEK.find(d => d.value === formData.weeklySchedules[0].dayOfWeek)?.label}, ${formData.weeklySchedules[0].startTime} - ${formData.weeklySchedules[0].endTime}` 
+                              : 'Thứ 2, Kip 1'}
+                            {` • ${formData.room || 'Phòng 402-A2'}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Sĩ số lớp */}
+                      <div className="flex gap-3.5 items-center p-3 rounded-2xl hover:bg-gray-50 transition-colors">
+                        <div className="w-10 h-10 rounded-full bg-red-50 text-[#8B1D1D] flex items-center justify-center border border-red-100 shrink-0">
+                          <Users size={18} className="stroke-[2.5]" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Sĩ số lớp</p>
+                          <p className="text-xs font-black text-gray-400 mt-0.5 flex items-center gap-1">
+                            Chưa có sinh viên nào <span className="text-[10px]">👁️‍🗨️</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Footer Badge Lineup */}
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-[#8B1D1D] text-white text-[10px] font-black px-3 py-1.5 rounded-xl">
+                            {CREDITS.find(c => c.value === formData.credits)?.label || '3 Tín chỉ'}
+                          </span>
+                          <span className="bg-gray-50 text-gray-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-gray-200">
+                            {formData.campus || 'PTIT - Cơ sở 1'}
+                          </span>
+                        </div>
+                        
+                        {/* Student avatar indicators */}
+                        <div className="flex items-center">
+                          <div className="flex -space-x-2">
+                            <div className="w-6 h-6 rounded-full bg-gray-250 border-2 border-white shadow-sm"></div>
+                            <div className="w-6 h-6 rounded-full bg-gray-300 border-2 border-white shadow-sm"></div>
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-bold ml-1.5">+0</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footnote instruction */}
+                  <p className="text-center text-[10px] text-gray-400 font-semibold mt-5 leading-relaxed bg-[#F8F9FA]/80 py-2.5 rounded-2xl border border-gray-150 px-4">
+                    Đây là giao diện thẻ lớp học sẽ hiển thị trên <span className="text-[#8B1D1D] font-bold">UniAttend Dashboard</span> của bạn ✨
+                  </p>
                 </div>
-                
-                <div className="border-t border-gray-100 pt-4">
-                  <p className="text-xs font-bold text-gray-400 tracking-wider mb-2">THÔNG SỐ</p>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Tổng số buổi:</span>
-                      <span className="font-semibold text-gray-900">{formData.totalSessions}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Được vắng tối đa:</span>
-                      <span className="font-semibold text-gray-900">{formData.maxAllowedAbsences}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Số buổi/tuần:</span>
-                      <span className="font-semibold text-gray-900">{formData.weeklySchedules.length}</span>
-                    </div>
-                    {formData.startDate && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Ngày bắt đầu:</span>
-                        <span className="font-semibold text-gray-900">
-                          {(() => {
-                            if (!formData.startDate) return '';
-                            const [y, m, d] = formData.startDate.split('-');
-                            return y && m && d ? `${d}/${m}/${y}` : formData.startDate;
-                          })()}
+              )}
+
+              {currentStep === 2 && (
+                <div className="animate-in fade-in zoom-in-95 duration-300 rounded-3xl border border-gray-200/60 shadow-xl overflow-hidden bg-white">
+                  {/* Banner header BẢN XEM TRƯỚC */}
+                  <div className="bg-[#8B1D1D] p-6 text-white relative overflow-hidden">
+                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/5 rounded-full blur-2xl"></div>
+                    <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-red-600/20 rounded-full blur-2xl"></div>
+                    <div className="relative z-10">
+                      <div className="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/80 animate-ping"></span>
+                        ✦ BÀN XEM TRƯỚC
+                      </div>
+                      <h3 className="text-xl font-extrabold mb-4 leading-tight tracking-tight line-clamp-2">
+                        {formData.name || 'Kiến trúc Máy tính'}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="bg-white/15 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold border border-white/10 tracking-wide text-white">
+                          Nhóm: {formData.classCode || '01'}
+                        </span>
+                        <span className="bg-white/15 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold border border-white/10 tracking-wide text-white">
+                          {formData.courseCode || 'INT1340_01'}
                         </span>
                       </div>
-                    )}
-                    {(existingCount + newCount) > 0 && (
-                      <div className="flex justify-between border-t border-gray-100 pt-2">
-                        <span className="text-gray-500">Sinh viên chuẩn bị nhập:</span>
-                        <span className="font-bold text-red-600">{(existingCount + newCount)} học viên</span>
+                    </div>
+                  </div>
+
+                  <div className="p-5 space-y-4 bg-[#F8F9FA]/40 text-left">
+                    {/* Giảng viên block */}
+                    <div className="flex items-center gap-3 p-4 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                      <div className="w-11 h-11 rounded-full bg-red-50 text-[#8B1D1D] flex items-center justify-center border border-red-100">
+                        <GraduationCap size={22} className="stroke-[2]" />
                       </div>
-                    )}
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] text-gray-400 font-extrabold uppercase tracking-widest">GIẢNG VIÊN</p>
+                        <p className="text-sm font-bold text-gray-900">TS. Nguyễn Văn A</p>
+                      </div>
+                    </div>
+
+                    {/* Parameter badges */}
+                    <div className="flex flex-wrap gap-2.5">
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#FCE8E6] border border-[#FAD2CD] rounded-xl text-xs font-bold text-[#A8201A]">
+                        <Calendar size={13} />
+                        <span>{formData.startDate ? new Date(formData.startDate).toLocaleDateString('vi-VN') : '15/01/2024'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700">
+                        <span className="text-gray-400 font-mono font-bold">#</span>
+                        <span>{formData.totalSessions || 15} buổi</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-800">
+                        <AlertCircle size={13} className="text-amber-600" />
+                        <span>Vắng tối đa: {formData.maxAllowedAbsences || 3}</span>
+                      </div>
+                    </div>
+
+                    {/* Lịch dự kiến list */}
+                    <div className="pt-4 border-t border-gray-200/70 space-y-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <h4 className="font-bold text-gray-900 flex items-center gap-2 text-sm">
+                          <Calendar size={16} className="text-[#8B1D1D]" />
+                          <span>Lịch dự kiến</span>
+                        </h4>
+                        <span className="text-[9px] text-[#8B1D1D] bg-[#FDF2F2] border border-[#FDE8E8] px-2.5 py-0.5 rounded-lg font-bold">
+                          {SEMESTERS.find(s => s.value === formData.semester)?.label || 'HỌC KỲ 1'}
+                        </span>
+                      </div>
+
+                      {formData.weeklySchedules && formData.weeklySchedules.length > 0 ? (
+                        formData.weeklySchedules.map((s, idx) => {
+                          const dayLabel = DAYS_OF_WEEK.find(d => d.value === s.dayOfWeek)?.label || 'Thứ 2';
+                          // Day color coding (Monday = Red, Wednesday = Blue, Friday = Purple, etc.)
+                          let dayBg = 'bg-[#FDF2F2] text-[#8B1D1D] border-[#FDE8E8]';
+                          if (s.dayOfWeek === 'WEDNESDAY') dayBg = 'bg-[#EFF6FF] text-[#1E40AF] border-[#DBEAFE]';
+                          if (s.dayOfWeek === 'FRIDAY') dayBg = 'bg-[#F5F3FF] text-[#5B21B6] border-[#EDE9FE]';
+                          if (s.dayOfWeek === 'TUESDAY') dayBg = 'bg-[#ECFDF5] text-[#065F46] border-[#D1FAE5]';
+
+                          return (
+                            <div 
+                              key={idx} 
+                              className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex justify-between items-center"
+                            >
+                              <div className="space-y-2 text-left">
+                                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${dayBg}`}>
+                                  {dayLabel}
+                                </span>
+                                <div className="text-[10px] font-bold text-gray-400 flex items-center gap-1 mt-1">
+                                  <MapPin size={11} />
+                                  <span>{s.room || formData.room || 'P.302-A2'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
+                                  <Clock size={14} />
+                                </div>
+                                <span className="text-base font-extrabold text-gray-800 tracking-tight font-mono">
+                                  {s.startTime} - {s.endTime}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-xs text-gray-400 text-center py-4 italic">Chưa cấu hình lịch giảng dạy nào.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 p-4 border-t border-gray-100">
+                    <p className="text-center text-[10px] text-gray-400 font-semibold italic">
+                      "Lịch này sẽ được áp dụng cho toàn bộ học kỳ."
+                    </p>
                   </div>
                 </div>
+              )}
 
-                <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-4 border border-red-100 mt-4">
-                  <h4 className="flex items-center gap-2 font-bold text-gray-900 text-sm mb-3">
-                    <BookOpen size={16} className="text-red-600" />
-                    Lưu ý
-                  </h4>
-                  <ul className="text-xs text-gray-600 space-y-2">
-                    <li className="flex items-start gap-2">
-                      <span className="text-red-500">•</span>
-                      Ngày bắt đầu phải trùng với một trong các ngày trong lịch học
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-red-500">•</span>
-                      Sinh viên sẽ nhận email mời đăng ký thiết bị
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-red-500">•</span>
-                      Có thể tạo QR điểm danh ngay sau khi tạo lớp
-                    </li>
-                  </ul>
+              {currentStep === 3 && (
+                <div className="animate-in fade-in zoom-in-95 duration-300">
+                  <div className="rounded-3xl overflow-hidden shadow-xl shadow-red-100/30 border border-white/60">
+                  <div className="bg-gradient-to-br from-red-800 via-red-700 to-red-600 p-5 text-white relative overflow-hidden">
+                    <div className="absolute -top-6 -right-6 w-28 h-28 bg-white/5 rounded-full blur-2xl"></div>
+                    <span className="bg-white/15 backdrop-blur-sm px-2.5 py-1 rounded-full text-[10px] font-bold border border-white/20 inline-flex items-center gap-1 mb-3">👥 Tổng quan</span>
+                    <h3 className="text-base font-extrabold">{formData.name || 'Chưa có tên ✏️'}</h3>
+                    <p className="text-white/50 text-[11px] font-semibold mt-1">{formData.code || 'Mã HP'} • 📍 {formData.room || 'Chưa xếp'}</p>
+                  </div>
+                  <div className="bg-white p-5 space-y-4">
+                     <div className="p-3 bg-gradient-to-r from-red-50/80 to-transparent rounded-2xl">
+                       <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider block mb-1">🗓️ Lịch học</span>
+                       <p className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                          {formData.weeklySchedules.map(s => DAYS_OF_WEEK.find(d => d.value === s.dayOfWeek)?.label).join(', ')} 
+                          <span className="text-gray-400 font-medium">({formData.weeklySchedules[0]?.startTime} → {formData.weeklySchedules[0]?.endTime})</span>
+                       </p>
+                     </div>
+                     <div className="pt-4 border-t border-gray-100/80">
+                        <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider block mb-3">🎓 Sinh viên đã import</span>
+                        <div className="bg-gradient-to-br from-red-50 to-red-100/50 border border-red-100/60 rounded-2xl p-5 text-center relative overflow-hidden">
+                           <div className="absolute -right-3 -bottom-3 w-16 h-16 bg-red-200/30 rounded-full blur-xl"></div>
+                           <div className="text-4xl font-black bg-gradient-to-r from-red-800 to-red-600 bg-clip-text text-transparent mb-1 relative z-10">{totalImport || 0}</div>
+                           <div className="text-xs font-bold text-red-800 relative z-10">Sinh viên 🧑‍🎓</div>
+                           {(existingCount + newCount) > 0 && (
+                             <div className="text-[10px] text-red-700 flex items-center justify-center gap-1 mt-3 font-bold bg-white/80 py-1.5 px-3 rounded-full relative z-10 shadow-sm border border-red-100 backdrop-blur-sm">
+                               <CheckCircle2 size={12}/> Sẵn sàng nhập ✅
+                             </div>
+                           )}
+                        </div>
+                     </div>
+                  </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 font-semibold mt-4 text-center italic">Tổng hợp từ các bước trước 💡</p>
                 </div>
-              </div>
+              )}
+
+              {currentStep === 4 && (
+                <div className="animate-in fade-in zoom-in-95 duration-300">
+                  <div className="rounded-3xl overflow-hidden shadow-xl shadow-red-100/30 border border-white/60">
+                  <div className="bg-gradient-to-br from-red-950 via-red-900 to-red-800 p-5 text-white relative overflow-hidden">
+                    <div className="absolute -top-6 -right-6 w-28 h-28 bg-white/5 rounded-full blur-2xl"></div>
+                    <span className="bg-white/15 backdrop-blur-sm px-2.5 py-1 rounded-full text-[10px] font-bold border border-white/20 inline-flex items-center gap-1 mb-3">🏁 Tổng kết</span>
+                    <h3 className="text-lg font-extrabold leading-tight">{formData.name}</h3>
+                    <p className="text-white/50 text-[11px] font-semibold mt-1">#{formData.courseCode} • {formData.classCode ? `Nhóm ${formData.classCode}` : ''}</p>
+                    <p className="text-white/40 text-[11px] font-semibold mt-0.5">📍 {formData.room}, {formData.campus}</p>
+                  </div>
+                  <div className="bg-white p-5 space-y-4">
+                     <div className="grid grid-cols-3 gap-2.5">
+                        <div className="bg-gradient-to-br from-red-50 to-red-100/50 rounded-2xl p-3 text-center border border-red-100/60 hover:shadow-md transition-all">
+                           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-700 to-red-900 mx-auto flex items-center justify-center mb-2 text-white shadow-md shadow-red-200">
+                             <Users size={15} />
+                           </div>
+                           <p className="font-extrabold text-gray-900 text-base">{totalImport || 0}</p>
+                           <p className="text-[9px] uppercase font-bold text-red-600 tracking-wider">Sĩ số</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-red-50 to-red-100/50 rounded-2xl p-3 text-center border border-red-100/60 hover:shadow-md transition-all">
+                           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-800 to-red-950 mx-auto flex items-center justify-center mb-2 text-white shadow-md shadow-red-200">
+                             <Calendar size={15} />
+                           </div>
+                           <p className="font-extrabold text-gray-900 text-base">{formData.totalSessions}</p>
+                           <p className="text-[9px] uppercase font-bold text-red-600 tracking-wider">Buổi</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-red-50 to-red-100/50 rounded-2xl p-3 text-center border border-red-100/60 hover:shadow-md transition-all">
+                           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-red-800 mx-auto flex items-center justify-center mb-2 text-white shadow-md shadow-red-200">
+                             <Clock size={15} />
+                           </div>
+                           <p className="font-extrabold text-gray-900 text-sm">{formData.weeklySchedules[0]?.dayOfWeek ? DAYS_OF_WEEK.find(d => d.value === formData.weeklySchedules[0].dayOfWeek)?.label : '-'}</p>
+                           <p className="text-[9px] uppercase font-bold text-red-600 tracking-wider">Lịch</p>
+                        </div>
+                     </div>
+
+                     <div className="pt-4 border-t border-gray-100/80">
+                        <span className="text-[10px] font-bold bg-gradient-to-r from-red-800 to-red-600 bg-clip-text text-transparent uppercase tracking-wider block mb-3">⚡ Quy chế &amp; Cài đặt</span>
+                        <ul className="text-[11px] text-gray-600 space-y-2.5 font-medium">
+                           <li className="flex items-center gap-2.5 p-2 bg-gradient-to-r from-red-50/60 to-transparent rounded-xl"><div className="w-5 h-5 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center shrink-0"><CheckCircle2 size={11} className="text-white"/></div> Vắng &gt; 20% cấm thi</li>
+                           <li className="flex items-center gap-2.5 p-2 bg-gradient-to-r from-red-50/60 to-transparent rounded-xl"><div className="w-5 h-5 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center shrink-0"><CheckCircle2 size={11} className="text-white"/></div> QR động (15s) 📱</li>
+                           <li className="flex items-center gap-2.5 p-2 bg-gradient-to-r from-red-50/60 to-transparent rounded-xl"><div className="w-5 h-5 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center shrink-0"><CheckCircle2 size={11} className="text-white"/></div> 1 thiết bị/SV 🔒</li>
+                           <li className="flex items-center gap-2.5 p-2 bg-gradient-to-r from-red-50/60 to-transparent rounded-xl"><div className="w-5 h-5 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center shrink-0"><CheckCircle2 size={11} className="text-white"/></div> Báo cáo tự động 📊</li>
+                           <li className="flex items-center gap-2.5 p-2 bg-gradient-to-r from-red-50/60 to-transparent rounded-xl"><div className="w-5 h-5 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center shrink-0"><CheckCircle2 size={11} className="text-white"/></div> SV xem tiến độ 👁️</li>
+                        </ul>
+                     </div>
+                  </div>
+                  </div>
+                </div>
+              )}
+              
             </div>
           </div>
         </div>
 
         {/* BOTTOM ACTION BAR */}
-        <div className={`fixed bottom-0 right-0 bg-white/80 backdrop-blur-md border-t border-gray-200 px-8 py-4 flex justify-between items-center z-10 shadow-lg transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'left-[80px]' : 'left-64'}`}>
+        <div className={`fixed bottom-0 right-0 bg-gray-50/90 backdrop-blur-md border-t border-gray-200 px-8 py-4 flex justify-between items-center z-10 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'left-[80px]' : 'left-64'}`}>
           <button 
-            onClick={() => navigate('/classes')} 
-            className="px-6 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all"
+            onClick={() => currentStep === 1 ? navigate('/classes') : handlePrevStep()} 
+            className="px-6 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 bg-white hover:bg-gray-100 border border-gray-200 rounded-full transition-all shadow-sm flex items-center gap-2"
           >
-            Hủy bỏ
+            {currentStep === 1 ? 'Hủy & Đóng' : '← Quay lại'}
           </button>
-          <div className="flex gap-3">
+          
+          <div className="flex gap-4 items-center">
             <button 
               onClick={handleSaveDraftManual}
               type="button"
-              className="px-6 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              className="text-sm font-bold text-red-700 hover:text-red-800 hover:underline px-4 transition-all"
             >
-              Lưu nháp
+              Lưu bản nháp
             </button>
-            <button 
-              onClick={handleSubmit} 
-              disabled={isSubmitting || !!startDateError}
-              className="px-8 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl text-sm font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Đang xử lý...
-                </>
-              ) : (
-                'Tạo lớp học →'
-              )}
-            </button>
+            {currentStep < 4 ? (
+              <button 
+                onClick={handleNextStep} 
+                className="px-8 py-2.5 bg-red-800 hover:bg-red-900 text-white rounded-full text-sm font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2 transform active:scale-95"
+              >
+                Tiếp tục →
+              </button>
+            ) : (
+              <button 
+                onClick={handleSubmit} 
+                disabled={isSubmitting}
+                className="px-8 py-2.5 bg-red-900 hover:bg-red-950 text-white rounded-full text-sm font-bold transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transform active:scale-95"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Đang xử lý...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Hoàn tất & Kích hoạt lớp
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
         {/* UNIFIED CONFLICT RESOLUTION & RECOMMENDATIONS MODAL */}
@@ -1947,56 +2428,64 @@ export default function CreateClass() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">{conflictModal.title}</h3>
                 
-                {/* 1. ROOM CONFLICT RENDER */}
-                {conflictModal.type === 'ROOM_CONFLICT' && (
+                {/* 0. PERSONAL CONFLICT RENDER */}
+                {conflictModal.type === 'PERSONAL_CONFLICT' && (
                   <>
-                    <div className="w-full bg-red-50/80 border border-red-100 rounded-xl p-4 mb-4 shadow-sm text-left">
-                      <div className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                        Lớp học trùng lịch & phòng:
+                    <div className="w-full bg-orange-50/80 border border-orange-100 rounded-xl p-4 mb-4 shadow-sm text-left">
+                      <div className="text-xs font-bold text-orange-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+                        Trùng lịch dạy của chính bạn:
                       </div>
-                      <div className="flex justify-between items-center text-sm font-bold text-red-950">
+                      <div className="flex justify-between items-center text-sm font-bold text-orange-950">
                         <span>{conflictModal.conflictingClass?.name || 'Lớp học khác'}</span>
-                        <span className="text-xs text-red-700 bg-red-100 border border-red-200 px-2.5 py-0.5 rounded-lg font-mono font-bold">
+                        <span className="text-xs text-orange-700 bg-orange-100 border border-orange-200 px-2.5 py-0.5 rounded-lg font-mono font-bold">
                           {conflictModal.conflictingClass?.code || 'TRÙNG LỊCH'}
                         </span>
                       </div>
                     </div>
 
                     <p className="text-sm text-gray-600 text-center leading-relaxed mb-4">
-                      Phòng học <strong className="text-gray-900">{conflictModal.conflictingRoom}</strong> tại <strong className="text-gray-900">{formData.campus}</strong> đã bị trùng vào khung giờ:
+                      Bạn đã có lịch dạy vào khung giờ này:
                       <br />
-                      <span className="font-mono font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded text-xs mt-2 inline-block">
+                      <span className="font-mono font-bold text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded text-xs mt-2 inline-block">
                         {conflictModal.conflictingSchedule}
                       </span>
                     </p>
 
                     <div className="w-full text-left mb-6">
-                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">GỢI Ý PHÒNG CÒN TRỐNG TẠI CƠ SỞ NÀY</label>
-                      {conflictModal.suggestedRooms.length > 0 ? (
-                        <div className="grid grid-cols-3 gap-2.5 max-h-36 overflow-y-auto pr-1">
-                          {conflictModal.suggestedRooms.map((roomName) => (
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">GỢI Ý KHUNG GIỜ RẢNH TRONG NGÀY</label>
+                      {conflictModal.suggestedSlots && conflictModal.suggestedSlots.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2.5 max-h-36 overflow-y-auto pr-1">
+                          {conflictModal.suggestedSlots.map((slot, idx) => (
                             <button
-                              key={roomName}
+                              key={idx}
                               onClick={() => {
-                                setFormData(prev => ({ ...prev, room: roomName }));
+                                const newSchedules = formData.weeklySchedules.map(s => {
+                                  if (s.dayOfWeek === conflictModal.dayOfWeek) {
+                                    return { ...s, startTime: slot.start, endTime: slot.end };
+                                  }
+                                  return s;
+                                });
+                                setFormData(prev => ({ ...prev, weeklySchedules: newSchedules }));
                                 setConflictModal(prev => ({ ...prev, isOpen: false }));
-                                toast.success(`Đã tự động chọn phòng ${roomName}!`);
+                                toast.success(`Đã tự động đổi sang ${slot.label}!`);
                               }}
                               className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 text-center transition-all cursor-pointer transform active:scale-95"
                             >
-                              {roomName}
+                              {slot.label}
                             </button>
                           ))}
                         </div>
                       ) : (
                         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl p-3 font-medium">
-                          ⚠️ Không có phòng trống nào khác tại {formData.campus} vào khung giờ này. Vui lòng đổi cơ sở hoặc khung giờ học.
+                          ⚠️ Bạn không còn khung giờ trống nào trong ngày này. Vui lòng chọn ngày dạy khác.
                         </p>
                       )}
                     </div>
                   </>
                 )}
+
+
 
                 {/* 2. START DATE CONFLICT RENDER */}
                 {conflictModal.type === 'START_DATE_CONFLICT' && (
@@ -2035,6 +2524,27 @@ export default function CreateClass() {
                           ⚠️ Không tìm thấy ngày bắt đầu phù hợp trong phạm vi học kỳ. Vui lòng đổi lịch học hoặc kiểm tra lại ngày học kỳ.
                         </p>
                       )}
+                    </div>
+                  </>
+                )}
+
+                {/* SERVER CONFLICT RENDER */}
+                {conflictModal.type === 'SERVER_CONFLICT' && (
+                  <>
+                    <div className="w-full bg-red-50/80 border border-red-100 rounded-xl p-4 mb-6 shadow-sm text-center">
+                      <div className="text-xs font-bold text-red-600 uppercase tracking-wider mb-2 flex items-center justify-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                        Hệ thống từ chối do trùng lặp dữ liệu:
+                      </div>
+                      <p className="text-sm font-semibold text-red-900 leading-relaxed">
+                        {conflictModal.message}
+                      </p>
+                    </div>
+
+                    <div className="w-full text-center mb-6">
+                      <p className="text-xs text-gray-500">
+                        Vui lòng quay lại các bước trước để điều chỉnh thông tin lịch giảng, cơ sở hoặc phòng học trước khi thử lại.
+                      </p>
                     </div>
                   </>
                 )}
