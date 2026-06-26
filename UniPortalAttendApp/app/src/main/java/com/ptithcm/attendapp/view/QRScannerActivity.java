@@ -51,6 +51,8 @@ import com.ptithcm.attendapp.model.JoinGroupResponse;
 import com.google.android.material.card.MaterialCardView;
 import com.ptithcm.attendapp.model.QrCheckInRequest;
 
+import android.provider.Settings;
+
 public class QRScannerActivity extends AppCompatActivity {
 
     private static final int CAMERA_PERMISSION_REQUEST_CODE = 100;
@@ -122,9 +124,8 @@ public class QRScannerActivity extends AppCompatActivity {
                 tvClassTime.setText("Đang điểm danh");
             }
         }
-        // Nếu KHÔNG truyền tên lớp sang (Mở từ Bottom Navigation)
         else {
-            cardClassInfo.setVisibility(View.GONE); // ẨN THẺ HOÀN TOÀN
+            cardClassInfo.setVisibility(View.GONE);
         }
     }
 
@@ -319,46 +320,16 @@ public class QRScannerActivity extends AppCompatActivity {
                                             return;
                                         }
 
-                                        String myAuthToken = "Bearer " + tokenCuaSinhVien;
-                                        QrCheckInRequest requestBody = new QrCheckInRequest(qrTokenId);
-
-//                                    // Bỏ chữ "ATTEND:" đi. Chuỗi còn lại sẽ là: "sessionId:tokenId.secret" hoặc "sessionId:tokenId:secret"
-//                                    String payload = rawValue.substring(7);
-//
-//                                    // Cắt tại vị trí dấu hai chấm (:) đầu tiên
-//                                    int firstColonIndex = payload.indexOf(':');
-//
-//                                    if (firstColonIndex != -1) {
-//                                        String sessionId = payload.substring(0, firstColonIndex);
-//
-//                                        // TOÀN BỘ phần đuôi phía sau dấu hai chấm sẽ là Token + Secret
-//                                        String qrTokenId = payload.substring(firstColonIndex + 1);
-//
-//                                        // 🚨 TRICK CHỐNG LỖI CỰC MẠNH:
-//                                        // Nhỡ team Web tạo mã QR bằng dấu hai chấm (tokenId:secret) thay vì dấu chấm,
-//                                        // thì Android sẽ tự động đổi nó thành dấu chấm cho đúng format Backend yêu cầu (<tokenId>.<secret>)
-//                                        qrTokenId = qrTokenId.replace(":", ".");
-//
-////                                    String[] parts = rawValue.split(":");
-////
-////                                    // Chuỗi mới: ATTEND:{sessionId}:{qrTokenId}
-////                                    if (parts.length >= 3) {
-////                                        String sessionId = parts[1];
-////                                        String qrTokenId = parts[2];
-//
-//                                        // Lấy Token của Sinh viên từ SharedPreferences
-//                                        SharedPreferences prefs = getSharedPreferences("UniPortalPrefs", Context.MODE_PRIVATE);
-//                                        String tokenCuaSinhVien = prefs.getString("ACCESS_TOKEN", "");
-//
-//                                        if (tokenCuaSinhVien.isEmpty()) {
-//                                            showErrorAndRestartCamera("Chưa đăng nhập. Không tìm thấy token.");
-//                                            return; // Dừng lại nếu không có token
-//                                        }
-//
 //                                        String myAuthToken = "Bearer " + tokenCuaSinhVien;
-//
-//                                        // Tạo body request
 //                                        QrCheckInRequest requestBody = new QrCheckInRequest(qrTokenId);
+
+                                        String myAuthToken = "Bearer " + tokenCuaSinhVien;
+
+// 1. Lấy mã định danh thiết bị (Device ID)
+                                        String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+
+// 2. Truyền cả qrTokenId và deviceId vào Request
+                                        QrCheckInRequest requestBody = new QrCheckInRequest(qrTokenId, deviceId);
 
 
                                         // GỌI API ĐIỂM DANH
@@ -391,10 +362,52 @@ public class QRScannerActivity extends AppCompatActivity {
                                                         // ========================================================
                                                         // 2. XỬ LÝ LOGIC UI DỰA TRÊN HTTP CODE
                                                         // ========================================================
+//                                                        if (response.isSuccessful() || errorCode == 409) {
+//
+//                                                            if (errorCode == 409) {
+//                                                                // Tại đây bạn có thể log thêm 1 lần nữa hoặc bóc tách errorDetail để show Toast nếu muốn
+//                                                                Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 409: ĐÃ ĐIỂM DANH TỪ TRƯỚC!");
+//                                                                Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
+//                                                            } else {
+//                                                                Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 200: ĐIỂM DANH THÀNH CÔNG!");
+//                                                                Toast.makeText(QRScannerActivity.this, "Điểm danh thành công!", Toast.LENGTH_LONG).show();
+//                                                            }
+//
+//                                                            // Gói dữ liệu truyền về và đóng Scanner
+//                                                            Intent resultIntent = new Intent();
+//                                                            resultIntent.putExtra("SCAN_SUCCESS", true);
+//                                                            resultIntent.putExtra("QR_TYPE", "ATTEND");
+//                                                            resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
+//
+//                                                            setResult(RESULT_OK, resultIntent);
+//                                                            finish();
+//                                                        }
+
+                                                        // ========================================================
+// 2. XỬ LÝ LOGIC UI DỰA TRÊN HTTP CODE
+// ========================================================
                                                         if (response.isSuccessful() || errorCode == 409) {
 
+                                                            // ----------------------------------------------------------------
+                                                            // THÊM ĐOẠN NÀY ĐỂ IN CHI TIẾT KẾT QUẢ RESPONSE RA LOGCAT
+                                                            // ----------------------------------------------------------------
+                                                            Log.i("CHECKIN_DEBUG", "===========================================");
+                                                            Log.i("CHECKIN_DEBUG", "API ĐIỂM DANH TRẢ VỀ KẾT QUẢ (HTTP " + errorCode + "):");
+
+                                                            if (response.body() != null) {
+                                                                // Cách 1: In trực tiếp (yêu cầu class CheckInQrResponse phải override hàm toString())
+                                                                Log.i("CHECKIN_DEBUG", "Dữ liệu (Object): " + response.body().toString());
+
+                                                                // Cách 2 (Khuyên dùng): Dùng Gson để parse object thành chuỗi JSON đọc cho dễ
+                                                                // String jsonResponse = new com.google.gson.Gson().toJson(response.body());
+                                                                // Log.i("CHECKIN_DEBUG", "Dữ liệu (JSON): " + jsonResponse);
+                                                            } else {
+                                                                Log.i("CHECKIN_DEBUG", "Body trả về bị rỗng (null)!");
+                                                            }
+                                                            Log.i("CHECKIN_DEBUG", "===========================================");
+                                                            // ----------------------------------------------------------------
+
                                                             if (errorCode == 409) {
-                                                                // Tại đây bạn có thể log thêm 1 lần nữa hoặc bóc tách errorDetail để show Toast nếu muốn
                                                                 Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 409: ĐÃ ĐIỂM DANH TỪ TRƯỚC!");
                                                                 Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
                                                             } else {
@@ -411,6 +424,7 @@ public class QRScannerActivity extends AppCompatActivity {
                                                             setResult(RESULT_OK, resultIntent);
                                                             finish();
                                                         }
+
                                                         else {
                                                             // ========================================================
                                                             // 3. XỬ LÝ CÁC LỖI THỰC SỰ (BẮT QUÉT LẠI HOẶC ĐĂNG NHẬP LẠI)

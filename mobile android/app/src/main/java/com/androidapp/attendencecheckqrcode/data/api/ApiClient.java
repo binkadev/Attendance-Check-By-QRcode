@@ -14,10 +14,8 @@ import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
 public class ApiClient {
-    // Nên cân nhắc đưa BASE_URL vào BuildConfig trong file build.gradle sau này
-    private static final String BASE_URL = "http://192.168.46.157:8081/";
+    private static final String BASE_URL = "http:// 10.251.4.205:8081/";
 
-    // Thêm từ khóa volatile để đảm bảo an toàn luồng (Thread-safe)
     private static volatile Retrofit retrofit;
 
     public static ApiService getApiService(Context context) {

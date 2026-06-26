@@ -4,7 +4,6 @@ import com.google.gson.annotations.SerializedName;
 
 public class QrCheckInRequest {
 
-    // 🚨 QUAN TRỌNG: Server báo "token is required" nên phải map đúng tên này
     @SerializedName("token")
     private String qrTokenId;
 
@@ -16,8 +15,12 @@ public class QrCheckInRequest {
     private Double geoLng;
 
     // Constructor tối thiểu
-    public QrCheckInRequest(String qrTokenId) {
-        this.qrTokenId = qrTokenId;
+//    public QrCheckInRequest(String qrTokenId) {
+//        this.qrTokenId = qrTokenId;
+//    }
+    public QrCheckInRequest(String qrToken, String deviceId) {
+        this.qrTokenId = qrToken;
+        this.deviceId = deviceId;
     }
 
     // Constructor đầy đủ để gửi kèm GPS và Device ID
@@ -28,7 +31,6 @@ public class QrCheckInRequest {
         this.geoLng = geoLng;
     }
 
-    // Getter và Setter giữ nguyên...
     public String getQrTokenId() { return qrTokenId; }
     public void setQrTokenId(String qrTokenId) { this.qrTokenId = qrTokenId; }
 
