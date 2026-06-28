@@ -25,12 +25,15 @@ import com.ptithcm.attendapp.model.NotificationItem;
 import com.ptithcm.attendapp.model.NotificationResponse;
 import com.ptithcm.attendapp.model.UnreadCountResponse;
 
-import android.app.AlertDialog;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 
-
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -39,7 +42,7 @@ import retrofit2.Response;
 public class NotificationsFragment extends Fragment {
 
     private ImageView btnBack, btnMarkAllReadTop;
-    private TextView btnMarkAllReadText, tvUnreadCountLabel; // Thêm ID cho Text đếm số ở XML nếu bạn muốn đổi động
+    private TextView btnMarkAllReadText, tvUnreadCountLabel;
     private RecyclerView rvNotifications;
 
     private NotificationAdapter adapter;
@@ -69,7 +72,6 @@ public class NotificationsFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        // Tự động gọi lại API để làm mới danh sách mỗi khi mở lại màn hình này
         if (authToken != null && !authToken.isEmpty()) {
             fetchNotifications();
         }
@@ -86,7 +88,6 @@ public class NotificationsFragment extends Fragment {
     private void setupRecyclerView() {
         rvNotifications.setLayoutManager(new LinearLayoutManager(getContext()));
         adapter = new NotificationAdapter(apiList, (item, position) -> {
-            // 1. Logic đánh dấu đã đọc (Giữ nguyên)
             if (!item.isRead()) {
                 item.setRead(true);
                 adapter.notifyItemChanged(position);
@@ -97,7 +98,6 @@ public class NotificationsFragment extends Fragment {
                 });
             }
 
-            // 2. Logic xử lý khi click vào để xem chi tiết
             handleNotificationClick(item);
         });
         rvNotifications.setAdapter(adapter);
@@ -106,64 +106,55 @@ public class NotificationsFragment extends Fragment {
     private void handleNotificationClick(NotificationItem item) {
         String type = item.getType();
         if (type == null) {
-            showSimpleDialog(item.getTitle(), item.getBody());
+            // Thay thế hàm cũ
+            showModernBottomSheet(item.getTitle(), item.getBody(), false);
             return;
         }
 
         switch (type) {
             case "CHECKIN_SUCCESS":
             case "CHECKIN_FAILED":
-                // Gọi API lấy kết quả điểm danh thực tế dựa vào sessionId
                 if (item.getSessionId() != null) {
                     fetchAndShowCheckinResult(item.getSessionId());
                 } else {
-                    showSimpleDialog(item.getTitle(), item.getBody());
+                    // Thay thế hàm cũ
+                    showModernBottomSheet(item.getTitle(), item.getBody(), false);
                 }
                 break;
 
             case "FRAUD_DETECTED":
             case "FRAUD_INCIDENT":
-                // Nếu là gian lận, có thể payload chứa chi tiết, hoặc hiển thị cảnh báo đỏ
-                showFraudWarningDialog(item.getTitle(), item.getBody());
+                // Bật true để chữ màu đỏ
+                showModernBottomSheet(item.getTitle(), item.getBody() + "\n\nVui lòng liên hệ giảng viên nếu có sai sót.", true);
                 break;
 
             default:
-                // Các loại thông báo thông thường khác
-                showSimpleDialog(item.getTitle(), item.getBody());
+                // Thay thế hàm cũ
+                showModernBottomSheet(item.getTitle(), item.getBody(), false);
                 break;
         }
     }
 
-    // Gọi API chi tiết kết quả điểm danh
-    // Thay thế hàm này trong NotificationsFragment.java
     private void fetchAndShowCheckinResult(String sessionId) {
         RetrofitClient.getApiService().getCheckinResult(authToken, sessionId).enqueue(new Callback<CheckinResultResponse>() {
             @Override
             public void onResponse(Call<CheckinResultResponse> call, Response<CheckinResultResponse> response) {
-                // Kiểm tra an toàn chống crash
                 if (!isAdded() || getContext() == null) return;
 
                 if (response.isSuccessful() && response.body() != null) {
                     CheckinResultResponse result = response.body();
 
-                    // Lấy dữ liệu từ các hàm getter đúng chuẩn của Model
-                    String title = result.getTitle() != null ? result.getTitle() : "Kết quả điểm danh";
+                    // Chuẩn hóa thời gian tại đây
+                    String rawTime = result.getCheckInAt();
+                    String formattedTime = formatDateTime(rawTime);
 
-                    String status = result.getAttendanceStatusLabel() != null ?
-                            result.getAttendanceStatusLabel() : result.getAttendanceStatus();
-                    String checkInTime = result.getCheckInAt() != null ? result.getCheckInAt() : "N/A";
-                    String subject = result.getSubjectName() != null ? result.getSubjectName() : "Không rõ";
-                    String roomInfo = result.getLocationDisplay() != null ? result.getLocationDisplay() : result.getRoom();
-                    String msg = result.getMessage() != null ? result.getMessage() : "";
+                    String message = "Môn học: " + (result.getSubjectName() != null ? result.getSubjectName() : "Không rõ") + "\n"
+                            + "Vị trí: " + (result.getLocationDisplay() != null ? result.getLocationDisplay() : result.getRoom()) + "\n"
+                            + "Trạng thái: " + (result.getAttendanceStatusLabel() != null ? result.getAttendanceStatusLabel() : result.getAttendanceStatus()) + "\n"
+                            + "Thời gian: " + formattedTime + "\n" // Sử dụng thời gian đã chuẩn hóa
+                            + "Ghi chú: " + (result.getMessage() != null ? result.getMessage() : "");
 
-                    // Format lại thông điệp hiển thị
-                    String message = "Môn học: " + subject + "\n"
-                            + "Vị trí: " + roomInfo + "\n"
-                            + "Trạng thái: " + status + "\n"
-                            + "Thời gian: " + checkInTime + "\n"
-                            + "Ghi chú: " + msg;
-
-                    showSimpleDialog(title, message);
+                    showModernBottomSheet(result.getTitle() != null ? result.getTitle() : "Kết quả điểm danh", message, false);
                 } else {
                     Toast.makeText(getContext(), "Không thể tải chi tiết điểm danh", Toast.LENGTH_SHORT).show();
                 }
@@ -171,31 +162,57 @@ public class NotificationsFragment extends Fragment {
 
             @Override
             public void onFailure(Call<CheckinResultResponse> call, Throwable t) {
-                // Kiểm tra an toàn chống crash
                 if (!isAdded() || getContext() == null) return;
-
                 Toast.makeText(getContext(), "Lỗi mạng", Toast.LENGTH_SHORT).show();
             }
         });
     }
 
-    // Dialog hiển thị cảnh báo gian lận (Custom UI dọa user xíu)
-    private void showFraudWarningDialog(String title, String message) {
-        new AlertDialog.Builder(getContext())
-                .setTitle("⚠️ " + title)
-                .setMessage(message + "\n\nVui lòng liên hệ giảng viên nếu có sai sót.")
-                .setIcon(android.R.drawable.ic_dialog_alert)
-                .setPositiveButton("Đã hiểu", (dialog, which) -> dialog.dismiss())
-                .show();
+    private String formatDateTime(String isoDateString) {
+        if (isoDateString == null || isoDateString.isEmpty()) return "N/A";
+        try {
+            // Hỗ trợ cả định dạng có .SSSZ và không có
+            SimpleDateFormat inputFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault());
+            inputFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+            // Cắt bỏ phần nano-giây (nếu có) để tránh lỗi parse
+            if (isoDateString.contains(".")) {
+                isoDateString = isoDateString.substring(0, isoDateString.indexOf("."));
+            }
+
+            Date date = inputFormat.parse(isoDateString);
+            SimpleDateFormat outputFormat = new SimpleDateFormat("HH:mm:ss - dd/MM/yyyy", Locale.getDefault());
+            return outputFormat.format(date);
+        } catch (Exception e) {
+            Log.e("NOTI_DEBUG", "Lỗi format thời gian: " + e.getMessage());
+            return isoDateString; // Trả về chuỗi gốc nếu lỗi
+        }
     }
 
-    // Dialog hiển thị thông báo cơ bản
-    private void showSimpleDialog(String title, String message) {
-        new AlertDialog.Builder(getContext())
-                .setTitle(title)
-                .setMessage(message)
-                .setPositiveButton("Đóng", (dialog, which) -> dialog.dismiss())
-                .show();
+    private void showModernBottomSheet(String title, String message, boolean isWarning) {
+        if (getContext() == null) return;
+
+//        BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(getContext(), R.style.Theme_Design_Light_BottomSheetDialog);
+        BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(getContext(), R.style.CustomBottomSheetDialog);
+
+        View view = LayoutInflater.from(getContext()).inflate(R.layout.layout_bottom_sheet_noti, null);
+        bottomSheetDialog.setContentView(view);
+
+        TextView tvTitle = view.findViewById(R.id.bsTitle);
+        TextView tvMessage = view.findViewById(R.id.bsMessage);
+        View btnClose = view.findViewById(R.id.bsBtnClose);
+
+        tvTitle.setText(title);
+        tvMessage.setText(message);
+
+        if (isWarning) {
+            tvTitle.setText("⚠️ " + title);
+            tvTitle.setTextColor(android.graphics.Color.parseColor("#DC2626"));
+        }
+
+        btnClose.setOnClickListener(v -> bottomSheetDialog.dismiss());
+
+        bottomSheetDialog.show();
     }
 
     private void fetchNotifications() {
@@ -203,7 +220,6 @@ public class NotificationsFragment extends Fragment {
             swipeRefresh.setRefreshing(true);
         }
 
-        // In thử token ra Logcat xem có bị lỗi "Bearer Bearer" không
         Log.d("NOTI_DEBUG", "Token đang dùng: " + authToken);
 
         RetrofitClient.getApiService().getNotifications(authToken, 0, 20).enqueue(new Callback<NotificationResponse>() {
@@ -218,20 +234,20 @@ public class NotificationsFragment extends Fragment {
                 if (response.isSuccessful() && response.body() != null) {
                     apiList.clear();
 
-                    // CHỐNG CRASH KHI SERVER TRẢ VỀ NULL ITEMS
                     if (response.body().getItems() != null) {
                         apiList.addAll(response.body().getItems());
+                        Log.d("NOTI_DEBUG", "Thành công! Số lượng thông báo tải về: " + apiList.size());
+                    } else {
+                        Log.d("NOTI_DEBUG", "Dữ liệu items từ server trả về bị null!");
                     }
 
                     adapter.notifyDataSetChanged();
 
-                    // Nếu danh sách trống, có thể log ra để biết
                     if(apiList.isEmpty()){
                         Log.d("NOTI_DEBUG", "Danh sách thông báo trống!");
                     }
 
                 } else {
-                    // In thêm errorBody để biết server mắng gì (ví dụ: Token hết hạn, sai định dạng...)
                     try {
                         String errorBody = response.errorBody() != null ? response.errorBody().string() : "Không rõ lỗi";
                         Log.e("NOTI_DEBUG", "Lỗi lấy data Code: " + response.code() + " | Chi tiết: " + errorBody);
@@ -250,7 +266,6 @@ public class NotificationsFragment extends Fragment {
                     swipeRefresh.setRefreshing(false);
                 }
 
-                // Nếu nhảy vào đây, 90% là do Model Java không khớp với JSON của Server (Lỗi Parse GSON)
                 Log.e("NOTI_DEBUG", "Lỗi mạng hoặc lỗi Model JSON: " + t.getMessage());
                 Toast.makeText(getContext(), "Không thể kết nối", Toast.LENGTH_SHORT).show();
             }
@@ -258,7 +273,6 @@ public class NotificationsFragment extends Fragment {
     }
 
     private void setupListeners() {
-        // Nút Back
         btnBack.setOnClickListener(v -> {
             if (getParentFragmentManager().getBackStackEntryCount() > 0) {
                 getParentFragmentManager().popBackStack();
@@ -269,7 +283,6 @@ public class NotificationsFragment extends Fragment {
             }
         });
 
-        // Nút đánh dấu đã đọc tất cả
         View.OnClickListener markReadListener = v -> {
             RetrofitClient.getApiService().markAllAsRead(authToken).enqueue(new Callback<MarkAllReadResponse>() {
                 @Override
@@ -292,7 +305,6 @@ public class NotificationsFragment extends Fragment {
         btnMarkAllReadTop.setOnClickListener(markReadListener);
         btnMarkAllReadText.setOnClickListener(markReadListener);
 
-        // BẠN ĐÃ QUÊN ĐOẠN NÀY LẦN TRƯỚC: Bật sự kiện vuốt để làm mới
         if(swipeRefresh != null){
             swipeRefresh.setOnRefreshListener(() -> {
                 fetchNotifications();

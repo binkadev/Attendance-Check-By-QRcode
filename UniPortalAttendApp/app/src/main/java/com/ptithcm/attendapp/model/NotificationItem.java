@@ -14,7 +14,8 @@ public class NotificationItem {
     @SerializedName("sessionId") private String sessionId;
     @SerializedName("sourceType") private String sourceType;
     @SerializedName("sourceRefId") private String sourceRefId;
-    @SerializedName("payload") private String payload;
+//    @SerializedName("payload") private String payload;
+    @SerializedName("payload") private Object payload;
 
     // Các Getters cũ...
     public String getId() { return id; }
@@ -29,7 +30,8 @@ public class NotificationItem {
     public String getSessionId() { return sessionId; }
     public String getSourceType() { return sourceType; }
     public String getSourceRefId() { return sourceRefId; }
-    public String getPayload() { return payload; }
+//    public String getPayload() { return payload; }
+    public Object getPayload() { return payload; }
 
     public void setRead(boolean read) { isRead = read; }
 }

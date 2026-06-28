@@ -71,13 +71,15 @@
 
                 <TextView
                     android:id="@+id/tvBody"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Nội dung chi tiết của thông báo..."
                     android:textColor="#6B7280"
                     android:textSize="12sp"
                     android:layout_marginTop="4dp"
-                    android:lineSpacingExtra="2dp"/>
+                    android:lineSpacingExtra="2dp"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

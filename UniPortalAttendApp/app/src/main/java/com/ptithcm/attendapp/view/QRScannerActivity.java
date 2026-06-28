@@ -4,9 +4,11 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
-import android.media.Image;
 import android.media.ToneGenerator;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -33,25 +35,24 @@ import com.google.mlkit.vision.barcode.BarcodeScanning;
 import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.common.InputImage;
 import com.ptithcm.attendapp.R;
+import com.ptithcm.attendapp.api.RetrofitClient;
+import com.ptithcm.attendapp.model.CheckInQrResponse;
+import com.ptithcm.attendapp.model.JoinGroupRequest;
+import com.ptithcm.attendapp.model.JoinGroupResponse;
+import com.ptithcm.attendapp.model.QrCheckInRequest;
+
+import com.google.android.material.card.MaterialCardView;
+
+import android.content.Context;
+import android.content.SharedPreferences;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import android.content.Context;
-import android.content.SharedPreferences;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
-import com.ptithcm.attendapp.api.RetrofitClient;
-import com.ptithcm.attendapp.model.CheckInQrResponse;
-import com.ptithcm.attendapp.model.JoinGroupRequest;
-import com.ptithcm.attendapp.model.JoinGroupResponse;
-
-import com.google.android.material.card.MaterialCardView;
-import com.ptithcm.attendapp.model.QrCheckInRequest;
-
-import android.provider.Settings;
 
 public class QRScannerActivity extends AppCompatActivity {
 
@@ -246,7 +247,7 @@ public class QRScannerActivity extends AppCompatActivity {
             return;
         }
 
-        Image mediaImage = imageProxy.getImage();
+        android.media.Image mediaImage = imageProxy.getImage();
         if (mediaImage != null) {
             InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
 
@@ -268,6 +269,13 @@ public class QRScannerActivity extends AppCompatActivity {
                                 ToneGenerator toneGen1 = new ToneGenerator(AudioManager.STREAM_MUSIC, 100);
                                 toneGen1.startTone(ToneGenerator.TONE_PROP_BEEP, 150);
 
+                                // GIẢI PHÓNG TÀI NGUYÊN SAU KHI TIẾNG BÍP KẾT THÚC ĐỂ TRÁNH TRÀN BỘ NHỚ
+                                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                    if (toneGen1 != null) {
+                                        toneGen1.release();
+                                    }
+                                }, 150);
+
                                 // 2. DỪNG CAMERAX ĐỂ KHÔNG QUÉT LIÊN TỤC 1 MÃ
                                 try {
                                     ProcessCameraProvider.getInstance(QRScannerActivity.this).get().unbindAll();
@@ -281,37 +289,25 @@ public class QRScannerActivity extends AppCompatActivity {
                                 if (rawValue.startsWith("JOIN:")) {
                                     String joinCode = rawValue.replace("JOIN:", "").trim();
 
-                                    // TODO: Xử lý gọi API Xin tham gia lớp
                                     Toast.makeText(this, "Đang xử lý mã: " + joinCode, Toast.LENGTH_SHORT).show();
-                                    // call API
                                     callJoinGroupApi(joinCode);
                                 } else if (rawValue.startsWith("ATTEND:")) {
 
-                                    // 1. In ra toàn bộ chuỗi QR gốc mà Camera đọc được
                                     Log.e("CHECKIN_DEBUG", "=== MÃ QR GỐC TỪ CAMERA ===");
                                     Log.e("CHECKIN_DEBUG", "RAW_VALUE: [" + rawValue + "]");
 
-                                    // 2. Bỏ chữ "ATTEND:" và dọn sạch khoảng trắng/xuống dòng 2 đầu
                                     String payload = rawValue.substring(7).trim();
-
-                                    // Cắt tại vị trí dấu hai chấm (:) đầu tiên
                                     int firstColonIndex = payload.indexOf(':');
 
                                     if (firstColonIndex != -1) {
                                         String sessionId = payload.substring(0, firstColonIndex).trim();
-
-                                        // TOÀN BỘ phần đuôi phía sau dấu hai chấm
                                         String qrTokenId = payload.substring(firstColonIndex + 1).trim();
-
-                                        // Chuyển dấu hai chấm thành dấu chấm (nếu team Web lỡ dùng sai)
                                         qrTokenId = qrTokenId.replace(":", ".");
 
-                                        // 3. In ra kết quả sau khi cắt
                                         Log.e("CHECKIN_DEBUG", "=== KẾT QUẢ CẮT CHUỖI ===");
                                         Log.e("CHECKIN_DEBUG", "Session ID: [" + sessionId + "]");
                                         Log.e("CHECKIN_DEBUG", "Token gửi đi: [" + qrTokenId + "]");
 
-                                        // BẮT ĐẦU GỌI API NHƯ CŨ
                                         SharedPreferences prefs = getSharedPreferences("UniPortalPrefs", Context.MODE_PRIVATE);
                                         String tokenCuaSinhVien = prefs.getString("ACCESS_TOKEN", "");
 
@@ -320,17 +316,10 @@ public class QRScannerActivity extends AppCompatActivity {
                                             return;
                                         }
 
-//                                        String myAuthToken = "Bearer " + tokenCuaSinhVien;
-//                                        QrCheckInRequest requestBody = new QrCheckInRequest(qrTokenId);
-
                                         String myAuthToken = "Bearer " + tokenCuaSinhVien;
-
-// 1. Lấy mã định danh thiết bị (Device ID)
                                         String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-// 2. Truyền cả qrTokenId và deviceId vào Request
                                         QrCheckInRequest requestBody = new QrCheckInRequest(qrTokenId, deviceId);
-
 
                                         // GỌI API ĐIỂM DANH
                                         RetrofitClient.getApiService().checkinWithQr(myAuthToken, sessionId, requestBody)
@@ -338,12 +327,27 @@ public class QRScannerActivity extends AppCompatActivity {
                                                     @Override
                                                     public void onResponse(retrofit2.Call<CheckInQrResponse> call, retrofit2.Response<CheckInQrResponse> response) {
                                                         int errorCode = response.code();
-                                                        String errorDetail = "Không có chi tiết"; // Rút biến này ra ngoài để dùng chung
 
                                                         // ========================================================
-                                                        // 1. ĐỌC VÀ IN LOGCAT CHO MỌI TRƯỜNG HỢP LỖI (Bao gồm cả 409)
+                                                        // 1. TRƯỜNG HỢP ĐIỂM DANH THÀNH CÔNG (HTTP 200)
                                                         // ========================================================
-                                                        if (!response.isSuccessful()) {
+                                                        if (response.isSuccessful() && response.body() != null) {
+                                                            Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 200: ĐIỂM DANH THÀNH CÔNG!");
+                                                            Toast.makeText(QRScannerActivity.this, "Điểm danh thành công!", Toast.LENGTH_LONG).show();
+
+                                                            Intent resultIntent = new Intent();
+                                                            resultIntent.putExtra("SCAN_SUCCESS", true);
+                                                            resultIntent.putExtra("QR_TYPE", "ATTEND");
+                                                            resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
+                                                            setResult(RESULT_OK, resultIntent);
+                                                            finish();
+                                                        }
+
+                                                        // ========================================================
+                                                        // 2. TRƯỜNG HỢP CÓ LỖI TỪ SERVER TRẢ VỀ (Bao gồm HTTP 409)
+                                                        // ========================================================
+                                                        else {
+                                                            String errorDetail = "Không có chi tiết";
                                                             try {
                                                                 if (response.errorBody() != null) {
                                                                     errorDetail = response.errorBody().string();
@@ -352,86 +356,41 @@ public class QRScannerActivity extends AppCompatActivity {
                                                                 errorDetail = "Lỗi đọc ErrorBody: " + e.getMessage();
                                                             }
 
-                                                            // In ra Logcat (Mã 409 cũng sẽ in cục JSON ra đây)
                                                             Log.e("CHECKIN_DEBUG", "===========================================");
                                                             Log.e("CHECKIN_DEBUG", "THÔNG BÁO TỪ SERVER (HTTP " + errorCode + "):");
                                                             Log.e("CHECKIN_DEBUG", "Chi tiết (JSON): " + errorDetail);
                                                             Log.e("CHECKIN_DEBUG", "===========================================");
-                                                        }
 
-                                                        // ========================================================
-                                                        // 2. XỬ LÝ LOGIC UI DỰA TRÊN HTTP CODE
-                                                        // ========================================================
-//                                                        if (response.isSuccessful() || errorCode == 409) {
-//
-//                                                            if (errorCode == 409) {
-//                                                                // Tại đây bạn có thể log thêm 1 lần nữa hoặc bóc tách errorDetail để show Toast nếu muốn
-//                                                                Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 409: ĐÃ ĐIỂM DANH TỪ TRƯỚC!");
-//                                                                Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
-//                                                            } else {
-//                                                                Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 200: ĐIỂM DANH THÀNH CÔNG!");
-//                                                                Toast.makeText(QRScannerActivity.this, "Điểm danh thành công!", Toast.LENGTH_LONG).show();
-//                                                            }
-//
-//                                                            // Gói dữ liệu truyền về và đóng Scanner
-//                                                            Intent resultIntent = new Intent();
-//                                                            resultIntent.putExtra("SCAN_SUCCESS", true);
-//                                                            resultIntent.putExtra("QR_TYPE", "ATTEND");
-//                                                            resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
-//
-//                                                            setResult(RESULT_OK, resultIntent);
-//                                                            finish();
-//                                                        }
-
-                                                        // ========================================================
-// 2. XỬ LÝ LOGIC UI DỰA TRÊN HTTP CODE
-// ========================================================
-                                                        if (response.isSuccessful() || errorCode == 409) {
-
-                                                            // ----------------------------------------------------------------
-                                                            // THÊM ĐOẠN NÀY ĐỂ IN CHI TIẾT KẾT QUẢ RESPONSE RA LOGCAT
-                                                            // ----------------------------------------------------------------
-                                                            Log.i("CHECKIN_DEBUG", "===========================================");
-                                                            Log.i("CHECKIN_DEBUG", "API ĐIỂM DANH TRẢ VỀ KẾT QUẢ (HTTP " + errorCode + "):");
-
-                                                            if (response.body() != null) {
-                                                                // Cách 1: In trực tiếp (yêu cầu class CheckInQrResponse phải override hàm toString())
-                                                                Log.i("CHECKIN_DEBUG", "Dữ liệu (Object): " + response.body().toString());
-
-                                                                // Cách 2 (Khuyên dùng): Dùng Gson để parse object thành chuỗi JSON đọc cho dễ
-                                                                // String jsonResponse = new com.google.gson.Gson().toJson(response.body());
-                                                                // Log.i("CHECKIN_DEBUG", "Dữ liệu (JSON): " + jsonResponse);
-                                                            } else {
-                                                                Log.i("CHECKIN_DEBUG", "Body trả về bị rỗng (null)!");
-                                                            }
-                                                            Log.i("CHECKIN_DEBUG", "===========================================");
-                                                            // ----------------------------------------------------------------
-
+                                                            // PHÂN LOẠI LỖI 409
                                                             if (errorCode == 409) {
-                                                                Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 409: ĐÃ ĐIỂM DANH TỪ TRƯỚC!");
-                                                                Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
-                                                            } else {
-                                                                Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 200: ĐIỂM DANH THÀNH CÔNG!");
-                                                                Toast.makeText(QRScannerActivity.this, "Điểm danh thành công!", Toast.LENGTH_LONG).show();
+                                                                if (errorDetail.contains("QR_TOKEN_EXPIRED")) {
+                                                                    // TRƯỜNG HỢP 1: Mã QR hết hạn
+                                                                    Log.w("CHECKIN_DEBUG", "=> XỬ LÝ 409: MÃ QR HẾT HẠN");
+                                                                    showErrorAndRestartCamera("Mã QR đã hết hạn! Vui lòng quét mã mới trên bảng.");
+
+                                                                } else if (errorDetail.contains("SHARED_DEVICE_MULTI_ACCOUNT")) {
+                                                                    // TRƯỜNG HỢP 2: Gian lận dùng chung thiết bị (CẬP NHẬT MỚI)
+                                                                    Log.w("CHECKIN_DEBUG", "=> XỬ LÝ 409: GIAN LẬN THIẾT BỊ");
+                                                                    // Báo lỗi gắt và yêu cầu mở lại camera (không đóng Activity)
+                                                                    showErrorAndRestartCamera("Phát hiện gian lận: Thiết bị này đã được dùng để điểm danh cho tài khoản khác trong ca học này!");
+
+                                                                } else {
+                                                                    // TRƯỜNG HỢP 3: Đã điểm danh thành công trước đó
+                                                                    Log.i("CHECKIN_DEBUG", "=> XỬ LÝ 409: ĐÃ ĐIỂM DANH TỪ TRƯỚC!");
+                                                                    Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
+
+                                                                    Intent resultIntent = new Intent();
+                                                                    resultIntent.putExtra("SCAN_SUCCESS", true);
+                                                                    resultIntent.putExtra("QR_TYPE", "ATTEND");
+                                                                    resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
+                                                                    setResult(RESULT_OK, resultIntent);
+                                                                    finish();
+                                                                }
                                                             }
 
-                                                            // Gói dữ liệu truyền về và đóng Scanner
-                                                            Intent resultIntent = new Intent();
-                                                            resultIntent.putExtra("SCAN_SUCCESS", true);
-                                                            resultIntent.putExtra("QR_TYPE", "ATTEND");
-                                                            resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
-
-                                                            setResult(RESULT_OK, resultIntent);
-                                                            finish();
-                                                        }
-
-                                                        else {
-                                                            // ========================================================
-                                                            // 3. XỬ LÝ CÁC LỖI THỰC SỰ (BẮT QUÉT LẠI HOẶC ĐĂNG NHẬP LẠI)
-                                                            // ========================================================
-                                                            if (errorCode == 401) {
+                                                            // CÁC MÃ LỖI HTTP KHÁC
+                                                            else if (errorCode == 401) {
                                                                 Toast.makeText(QRScannerActivity.this, "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại!", Toast.LENGTH_LONG).show();
-
                                                                 SharedPreferences prefs = getSharedPreferences("UniPortalPrefs", Context.MODE_PRIVATE);
                                                                 prefs.edit().clear().apply();
 
@@ -439,7 +398,6 @@ public class QRScannerActivity extends AppCompatActivity {
                                                                 loginIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                                                                 startActivity(loginIntent);
                                                                 finish();
-
                                                             } else if (errorCode == 410) {
                                                                 showErrorAndRestartCamera("Mã QR đã hết hạn! Vui lòng quét mã mới trên bảng.");
                                                             } else if (errorCode == 403) {
@@ -459,161 +417,6 @@ public class QRScannerActivity extends AppCompatActivity {
                                                     }
                                                 });
 
-//                                        // GỌI API ĐIỂM DANH
-//                                        RetrofitClient.getApiService().checkinWithQr(myAuthToken, sessionId, requestBody)
-//                                                .enqueue(new retrofit2.Callback<CheckInQrResponse>() {
-//                                                    @Override
-//                                                    public void onResponse(retrofit2.Call<CheckInQrResponse> call, retrofit2.Response<CheckInQrResponse> response) {
-//                                                        int errorCode = response.code();
-//
-//                                                        // ========================================================
-//                                                        // 1. ĐỌC VÀ IN LOGCAT CHO MỌI TRƯỜNG HỢP CÓ LỖI (KHÔNG PHẢI 200)
-//                                                        // ========================================================
-//                                                        if (!response.isSuccessful()) {
-//                                                            String errorDetail = "Không có chi tiết";
-//                                                            try {
-//                                                                if (response.errorBody() != null) {
-//                                                                    errorDetail = response.errorBody().string();
-//                                                                }
-//                                                            } catch (Exception e) {
-//                                                                errorDetail = "Lỗi đọc ErrorBody: " + e.getMessage();
-//                                                            }
-//
-//                                                            // In ra Logcat với Tag nổi bật để dễ tìm
-//                                                            Log.e("CHECKIN_DEBUG", "===========================================");
-//                                                            Log.e("CHECKIN_DEBUG", "THÔNG BÁO TỪ SERVER:");
-//                                                            Log.e("CHECKIN_DEBUG", "HTTP Code: " + errorCode);
-//                                                            Log.e("CHECKIN_DEBUG", "Chi tiết (JSON): " + errorDetail);
-//                                                            Log.e("CHECKIN_DEBUG", "===========================================");
-//                                                        }
-//
-//                                                        // ========================================================
-//                                                        // 2. XỬ LÝ LOGIC UI DỰA TRÊN HTTP CODE
-//                                                        // ========================================================
-//                                                        if (response.isSuccessful() || errorCode == 409) {
-//
-//                                                            if (errorCode == 409) {
-//                                                                Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
-//                                                                Log.i("CHECKIN_DEBUG", "=> ĐÃ ĐIỂM DANH TỪ TRƯỚC (409)!");
-//                                                            } else {
-//                                                                Toast.makeText(QRScannerActivity.this, "Điểm danh thành công!", Toast.LENGTH_LONG).show();
-//                                                                Log.i("CHECKIN_DEBUG", "=> ĐIỂM DANH THÀNH CÔNG (200)!");
-//                                                            }
-//
-//                                                            // Gói dữ liệu truyền về
-//                                                            Intent resultIntent = new Intent();
-//                                                            resultIntent.putExtra("SCAN_SUCCESS", true);
-//                                                            resultIntent.putExtra("QR_TYPE", "ATTEND");
-//                                                            resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
-//
-//                                                            setResult(RESULT_OK, resultIntent);
-//                                                            finish();
-//                                                        }
-//                                                        else {
-//                                                            // Phân loại các lỗi cần quét lại hoặc đăng nhập lại
-//                                                            if (errorCode == 401) {
-//                                                                Toast.makeText(QRScannerActivity.this, "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại!", Toast.LENGTH_LONG).show();
-//
-//                                                                // Xóa token cũ và về trang Login
-//                                                                SharedPreferences prefs = getSharedPreferences("UniPortalPrefs", Context.MODE_PRIVATE);
-//                                                                prefs.edit().clear().apply();
-//
-//                                                                Intent loginIntent = new Intent(QRScannerActivity.this, LoginActivity.class);
-//                                                                loginIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-//                                                                startActivity(loginIntent);
-//                                                                finish();
-//
-//                                                            } else if (errorCode == 410) {
-//                                                                showErrorAndRestartCamera("Mã QR đã hết hạn! Vui lòng quét mã mới trên bảng.");
-//                                                            } else if (errorCode == 403) {
-//                                                                showErrorAndRestartCamera("Bạn không thuộc lớp này hoặc chưa được duyệt!");
-//                                                            } else if (errorCode == 400) {
-//                                                                showErrorAndRestartCamera("Vị trí không hợp lệ hoặc thiết bị không khớp!");
-//                                                            } else {
-//                                                                showErrorAndRestartCamera("Lỗi " + errorCode + ": Quét lại hoặc báo Giảng viên.");
-//                                                            }
-//                                                        }
-//                                                    }
-//
-//                                                    @Override
-//                                                    public void onFailure(retrofit2.Call<CheckInQrResponse> call, Throwable t) {
-//                                                        Log.e("CHECKIN_DEBUG", "CRASH API/LỖI MẠNG: " + t.getMessage());
-//                                                        showErrorAndRestartCamera("Lỗi kết nối mạng: " + t.getMessage());
-//                                                    }
-//                                                });
-
-                                        // GỌI API ĐIỂM DANH (Sử dụng RetrofitClient để lấy ApiService)
-//                                        RetrofitClient.getApiService().checkinWithQr(myAuthToken, sessionId, requestBody)
-//                                                .enqueue(new retrofit2.Callback<CheckInQrResponse>() {
-//                                                    @Override
-//                                                    public void onResponse(retrofit2.Call<CheckInQrResponse> call, retrofit2.Response<CheckInQrResponse> response) {
-//                                                        int errorCode = response.code();
-//
-//                                                        if (response.isSuccessful() || errorCode == 409) {
-//
-//                                                            if (errorCode == 409) {
-//                                                                Toast.makeText(QRScannerActivity.this, "Bạn đã điểm danh thành công trước đó rồi!", Toast.LENGTH_LONG).show();
-//                                                                Log.i("CHECKIN_DEBUG", "=> ĐÃ ĐIỂM DANH TỪ TRƯỚC (409)!");
-//                                                            } else {
-//                                                                Toast.makeText(QRScannerActivity.this, "Điểm danh thành công!", Toast.LENGTH_LONG).show();
-//                                                                Log.i("CHECKIN_DEBUG", "=> ĐIỂM DANH THÀNH CÔNG (200)!");
-//                                                            }
-//
-//                                                            // Gói dữ liệu truyền về
-//                                                            Intent resultIntent = new Intent();
-//                                                            resultIntent.putExtra("SCAN_SUCCESS", true);
-//                                                            resultIntent.putExtra("QR_TYPE", "ATTEND");
-//                                                            resultIntent.putExtra("SCANNED_SESSION_ID", sessionId);
-//
-////                                                            // Dữ liệu mock (Thực tế nên lấy từ response API hoặc State trước đó)
-////                                                            resultIntent.putExtra("CLASS_NAME", "Cơ sở dữ liệu nâng cao");
-////                                                            resultIntent.putExtra("CLASS_CODE", "CS204.01");
-////                                                            resultIntent.putExtra("ROOM", "Phòng 3D2 - Cơ sở Quận 9");
-//
-//                                                            setResult(RESULT_OK, resultIntent);
-//                                                            Log.i("CHECKIN_DEBUG", "=> ĐIỂM DANH THÀNH CÔNG!");
-//                                                            finish();
-//                                                        }
-//                                                        else {
-//                                                            // ========================================================
-//                                                            // ĐOẠN CODE CHẨN ĐOÁN LỖI (LOGCAT)
-//                                                            // ========================================================
-//                                                            String errorDetail = "Không có chi tiết";
-//
-//                                                            try {
-//                                                                if (response.errorBody() != null) {
-//                                                                    errorDetail = response.errorBody().string();
-//                                                                }
-//                                                            } catch (Exception e) {
-//                                                                errorDetail = "Lỗi đọc ErrorBody: " + e.getMessage();
-//                                                            }
-//
-//                                                            // In ra Logcat với Tag nổi bật để dễ tìm
-//                                                            Log.e("CHECKIN_DEBUG", "===========================================");
-//                                                            Log.e("CHECKIN_DEBUG", "THÔNG BÁO LỖI TỪ SERVER:");
-//                                                            Log.e("CHECKIN_DEBUG", "HTTP Code: " + errorCode);
-//                                                            Log.e("CHECKIN_DEBUG", "Chi tiết lỗi (JSON): " + errorDetail);
-//                                                            Log.e("CHECKIN_DEBUG", "===========================================");
-//
-//                                                            // Phan loai loi
-//                                                            if (errorCode == 410) {
-//                                                                showErrorAndRestartCamera("Mã QR đã hết hạn! Vui lòng quét mã mới trên bảng.");
-//                                                            } else if (errorCode == 403) {
-//                                                                showErrorAndRestartCamera("Bạn không thuộc lớp này hoặc chưa được duyệt!");
-//                                                            } else if (errorCode == 400) {
-//                                                                showErrorAndRestartCamera("Vị trí không hợp lệ hoặc thiết bị không khớp!");
-//                                                            } else {
-//                                                                showErrorAndRestartCamera("Lỗi " + errorCode + ": Quét lại hoặc báo Giảng viên.");
-//                                                            }
-//                                                        }
-//                                                    }
-//
-//                                                    @Override
-//                                                    public void onFailure(retrofit2.Call<CheckInQrResponse> call, Throwable t) {
-//                                                        Log.e("CHECKIN_DEBUG", "CRASH API/LỖI MẠNG: " + t.getMessage());
-//                                                        showErrorAndRestartCamera("Lỗi kết nối mạng: " + t.getMessage());
-//                                                    }
-//                                                });
                                     } else {
                                         showErrorAndRestartCamera("Mã điểm danh bị lỗi định dạng!");
                                     }
