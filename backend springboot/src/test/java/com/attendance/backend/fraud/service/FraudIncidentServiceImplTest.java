@@ -32,6 +32,9 @@ class FraudIncidentServiceImplTest {
     @Mock
     private FraudGroupAccessService fraudGroupAccessService;
 
+    @Mock
+    private FraudIncidentNotificationPublisher notificationPublisher;
+
     @InjectMocks
     private FraudIncidentServiceImpl fraudIncidentService;
 

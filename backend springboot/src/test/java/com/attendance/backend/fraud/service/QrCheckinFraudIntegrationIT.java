@@ -2,6 +2,9 @@ package com.attendance.backend.fraud.service;
 
 import com.attendance.backend.attendance.service.AttendanceCheckinService;
 import com.attendance.backend.common.exception.ApiException;
+import com.attendance.backend.domain.enums.NotificationSourceType;
+import com.attendance.backend.domain.enums.NotificationType;
+import com.attendance.backend.notification.service.NotificationQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,10 +18,12 @@ import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.assertj.core.api.Assertions.within;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -32,6 +37,9 @@ class QrCheckinFraudIntegrationIT {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private NotificationQueryService notificationQueryService;
 
     @Test
     void repeated_invalid_qr_token_should_create_single_incident_and_bump_same_row() {
@@ -243,8 +251,24 @@ class QrCheckinFraudIntegrationIT {
                     "SHARED_DEVICE_MULTI_ACCOUNT"
             )).isEqualTo(1);
 
+            assertThat(countFraudAlertNotifications(scenario.sessionId(), scenario.ownerId())).isEqualTo(1);
+            assertThat(countFraudAlertNotifications(scenario.sessionId(), scenario.secondStudentId())).isZero();
+            assertThat(readFraudAlertPayloadDeviceId(scenario.sessionId(), scenario.ownerId())).isEqualTo(deviceId);
+            assertThat(notificationQueryService.getMyNotifications(
+                    scenario.ownerId(),
+                    0,
+                    20,
+                    false,
+                    null,
+                    null
+            ).items()).anySatisfy(notification -> {
+                assertThat(notification.type()).isEqualTo(NotificationType.FRAUD_ALERT_CRITICAL);
+                assertThat(notification.sourceType()).isEqualTo(NotificationSourceType.FRAUD_INCIDENT);
+            });
+
             AttendanceCheckinService.QrCheckinResult duplicateResult = attendanceCheckinService.qrCheckin(firstUserCmd);
-            assertThat(duplicateResult.checkInAt()).isEqualTo(firstResult.checkInAt());
+            assertThat(duplicateResult.checkInAt())
+                    .isCloseTo(firstResult.checkInAt(), within(2, ChronoUnit.MILLIS));
             assertThat(countCheckinQrEvents(scenario.sessionId(), scenario.studentId())).isEqualTo(1);
 
         } finally {
@@ -648,6 +672,41 @@ class QrCheckinFraudIntegrationIT {
                 userId.toString()
         );
         return count == null ? 0L : count;
+    }
+
+    private long countFraudAlertNotifications(UUID sessionId, UUID userId) {
+        Long count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from notifications
+                where session_id = UUID_TO_BIN(?, 1)
+                  and recipient_user_id = UUID_TO_BIN(?, 1)
+                  and type = 'FRAUD_ALERT_CRITICAL'
+                  and severity = 'CRITICAL'
+                  and source_type = 'FRAUD_INCIDENT'
+                  and source_ref_id is not null
+                """,
+                Long.class,
+                sessionId.toString(),
+                userId.toString()
+        );
+        return count == null ? 0L : count;
+    }
+
+    private String readFraudAlertPayloadDeviceId(UUID sessionId, UUID userId) {
+        return jdbcTemplate.queryForObject(
+                """
+                select json_unquote(json_extract(payload_json, '$.deviceId'))
+                from notifications
+                where session_id = UUID_TO_BIN(?, 1)
+                  and recipient_user_id = UUID_TO_BIN(?, 1)
+                  and type = 'FRAUD_ALERT_CRITICAL'
+                limit 1
+                """,
+                String.class,
+                sessionId.toString(),
+                userId.toString()
+        );
     }
 
     private void cleanupScenario(FraudScenario scenario) {

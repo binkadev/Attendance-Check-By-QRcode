@@ -340,6 +340,7 @@ public class FraudDetectionServiceImpl implements FraudDetectionService {
                         "threshold", SHARED_DEVICE_THRESHOLD,
                         "ruleWindowSeconds", SHARED_DEVICE_WINDOW_SECONDS,
                         "distinctUserCount", aggregate.distinctUserCount(),
+                        "deviceId", context.deviceId(),
                         "sampleDeviceIds", List.of(context.deviceId()),
                         "notes", List.of("Threshold starts at 2 because same physical device across multiple accounts must be reviewed")
                 )
