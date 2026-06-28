@@ -41,26 +41,36 @@ public class NotificationAdapter extends RecyclerView.Adapter<NotificationAdapte
         holder.tvTitle.setText(item.getTitle());
         holder.tvBody.setText(item.getBody());
 
-        // (Tùy chọn) Format lại chữ createdAt cho đẹp, ví dụ: "2026-04-30" -> "Hôm nay"
-        holder.tvTime.setText(item.getCreatedAt().substring(0, 10));
+        String createdAt = item.getCreatedAt();
+        if (createdAt != null && createdAt.length() >= 10) {
+            holder.tvTime.setText(createdAt.substring(0, 10));
+        } else {
+            holder.tvTime.setText(createdAt != null ? createdAt : "Không rõ thời gian");
+        }
 
-        // Logic UI cho thông báo Chưa đọc vs Đã đọc
+        // 1. Logic UI cho thông báo Chưa đọc vs Đã đọc (Nên để lên trước)
         if (!item.isRead()) {
             holder.viewUnreadIndicator.setVisibility(View.VISIBLE);
             holder.tvTitle.setTypeface(null, Typeface.BOLD);
-            holder.tvTime.setTextColor(Color.parseColor("#A6192E")); // Đỏ đỏ
+            holder.tvTime.setTextColor(Color.parseColor("#A6192E")); // Đỏ
         } else {
-            holder.viewUnreadIndicator.setVisibility(View.INVISIBLE); // Ẩn vạch đỏ
+            holder.viewUnreadIndicator.setVisibility(View.INVISIBLE);
             holder.tvTitle.setTypeface(null, Typeface.NORMAL);
-            holder.tvTime.setTextColor(Color.parseColor("#9CA3AF")); // Xám xám
+            holder.tvTime.setTextColor(Color.parseColor("#9CA3AF")); // Xám
         }
 
-        // Tùy biến Icon theo Severity (INFO, WARNING...)
-        if ("WARNING".equalsIgnoreCase(item.getSeverity())) {
-            holder.ivIcon.setImageResource(R.drawable.ic_warning); // Nhớ đổi tên icon tương ứng
-            // holder.ivIcon.setColorFilter(Color.parseColor("#EF4444"));
+        // 2. Logic Tùy biến Icon và Màu chữ theo Severity (GỘP CHUNG VÀO ĐÂY)
+        String severity = item.getSeverity();
+        if ("CRITICAL".equalsIgnoreCase(severity) || "ERROR".equalsIgnoreCase(severity)) {
+            holder.ivIcon.setImageResource(R.drawable.ic_error);
+            holder.tvTitle.setTextColor(Color.parseColor("#DC2626"));
+        } else if ("WARNING".equalsIgnoreCase(severity)) {
+            holder.ivIcon.setImageResource(R.drawable.ic_warning);
+            holder.tvTitle.setTextColor(Color.parseColor("#D97706"));
         } else {
+            // Mặc định cho INFO hoặc các loại khác
             holder.ivIcon.setImageResource(R.drawable.ic_announcement);
+            holder.tvTitle.setTextColor(Color.BLACK); // Hoặc màu mặc định của app bạn
         }
 
         // Click vào 1 thông báo
