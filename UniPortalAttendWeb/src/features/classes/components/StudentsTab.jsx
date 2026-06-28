@@ -1071,12 +1071,117 @@ export default function StudentsTab({ classId }) {
     }
   });
 
-  const handleEmailWarning = (student) => {
-    const subject = encodeURIComponent('Cảnh báo điểm danh - Nguy cơ vi phạm quy định');
-    const body = encodeURIComponent(
-      `Kính gửi ${student.name},\n\nBạn đang có nguy cơ bị cấm thi do số buổi vắng mặt vượt quy định (${student.absentCount ?? 0}/${maxAbsentAllowed} buổi vắng).\n\nVui lòng liên hệ giảng viên ngay để được hỗ trợ.\n\nTrân trọng,\nGiảng viên phụ trách`
-    );
-    window.open(`mailto:${student.email}?subject=${subject}&body=${body}`, '_self');
+  const bannedOnlyList = atRiskList.filter(s => 
+      s.policyStatus === 'CRITICAL' ||
+      s.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
+      s.breachReasons?.includes('RATE_BELOW_CRITICAL')
+  );
+  const warningOnlyList = atRiskList.filter(s => !bannedOnlyList.includes(s));
+
+  const handleEmailWarning = async (student) => {
+    const isBanned = student.policyStatus === 'CRITICAL' ||
+                     student.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
+                     student.breachReasons?.includes('RATE_BELOW_CRITICAL');
+                     
+    const loadingToast = toast.loading(`Đang tổng hợp dữ liệu vắng mặt của ${student.name}...`);
+    try {
+      let classCode = 'N/A';
+      let className = 'Lớp học';
+      let lecturerName = 'Giảng viên phụ trách';
+      
+      if (classId && !classId.startsWith('mock-')) {
+         const detail = await classApi.getClassDetail(classId);
+         if (detail) {
+            classCode = detail.code || classId;
+            className = detail.className || detail.name || 'Lớp học';
+            lecturerName = detail.lecturerName || detail.instructorName || 'Giảng viên phụ trách';
+         }
+      }
+
+      // Fetch sessions to find absent dates
+      const absentSessionsList = [];
+      if (classId && !classId.startsWith('mock-')) {
+        const sessions = await classApi.getGroupSessions(classId);
+        if (sessions && sessions.length > 0) {
+          const details = await Promise.all(
+            sessions.map(async (sess) => {
+              try {
+                const events = await classApi.getAttendanceEvents(sess.id, 500);
+                const studentEvent = events.find(e => e.userId === student.rawId);
+                return { session: sess, event: studentEvent || null };
+              } catch (err) {
+                return { session: sess, event: null };
+              }
+            })
+          );
+          
+          details.sort((a, b) => new Date(a.session.startTime) - new Date(b.session.startTime));
+          
+          for (const detail of details) {
+            const { session, event } = detail;
+            const sessionDate = new Date(session.startTime);
+            let isAbsent = false;
+            let reason = '';
+            
+            if (event) {
+              if (event.status === 'ABSENT') {
+                isAbsent = true;
+                reason = event.note || event.reason || '';
+              }
+            } else {
+              const joinedAtDate = student.joinedAt ? new Date(student.joinedAt) : null;
+              if (joinedAtDate && sessionDate < joinedAtDate) {
+                isAbsent = true;
+                reason = 'Chưa tham gia lớp học tại thời điểm này';
+              } else if (session.status === 'CLOSED' || session.endTime < new Date().toISOString()) {
+                 isAbsent = true;
+              }
+            }
+            
+            if (isAbsent) {
+               const dateStr = sessionDate.toLocaleDateString('vi-VN');
+               const startTimeStr = sessionDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+               const endTimeStr = new Date(session.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+               absentSessionsList.push(`- Ngày ${dateStr} (${startTimeStr} - ${endTimeStr}) ${reason ? `[Ghi chú: ${reason}]` : ''}`);
+            }
+          }
+        }
+      }
+
+      let emailTitle = isBanned ? 'Thông báo: Vi phạm quy định điểm danh - CẤM THI' : 'Cảnh báo điểm danh - Nguy cơ vi phạm quy định';
+      const subject = encodeURIComponent(`[${classCode}] ${emailTitle}`);
+      
+      let bodyText = `Kính gửi sinh viên ${student.name},\n\n`;
+      if (isBanned) {
+         bodyText += `Bạn đã vi phạm quy định điểm danh và hiện đang thuộc diện CẤM THI.\n\n`;
+      } else {
+         bodyText += `Bạn đang có nguy cơ vi phạm quy định điểm danh do số buổi vắng mặt vượt mức cho phép.\n\n`;
+      }
+      
+      bodyText += `THÔNG TIN LỚP HỌC:\n`;
+      bodyText += `- Lớp: ${className} (${classCode})\n`;
+      bodyText += `- Giảng viên phụ trách: ${lecturerName}\n\n`;
+      
+      bodyText += `TỔNG KẾT ĐIỂM DANH:\n`;
+      bodyText += `- Số buổi vắng: ${student.absentCount ?? absentSessionsList.length}/${maxAbsentAllowed} buổi\n`;
+      
+      if (absentSessionsList.length > 0) {
+        bodyText += `- Chi tiết các buổi vắng mặt:\n`;
+        bodyText += absentSessionsList.join('\n') + '\n';
+      }
+      
+      bodyText += `\nVui lòng phản hồi email này hoặc liên hệ trực tiếp với giảng viên ngay lập tức để được hỗ trợ.\n\n`;
+      bodyText += `Trân trọng,\n${lecturerName}`;
+      
+      const body = encodeURIComponent(bodyText);
+      
+      toast.dismiss(loadingToast);
+      window.location.href = `mailto:${student.email}?subject=${subject}&body=${body}`;
+      
+    } catch (error) {
+      console.error("Lỗi tạo email cảnh báo:", error);
+      toast.error("Không thể tổng hợp dữ liệu, vui lòng thử lại!", { id: loadingToast });
+    }
   };
 
   return (
@@ -1513,18 +1618,90 @@ export default function StudentsTab({ classId }) {
 
             {/* Nút gửi email hàng loạt */}
             {atRiskList.length > 0 && (
-              <div className="p-3 border-t border-gray-100 bg-gray-50/50">
-                <button
-                  onClick={() => {
-                    const emails = atRiskList.map(s => s.email).filter(Boolean).join(';');
-                    const subject = encodeURIComponent('Cảnh báo điểm danh - Nguy cơ vi phạm quy định');
-                    const body = encodeURIComponent('Kính gửi các bạn sinh viên,\n\nCác bạn đang có nguy cơ vi phạm quy định điểm danh. Vui lòng chú ý và liên hệ giảng viên để được hỗ trợ.\n\nTrân trọng.');
-                    window.location.href = `mailto:${emails}?subject=${subject}&body=${body}`;
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white text-[12px] font-bold rounded-lg transition-all active:scale-[0.98] shadow-sm"
-                >
-                  <Mail size={13} /> Gửi cảnh báo hàng loạt ({atRiskList.length} SV)
-                </button>
+              <div className="p-3 border-t border-gray-100 bg-gray-50/50 flex flex-col gap-2">
+                {bannedOnlyList.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      const toastId = toast.loading('Đang chuẩn bị email thông báo cấm thi...');
+                      try {
+                        let classCode = 'N/A';
+                        let className = 'Lớp học';
+                        let lecturerName = 'Giảng viên phụ trách';
+                        
+                        if (classId && !classId.startsWith('mock-')) {
+                           const detail = await classApi.getClassDetail(classId);
+                           if (detail) {
+                              classCode = detail.code || classId;
+                              className = detail.className || detail.name || 'Lớp học';
+                              lecturerName = detail.lecturerName || detail.instructorName || 'Giảng viên phụ trách';
+                           }
+                        }
+                        
+                        const emails = bannedOnlyList.map(s => s.email).filter(Boolean).join(';');
+                        const subject = encodeURIComponent(`[${classCode}] Thông báo: Vi phạm quy định điểm danh - CẤM THI`);
+                        
+                        let bodyText = `Kính gửi các bạn sinh viên,\n\n`;
+                        bodyText += `Các bạn đã vi phạm quy định điểm danh và hiện đang thuộc diện CẤM THI.\n\n`;
+                        bodyText += `THÔNG TIN LỚP HỌC:\n`;
+                        bodyText += `- Lớp: ${className} (${classCode})\n`;
+                        bodyText += `- Giảng viên phụ trách: ${lecturerName}\n\n`;
+                        bodyText += `Vui lòng kiểm tra lại lịch sử điểm danh chi tiết của mình trên hệ thống và liên hệ giảng viên ngay lập tức để được hỗ trợ.\n\n`;
+                        bodyText += `Trân trọng,\n${lecturerName}`;
+                        
+                        const body = encodeURIComponent(bodyText);
+                        toast.dismiss(toastId);
+                        window.location.href = `mailto:?bcc=${emails}&subject=${subject}&body=${body}`;
+                      } catch (e) {
+                        toast.error("Lỗi khi tạo email!", { id: toastId });
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white text-[12px] font-bold rounded-lg transition-all active:scale-[0.98] shadow-sm"
+                  >
+                    <Mail size={13} /> Thông báo Cấm thi ({bannedOnlyList.length} SV)
+                  </button>
+                )}
+
+                {warningOnlyList.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      const toastId = toast.loading('Đang chuẩn bị email cảnh báo nguy cơ...');
+                      try {
+                        let classCode = 'N/A';
+                        let className = 'Lớp học';
+                        let lecturerName = 'Giảng viên phụ trách';
+                        
+                        if (classId && !classId.startsWith('mock-')) {
+                           const detail = await classApi.getClassDetail(classId);
+                           if (detail) {
+                              classCode = detail.code || classId;
+                              className = detail.className || detail.name || 'Lớp học';
+                              lecturerName = detail.lecturerName || detail.instructorName || 'Giảng viên phụ trách';
+                           }
+                        }
+                        
+                        const emails = warningOnlyList.map(s => s.email).filter(Boolean).join(';');
+                        const subject = encodeURIComponent(`[${classCode}] Cảnh báo điểm danh - Nguy cơ vi phạm quy định`);
+                        
+                        let bodyText = `Kính gửi các bạn sinh viên,\n\n`;
+                        bodyText += `Các bạn đang có nguy cơ vi phạm quy định điểm danh do số buổi vắng mặt vượt mức cho phép.\n\n`;
+                        bodyText += `THÔNG TIN LỚP HỌC:\n`;
+                        bodyText += `- Lớp: ${className} (${classCode})\n`;
+                        bodyText += `- Giảng viên phụ trách: ${lecturerName}\n\n`;
+                        bodyText += `Vui lòng kiểm tra lại lịch sử điểm danh chi tiết của mình trên hệ thống và liên hệ giảng viên ngay lập tức để được hỗ trợ.\n\n`;
+                        bodyText += `Trân trọng,\n${lecturerName}`;
+                        
+                        const body = encodeURIComponent(bodyText);
+                        toast.dismiss(toastId);
+                        window.location.href = `mailto:?bcc=${emails}&subject=${subject}&body=${body}`;
+                      } catch (e) {
+                        toast.error("Lỗi khi tạo email!", { id: toastId });
+                      }
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-600 hover:to-orange-500 text-white text-[12px] font-bold rounded-lg transition-all active:scale-[0.98] shadow-sm"
+                  >
+                    <Mail size={13} /> Cảnh báo nguy cơ ({warningOnlyList.length} SV)
+                  </button>
+                )}
               </div>
             )}
           </div>
