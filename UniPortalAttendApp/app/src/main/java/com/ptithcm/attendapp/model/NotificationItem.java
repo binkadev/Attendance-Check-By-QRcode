@@ -4,13 +4,19 @@ import com.google.gson.annotations.SerializedName;
 public class NotificationItem {
     @SerializedName("id") private String id;
     @SerializedName("title") private String title;
-    @SerializedName("body") private String body; // Swagger ghi là "body", không phải "message"
+    @SerializedName("body") private String body;
     @SerializedName("type") private String type;
-    @SerializedName("severity") private String severity; // Dùng để quyết định màu icon (INFO, WARNING...)
+    @SerializedName("severity") private String severity;
     @SerializedName("isRead") private boolean isRead;
     @SerializedName("createdAt") private String createdAt;
 
-    // Getters
+    // THÊM CÁC TRƯỜNG NÀY ĐỂ XỬ LÝ CLICK
+    @SerializedName("sessionId") private String sessionId;
+    @SerializedName("sourceType") private String sourceType;
+    @SerializedName("sourceRefId") private String sourceRefId;
+    @SerializedName("payload") private String payload;
+
+    // Các Getters cũ...
     public String getId() { return id; }
     public String getTitle() { return title; }
     public String getBody() { return body; }
@@ -19,6 +25,11 @@ public class NotificationItem {
     public boolean isRead() { return isRead; }
     public String getCreatedAt() { return createdAt; }
 
-    // Setter để update UI cục bộ
+    // Getters mới
+    public String getSessionId() { return sessionId; }
+    public String getSourceType() { return sourceType; }
+    public String getSourceRefId() { return sourceRefId; }
+    public String getPayload() { return payload; }
+
     public void setRead(boolean read) { isRead = read; }
 }

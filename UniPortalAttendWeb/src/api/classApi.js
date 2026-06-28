@@ -706,13 +706,20 @@ export const classApi = {
   },
 
   /**
-   * Lấy tỷ lệ điểm danh của danh sách sinh viên
+   * Lấy danh sách sinh viên kèm thống kê điểm danh và trạng thái theo chính sách
+   * @param {string} groupId - UUID của lớp học
+   * @param {Object} params - { q, page, size, sort }
    */
-  getStudentsAttendancePolicy: async (groupId) => {
+  getStudentsAttendancePolicy: async (groupId, params = {}) => {
     try {
-      const response = await fetch(`${BASE_URL_GROUPS}/${groupId}/attendance-policy/students`, {
-        headers: getHeaders()
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          query.append(key, value);
+        }
       });
+      const url = `${BASE_URL_GROUPS}/${groupId}/attendance-policy/students${query.toString() ? `?${query.toString()}` : ''}`;
+      const response = await fetch(url, { headers: getHeaders() });
       return handleResponse(response);
     } catch (error) {
       console.error("Get students attendance policy error:", error);
