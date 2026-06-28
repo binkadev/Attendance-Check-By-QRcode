@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Download, Mail, ChevronLeft, ChevronRight, ShieldAlert, 
   Smartphone, Crosshair, Loader2, Trash2, Upload, AlertTriangle,
-  FileText, CheckCircle2, XCircle, AlertCircle, Info, Sparkles
+  FileText, CheckCircle2, XCircle, AlertCircle, Info, Sparkles,
+  Ban, Bell, Users, UserX, BarChart3, TrendingDown, Send, RefreshCw, Eye, CalendarClock
 } from 'lucide-react';
 import { classApi } from '../../../api/classApi';
 import toast from 'react-hot-toast';
@@ -70,6 +71,55 @@ export default function StudentsTab({ classId }) {
 
   // --- STATE CHÍNH SÁCH ĐIỂM DANH ---
   const [attendancePolicy, setAttendancePolicy] = useState(null);
+
+  // --- STATE TỔNG SỐ BUỔI HỌC CỦA LỚP ---
+  const [totalClassSessions, setTotalClassSessions] = useState(null);
+
+  // --- STATE SỐ BUỔI HỌC KẾ HOẠCH (thiết lập lúc tạo lớp) ---
+  const [plannedSessions, setPlannedSessions] = useState(null);
+
+  // --- STATE MODAL CHI TIẾT SINH VIÊN ---
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedStudentForDetail, setSelectedStudentForDetail] = useState(null);
+  const [studentDetailsLoading, setStudentDetailsLoading] = useState(false);
+  const [studentAttendanceDetails, setStudentAttendanceDetails] = useState([]);
+
+  const handleViewDetail = async (student) => {
+    setSelectedStudentForDetail(student);
+    setIsDetailModalOpen(true);
+    setStudentDetailsLoading(true);
+    try {
+      const sessions = await classApi.getGroupSessions(classId);
+      if (!sessions || sessions.length === 0) {
+        setStudentAttendanceDetails([]);
+        return;
+      }
+      
+      const details = await Promise.all(
+        sessions.map(async (sess) => {
+          try {
+            const events = await classApi.getAttendanceEvents(sess.id, 500);
+            const studentEvent = events.find(e => e.userId === student.rawId);
+            return {
+              session: sess,
+              event: studentEvent || null
+            };
+          } catch (err) {
+            console.error("Lỗi lấy event của phiên:", sess.id, err);
+            return { session: sess, event: null };
+          }
+        })
+      );
+      
+      details.sort((a, b) => new Date(b.session.startTime || 0) - new Date(a.session.startTime || 0));
+      setStudentAttendanceDetails(details);
+    } catch (err) {
+      console.error("Lỗi tải chi tiết điểm danh:", err);
+      toast.error("Không thể tải chi tiết điểm danh.");
+    } finally {
+      setStudentDetailsLoading(false);
+    }
+  };
   
   // --- STATE CẢNH BÁO BẢO MẬT ---
   const [securityAlerts, setSecurityAlerts] = useState(ALERTS_DATA);
@@ -753,6 +803,19 @@ export default function StudentsTab({ classId }) {
         // Lưu chính sách điểm danh chung của lớp
         if (res?.policy) {
           setAttendancePolicy(res.policy);
+          // Nếu policy có tổng số buổi học theo kế hoạch
+          const policyPlanned = res.policy?.totalSessions ?? res.policy?.plannedSessions ??
+                                res.policy?.scheduledSessions ?? res.policy?.totalScheduledSessions;
+          if (policyPlanned != null) setPlannedSessions(policyPlanned);
+        }
+
+        // Lưu số phên điểm danh đã mở (closedSessionCount từ API)
+        if (res?.totalSessions != null) {
+          setTotalClassSessions(res.totalSessions);
+        } else if (res?.closedSessionCount != null) {
+          setTotalClassSessions(res.closedSessionCount);
+        } else if (res?.policy?.totalSessions != null) {
+          // Policy totalSessions có thể là kế hoạch, không đưa vào opened
         }
 
         apiTotal = res?.totalElements || 0;
@@ -815,6 +878,14 @@ export default function StudentsTab({ classId }) {
       setStudents(combined);
       setTotalPages(isMockClass ? (Math.ceil(combined.length / size) || 1) : apiTotalPages);
       setTotalElements(isMockClass ? combined.length : apiTotal);
+
+      // Fallback: tính tổng buổi từ dữ liệu sinh viên (lấy max eligibleSessionCount)
+      if (!isMockClass && combined.length > 0) {
+        const maxEligible = Math.max(...combined.map(s => s.eligibleSessionCount ?? 0));
+        if (maxEligible > 0) {
+          setTotalClassSessions(prev => prev ?? maxEligible);
+        }
+      }
       
     } catch (error) {
       console.error("Lỗi lấy danh sách sinh viên:", error);
@@ -836,6 +907,46 @@ export default function StudentsTab({ classId }) {
     const pollingInterval = setInterval(() => fetchStudents(false), 10000);
     return () => clearInterval(pollingInterval);
   }, [classId, page, size, searchQuery, filterAttendance, filterMember]);
+
+  // --- FETCH SỐ PHÊIEN ĐÃ MỠ TỪ ATTENDANCE SUMMARY + SỐ BUỔI HỌC TỪ CLASS DETAIL ---
+  useEffect(() => {
+    const fetchSessionData = async () => {
+      if (!classId || classId.startsWith('mock-')) return;
+      try {
+        // 1. Lấy summary: số phiên điểm danh đã mở/đóng thực tế
+        const summary = await classApi.getAttendanceSummary(classId);
+        if (summary != null) {
+          // closedSessionCount hoặc totalSessions trong summary = số phiên ĐD đã mở
+          const opened = summary?.closedSessionCount ?? summary?.openedSessionCount ??
+                         summary?.totalSessions ?? summary?.sessionCount;
+          if (opened != null) setTotalClassSessions(opened);
+          // Nếu summary trả cả totalPlannedSessions
+          const planned = summary?.totalPlannedSessions ?? summary?.plannedSessions ??
+                          summary?.scheduledSessions;
+          if (planned != null) setPlannedSessions(planned);
+        }
+      } catch (err) {
+        console.warn('fetchSummary fallback:', err?.message);
+      }
+
+      try {
+        // 2. Lấy class detail: số buổi học theo kế hoạch khi tạo lớp
+        const detail = await classApi.getClassDetail(classId);
+        if (detail != null) {
+          const planned = detail?.totalSessions ?? detail?.plannedSessions ??
+                          detail?.scheduledSessions ?? detail?.totalScheduledSessions ??
+                          detail?.maxSessions ?? detail?.sessionCount;
+          if (planned != null) setPlannedSessions(planned);
+          // Đôi khi class detail có nested policy
+          const policyPlanned = detail?.policy?.totalSessions ?? detail?.policy?.plannedSessions;
+          if (policyPlanned != null) setPlannedSessions(prev => prev ?? policyPlanned);
+        }
+      } catch (err) {
+        console.warn('fetchClassDetail for plannedSessions:', err?.message);
+      }
+    };
+    fetchSessionData();
+  }, [classId]);
 
   const renderProgressBar = (rate) => {
     if (rate === undefined || rate === null) 
@@ -918,6 +1029,56 @@ export default function StudentsTab({ classId }) {
     );
   };
 
+  // --- COMPUTED STATS: Tính toán từ danh sách sinh viên hiện tại ---
+  const maxAbsentAllowed = attendancePolicy?.maxAbsentSessions ?? attendancePolicy?.maxAbsentAllowed ?? 3;
+
+  const bannedStudents = students.filter(s =>
+    s.policyStatus === 'CRITICAL' ||
+    s.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
+    s.breachReasons?.includes('RATE_BELOW_CRITICAL')
+  );
+
+  const warningStudents = students.filter(s =>
+    (s.policyStatus === 'WARNING' ||
+    s.breachReasons?.includes('ABSENT_ABOVE_WARNING') ||
+    s.breachReasons?.includes('RATE_BELOW_WARNING')) &&
+    !bannedStudents.some(b => (b.rawId || b.id) === (s.rawId || s.id))
+  );
+
+  const nearBanStudents = students.filter(s => {
+    const absentCount = s.absentCount ?? 0;
+    const remaining = maxAbsentAllowed - absentCount;
+    return remaining > 0 && remaining <= 2 &&
+      s.policyStatus !== 'CRITICAL' &&
+      !s.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') &&
+      !bannedStudents.some(b => (b.rawId || b.id) === (s.rawId || s.id));
+  });
+
+  const goodStudents = students.filter(s =>
+    !bannedStudents.some(b => (b.rawId || b.id) === (s.rawId || s.id)) &&
+    !warningStudents.some(w => (w.rawId || w.id) === (s.rawId || s.id)) &&
+    !nearBanStudents.some(n => (n.rawId || n.id) === (s.rawId || s.id))
+  );
+
+  // Danh sách nguy cơ, deduplicated
+  const atRiskIds = new Set();
+  const atRiskList = [];
+  [...bannedStudents, ...nearBanStudents, ...warningStudents].forEach(s => {
+    const key = s.rawId || s.id;
+    if (!atRiskIds.has(key)) {
+      atRiskIds.add(key);
+      atRiskList.push(s);
+    }
+  });
+
+  const handleEmailWarning = (student) => {
+    const subject = encodeURIComponent('Cảnh báo điểm danh - Nguy cơ vi phạm quy định');
+    const body = encodeURIComponent(
+      `Kính gửi ${student.name},\n\nBạn đang có nguy cơ bị cấm thi do số buổi vắng mặt vượt quy định (${student.absentCount ?? 0}/${maxAbsentAllowed} buổi vắng).\n\nVui lòng liên hệ giảng viên ngay để được hỗ trợ.\n\nTrân trọng,\nGiảng viên phụ trách`
+    );
+    window.open(`mailto:${student.email}?subject=${subject}&body=${body}`, '_self');
+  };
+
   return (
     <div className="flex flex-col xl:flex-row gap-6 items-start animate-in fade-in duration-500 w-full">
       <div className="w-full xl:flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden relative">
@@ -960,6 +1121,16 @@ export default function StudentsTab({ classId }) {
               <option value="Flagged">Nghi vấn</option>
               <option value="At-Risk">Nguy cơ</option>
             </select>
+            {/* Nút Refresh thủ công: cập nhật ngay không cần chờ polling 10s */}
+            <button
+              onClick={() => fetchStudents(false)}
+              disabled={isPolling || isInitialLoading}
+              title="Cập nhật dữ liệu điểm danh mới nhất"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-50 shrink-0"
+            >
+              <RefreshCw size={14} className={isPolling ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">Cập nhật</span>
+            </button>
             <button 
               onClick={() => setShowImportWizard(true)} 
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white rounded-lg text-sm font-semibold transition-all shadow-sm active:scale-95 shrink-0"
@@ -1028,9 +1199,13 @@ export default function StudentsTab({ classId }) {
                   <th className="p-4 w-12 text-center"><input type="checkbox" className="rounded border-gray-300 text-red-600 focus:ring-red-500" /></th>
                   <th className="p-4 whitespace-nowrap">Sinh viên</th>
                   <th className="p-4 whitespace-nowrap">Tỷ lệ điểm danh</th>
+
                   <th className="p-4 whitespace-nowrap text-center">Có mặt</th>
+                  
                   <th className="p-4 whitespace-nowrap text-center">Trễ</th>
-                  <th className="p-4 whitespace-nowrap text-center">Vắng</th>
+                  <th className="p-4 whitespace-nowrap text-center" title="Số buổi vắng = vắng thực tế + buổi trước khi tham gia (mặc định VẮNG với SV join muộn, đánh dấu *)">
+                    Vắng <span className="text-red-400 text-[10px] cursor-help" title="* bao gồm buổi trước khi tham gia (mặc định VẮNG)">*</span>
+                  </th>
                   <th className="p-4 whitespace-nowrap text-center">Phép</th>
                   <th className="p-4 whitespace-nowrap">Ngày tham gia</th>
                   <th className="p-4 whitespace-nowrap">Trạng thái</th>
@@ -1049,14 +1224,39 @@ export default function StudentsTab({ classId }) {
                         <div className="flex flex-col">
                           <span className="font-bold text-gray-900 whitespace-nowrap">{student.name}</span>
                           <span className="text-[12px] text-gray-500 font-medium mt-0.5 whitespace-nowrap">{student.email}</span>
-                          {student.eligibleSessionCount > 0 && (
-                            <span className="text-[10px] text-gray-400 mt-0.5">{student.closedSessionCount} buổi / {student.eligibleSessionCount} bắt buộc</span>
-                          )}
+                          {(student.eligibleSessionCount > 0 || totalClassSessions > 0) && (() => {
+                            const openedTotal = totalClassSessions ?? student.eligibleSessionCount;
+                            // Sinh viên tham gia trễ nếu số buổi hợp lệ < tổng buổi đã mở
+                            const joinedLate = totalClassSessions != null && student.eligibleSessionCount < totalClassSessions;
+                            const missedBeforeJoin = joinedLate ? (totalClassSessions - student.eligibleSessionCount) : 0;
+                            return (
+                              <span className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                                {/* presentCount = số buổi có mặt thực tế (PRESENT/LATE) từ backend */}
+                                {student.presentCount ?? 0} có mặt / {student.eligibleSessionCount ?? openedTotal} buổi hợp lệ
+                                {joinedLate && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-bold cursor-help"
+                                    title={`Tham gia lớp từ buổi thứ ${missedBeforeJoin + 1}. ${missedBeforeJoin} buổi trước đó mặc định tính là VẮNG (ABSENT) vì sinh viên chưa join. Giảng viên có thể điểm danh thủ công để điều chỉnh.`}
+                                  >
+                                    ⏰ Tham gia trễ ({missedBeforeJoin} buổi → VẮNG)
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </td>
 
-                    <td className="p-4 whitespace-nowrap">{renderProgressBar(student.attendanceRate)}</td>
+                    <td className="p-4 whitespace-nowrap">
+                      {(() => {
+                        const defaultSessions = plannedSessions && plannedSessions > 0 ? plannedSessions : (totalClassSessions || 1);
+                        const presentCount = student.presentCount ?? 0;
+                        const lateCount = student.lateCount ?? 0;
+                        const rate = Math.round(((presentCount + lateCount) / defaultSessions) * 100);
+                        return renderProgressBar(Math.min(rate, 100));
+                      })()}
+                    </td>
 
                     <td className="p-4 text-center whitespace-nowrap">
                       <span className="text-[13px] font-semibold text-emerald-600">
@@ -1064,14 +1264,29 @@ export default function StudentsTab({ classId }) {
                       </span>
                     </td>
                     <td className="p-4 text-center whitespace-nowrap">
-                      <span className="text-[13px] font-semibold text-amber-600">
-                        {student.lateCount ?? <span className="text-gray-400 text-xs italic">—</span>}
+                      <span className={`text-[13px] font-semibold ${(student.lateCount ?? 0) > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                        {(student.lateCount ?? 0) > 0 ? student.lateCount : <span className="text-gray-400 text-xs italic">0</span>}
                       </span>
                     </td>
                     <td className="p-4 text-center whitespace-nowrap">
-                      <span className={`text-[13px] font-semibold ${(student.absentCount ?? 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                        {student.absentCount ?? <span className="text-gray-400 text-xs italic">—</span>}
-                      </span>
+                      {(() => {
+                        const joinedLate = totalClassSessions != null && student.eligibleSessionCount != null
+                          && student.eligibleSessionCount < totalClassSessions;
+                        const missedBeforeJoin = joinedLate ? (totalClassSessions - student.eligibleSessionCount) : 0;
+                        const displayAbsent = (student.absentCount ?? 0) + missedBeforeJoin;
+                        return (
+                          <span className={`text-[13px] font-semibold ${displayAbsent > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {displayAbsent > 0 ? (
+                              <span title={missedBeforeJoin > 0 ? `${student.absentCount ?? 0} vắng + ${missedBeforeJoin} buổi trước khi tham gia (mặc định VẮNG)` : undefined}>
+                                {displayAbsent}
+                                {missedBeforeJoin > 0 && (
+                                  <sup className="text-[9px] text-red-500 ml-0.5">*</sup>
+                                )}
+                              </span>
+                            ) : <span className="text-gray-400 text-xs italic">—</span>}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="p-4 text-center whitespace-nowrap">
                       <span className="text-[13px] font-semibold text-blue-600">
@@ -1084,13 +1299,22 @@ export default function StudentsTab({ classId }) {
                     </td>
                     <td className="p-4 whitespace-nowrap">{renderStatusBadge(student)}</td>
                     <td className="p-4 text-center whitespace-nowrap">
-                      <button 
-                        onClick={() => handleDeleteStudent(student)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Xóa sinh viên khỏi lớp"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="flex justify-center gap-1">
+                        <button 
+                          onClick={() => handleViewDetail(student)}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Xem chi tiết điểm danh"
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteStudent(student)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Xóa sinh viên khỏi lớp"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1115,39 +1339,265 @@ export default function StudentsTab({ classId }) {
         )}
       </div>
 
-      {/* SECURITY ALERTS SIDEBAR */}
-      <div className="w-full xl:w-[320px] shrink-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-5 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2">
-            <ShieldAlert size={18} className="text-red-600" /> Cảnh báo bảo mật
-          </h3>
-          <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">{securityAlerts.length} Mới</span>
+      {/* =========== ATTENDANCE STATS & RISK PANEL =========== */}
+      <div className="w-full xl:w-[340px] shrink-0 flex flex-col gap-4">
+
+        {/* --- KPI CARDS --- */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2 text-[13px]">
+              <BarChart3 size={15} className="text-red-600" /> Tổng quan điểm danh
+            </h3>
+            {isPolling && <Loader2 size={12} className="animate-spin text-gray-400" />}
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-y divide-gray-100">
+            {/* Hàng 1: Phên đã mở ĐD vs Số buổi học kế hoạch */}
+            <div className="p-3 text-center bg-blue-50/40">
+              <div className="text-xl font-extrabold text-blue-700">
+                {totalClassSessions != null ? totalClassSessions : <span className="text-gray-400 text-sm font-medium">—</span>}
+              </div>
+              <div className="text-[10px] text-blue-600 font-semibold mt-0.5">Đã mở điểm danh</div>
+              <div className="text-[9px] text-blue-400 mt-0.5">(phiên)</div>
+            </div>
+            <div className="p-3 text-center bg-indigo-50/40">
+              <div className="text-xl font-extrabold text-indigo-700">
+                {plannedSessions != null ? plannedSessions : <span className="text-gray-400 text-sm font-medium">—</span>}
+              </div>
+              <div className="text-[10px] text-indigo-600 font-semibold mt-0.5">Số buổi học</div>
+              <div className="text-[9px] text-indigo-400 mt-0.5">(kế hoạch)</div>
+            </div>
+            <div className="p-4 text-center">
+              <div className="text-2xl font-extrabold text-gray-900">{totalElements}</div>
+              <div className="text-[11px] text-gray-500 font-medium mt-0.5 flex items-center justify-center gap-1">
+                <Users size={10} /> Tổng sinh viên
+              </div>
+            </div>
+            <div className="p-4 text-center bg-emerald-50/40">
+              <div className="text-2xl font-extrabold text-emerald-600">{goodStudents.length}</div>
+              <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">✓ Học tốt</div>
+            </div>
+            <div className="p-4 text-center bg-amber-50/40">
+              <div className="text-2xl font-extrabold text-amber-600">{warningStudents.length + nearBanStudents.length}</div>
+              <div className="text-[11px] text-amber-600 font-semibold mt-0.5">⚡ Cảnh báo</div>
+            </div>
+            <div className="p-4 text-center bg-red-50/40">
+              <div className="text-2xl font-extrabold text-red-600">{bannedStudents.length}</div>
+              <div className="text-[11px] text-red-600 font-semibold mt-0.5">🚫 Nguy cơ cấm thi</div>
+            </div>
+          </div>
+          {/* Mini tỉ lệ phân bổ */}
+          {students.length > 0 && (
+            <div className="px-4 pb-3 pt-1">
+              <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+                <div className="bg-emerald-400 rounded-l-full transition-all" style={{ width: `${(goodStudents.length / students.length) * 100}%` }} title="Học tốt" />
+                <div className="bg-amber-400 transition-all" style={{ width: `${((warningStudents.length + nearBanStudents.length) / students.length) * 100}%` }} title="Cảnh báo" />
+                <div className="bg-red-500 rounded-r-full transition-all" style={{ width: `${(bannedStudents.length / students.length) * 100}%` }} title="Nguy cơ cấm thi" />
+              </div>
+              <div className="flex justify-between mt-1.5 text-[10px] text-gray-400 font-medium">
+                <span className="text-emerald-500">Tốt: {goodStudents.length}</span>
+                <span className="text-amber-500">CB: {warningStudents.length + nearBanStudents.length}</span>
+                <span className="text-red-500">Cấm: {bannedStudents.length}</span>
+              </div>
+            </div>
+          )}
         </div>
-        
-        <div className="p-4 space-y-4 flex-1">
-          {securityAlerts.map((alert) => (
-            <div key={alert.id} className={`p-4 rounded-xl border ${alert.borderColor} ${alert.bgColor}`}>
-              <div className="flex gap-3">
-                <div className="mt-0.5 shrink-0">{alert.icon}</div>
-                <div>
-                  <h4 className="text-[14px] font-bold text-gray-900 leading-tight mb-1">{alert.title}</h4>
-                  <p className="text-[13px] text-gray-600 mb-3 leading-snug">{alert.desc}</p>
-                  <div className="flex gap-3 text-[13px] font-semibold">
-                    <button className="text-red-600 hover:text-red-800 transition-colors">Xem xét</button>
-                    <button className="text-gray-500 hover:text-gray-700 transition-colors">Bỏ qua</button>
+
+        {/* --- BANNER: Cấm thi --- */}
+        {bannedStudents.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 flex gap-2.5 items-start shadow-sm animate-in fade-in">
+            <Ban size={16} className="text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-red-800">
+                {bannedStudents.length} sinh viên có nguy cơ bị cấm thi!
+              </p>
+              <p className="text-[11px] text-red-700 mt-0.5 leading-relaxed">
+                Tỷ lệ vắng vượt ngưỡng quy định. Cần xem xét và xử lý ngay.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* --- BANNER: Sắp cấm thi (≤ 2 buổi còn lại) --- */}
+        {nearBanStudents.length > 0 && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 flex gap-2.5 items-start shadow-sm animate-in fade-in">
+            <Bell size={16} className="text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+            <div>
+              <p className="text-xs font-bold text-amber-800">
+                {nearBanStudents.length} sinh viên sắp đến ngưỡng cấm thi!
+              </p>
+              <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                Còn ≤ 2 buổi vắng nữa sẽ vi phạm. Nên thông báo ngay cho sinh viên.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* --- DANH SÁCH SINH VIÊN NGUY CƠ CAO --- */}
+        {atRiskList.length > 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-[13px]">
+                <UserX size={15} className="text-red-500" /> Sinh viên nguy cơ cao
+              </h3>
+              <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+                {atRiskList.length} SV
+              </span>
+            </div>
+
+            <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
+              {atRiskList.slice(0, 10).map((student, idx) => {
+                const absentCount = student.absentCount ?? 0;
+                const remaining = maxAbsentAllowed - absentCount;
+                const isBanned = bannedStudents.some(b => (b.rawId || b.id) === (student.rawId || student.id));
+                const isNearBan = nearBanStudents.some(n => (n.rawId || n.id) === (student.rawId || student.id));
+
+                return (
+                  <div key={idx} className={`p-3 flex items-center gap-2.5 hover:bg-gray-50 transition-colors group ${
+                    isBanned ? 'bg-red-50/30' : isNearBan ? 'bg-amber-50/30' : ''
+                  }`}>
+                    <img src={student.avatar} alt="" className="w-7 h-7 rounded-full shrink-0 border border-gray-200 object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[12px] font-bold text-gray-900 truncate">{student.name}</span>
+                        {isBanned ? (
+                          <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold shrink-0 border border-red-200">CẤM THI</span>
+                        ) : isNearBan ? (
+                          <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold shrink-0 border border-amber-200">SẮP CẤM</span>
+                        ) : (
+                          <span className="text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-bold shrink-0 border border-orange-200">CẢNH BÁO</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-[11px] font-semibold ${isBanned ? 'text-red-600' : 'text-amber-600'}`}>
+                          Vắng {absentCount}/{maxAbsentAllowed} buổi
+                        </span>
+                        {!isBanned && remaining > 0 && (
+                          <span className="text-[10px] text-gray-400">· còn {remaining} buổi</span>
+                        )}
+                      </div>
+                      {student.attendanceRate !== undefined && (
+                        <div className="mt-1.5 w-full bg-gray-100 h-1 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${isBanned ? 'bg-red-500' : 'bg-amber-400'}`}
+                            style={{ width: `${Math.min(100, student.attendanceRate ?? 0)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleEmailWarning(student)}
+                      className="p-1.5 text-gray-300 group-hover:text-red-500 hover:!text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                      title={`Gửi email cảnh báo tới ${student.name}`}
+                    >
+                      <Send size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {atRiskList.length > 10 && (
+              <div className="p-2.5 border-t border-gray-100 text-center">
+                <span className="text-[11px] text-gray-400 font-medium">
+                  + {atRiskList.length - 10} sinh viên khác có nguy cơ
+                </span>
+              </div>
+            )}
+
+            {/* Nút gửi email hàng loạt */}
+            {atRiskList.length > 0 && (
+              <div className="p-3 border-t border-gray-100 bg-gray-50/50">
+                <button
+                  onClick={() => {
+                    const emails = atRiskList.map(s => s.email).filter(Boolean).join(';');
+                    const subject = encodeURIComponent('Cảnh báo điểm danh - Nguy cơ vi phạm quy định');
+                    const body = encodeURIComponent('Kính gửi các bạn sinh viên,\n\nCác bạn đang có nguy cơ vi phạm quy định điểm danh. Vui lòng chú ý và liên hệ giảng viên để được hỗ trợ.\n\nTrân trọng.');
+                    window.location.href = `mailto:${emails}?subject=${subject}&body=${body}`;
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white text-[12px] font-bold rounded-lg transition-all active:scale-[0.98] shadow-sm"
+                >
+                  <Mail size={13} /> Gửi cảnh báo hàng loạt ({atRiskList.length} SV)
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          !isInitialLoading && students.length > 0 && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+              <CheckCircle2 size={22} className="text-emerald-500 mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-emerald-800">Lớp học đang ổn định!</p>
+              <p className="text-[11px] text-emerald-600 mt-0.5">Không có sinh viên nào có nguy cơ vi phạm quy định điểm danh.</p>
+            </div>
+          )
+        )}
+
+        {/* --- CHÍNH SÁCH ĐIỂM DANH --- */}
+        {attendancePolicy && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2 text-[13px]">
+                <Info size={14} className="text-blue-500" /> Chính sách điểm danh
+              </h3>
+            </div>
+            <div className="p-3 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">Vắng tối đa được phép</span>
+                <span className="font-bold text-gray-800 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">{maxAbsentAllowed} buổi</span>
+              </div>
+              {attendancePolicy.minAttendanceRate != null && (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-medium">Tỉ lệ điểm danh tối thiểu</span>
+                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">{attendancePolicy.minAttendanceRate}%</span>
+                </div>
+              )}
+              {attendancePolicy.warnAbsentSessions != null && (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-500 font-medium">Ngưỡng cảnh báo vắng</span>
+                  <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">{attendancePolicy.warnAbsentSessions} buổi</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500 font-medium">Còn lại không được vắng</span>
+                <span className="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">≤ 2 buổi → Cảnh báo GV</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- SECURITY ALERTS (giữ nguyên) --- */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2 text-[13px]">
+              <ShieldAlert size={15} className="text-red-600" /> Cảnh báo bảo mật
+            </h3>
+            <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">{securityAlerts.length} Mới</span>
+          </div>
+          <div className="p-3 space-y-3 flex-1">
+            {securityAlerts.map((alert) => (
+              <div key={alert.id} className={`p-3 rounded-xl border ${alert.borderColor} ${alert.bgColor}`}>
+                <div className="flex gap-2.5">
+                  <div className="mt-0.5 shrink-0">{alert.icon}</div>
+                  <div>
+                    <h4 className="text-[13px] font-bold text-gray-900 leading-tight mb-1">{alert.title}</h4>
+                    <p className="text-[12px] text-gray-600 mb-2 leading-snug">{alert.desc}</p>
+                    <div className="flex gap-3 text-[12px] font-semibold">
+                      <button className="text-red-600 hover:text-red-800 transition-colors">Xem xét</button>
+                      <button className="text-gray-500 hover:text-gray-700 transition-colors">Bỏ qua</button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <div className="p-3 border-t border-gray-200 text-center">
+            <button className="text-[12px] font-bold text-red-600 hover:text-red-800 transition-colors flex items-center justify-center gap-1 w-full">
+              Xem tất cả nhật ký bảo mật <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
 
-        <div className="p-4 border-t border-gray-200 text-center">
-          <button className="text-sm font-bold text-red-600 hover:text-red-800 transition-colors flex items-center justify-center gap-1 w-full">
-            Xem tất cả nhật ký bảo mật <ChevronRight size={16} />
-          </button>
-        </div>
       </div>
+      {/* =========== END STATS PANEL =========== */}
 
       {/* DETAILED DELETE CONFIRMATION MODAL WITH PREMIUM UI */}
       {showDeleteModal && studentToDelete && (
@@ -1609,8 +2059,125 @@ export default function StudentsTab({ classId }) {
         </div>
       )}
 
+      {/* ===================== MODAL CHI TIẾT ĐIỂM DANH ===================== */}
+      {isDetailModalOpen && selectedStudentForDetail && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" onClick={() => setIsDetailModalOpen(false)}></div>
+          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl relative z-10 flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50/50 to-white">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 border border-blue-200 shadow-inner overflow-hidden">
+                  <img src={selectedStudentForDetail.avatar} alt={selectedStudentForDetail.name} className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">{selectedStudentForDetail.name}</h2>
+                  <div className="text-sm text-gray-500 font-medium flex items-center gap-2">
+                    {selectedStudentForDetail.email}
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsDetailModalOpen(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+              {studentDetailsLoading ? (
+                <div className="flex flex-col items-center justify-center h-48 space-y-3">
+                  <Loader2 className="animate-spin text-blue-600" size={32} />
+                  <span className="text-gray-500 font-medium">Đang tải lịch sử điểm danh...</span>
+                </div>
+              ) : studentAttendanceDetails.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+                  <CalendarClock size={48} className="text-gray-300 mb-3" />
+                  <span className="font-medium">Chưa có dữ liệu điểm danh nào.</span>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {studentAttendanceDetails.map((detail, idx) => {
+                    const session = detail.session;
+                    const evt = detail.event;
+                    
+                    let statusLabel = "VẮNG";
+                    let statusColor = "bg-red-100 text-red-700 border-red-200";
+                    let statusIcon = <XCircle size={14} className="mr-1" />;
+                    let reason = "";
+                    let recordedAt = "";
+
+                    if (evt) {
+                      if (evt.status === 'PRESENT') {
+                        statusLabel = "CÓ MẶT";
+                        statusColor = "bg-emerald-100 text-emerald-700 border-emerald-200";
+                        statusIcon = <CheckCircle2 size={14} className="mr-1" />;
+                      } else if (evt.status === 'LATE') {
+                        statusLabel = "TRỄ";
+                        statusColor = "bg-amber-100 text-amber-700 border-amber-200";
+                        statusIcon = <AlertCircle size={14} className="mr-1" />;
+                      } else if (evt.status === 'EXCUSED') {
+                        statusLabel = "CÓ PHÉP";
+                        statusColor = "bg-blue-100 text-blue-700 border-blue-200";
+                        statusIcon = <Info size={14} className="mr-1" />;
+                      }
+                      reason = evt.note || evt.reason || "";
+                      if (evt.timestamp) {
+                        const t = new Date(evt.timestamp);
+                        recordedAt = t.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + t.toLocaleDateString('vi-VN');
+                      }
+                    }
+
+                    // Xử lý mặc định VẮNG nếu session đã mở trước khi join
+                    if (!evt) {
+                      const joinedAtDate = selectedStudentForDetail.joinedAt ? new Date(selectedStudentForDetail.joinedAt) : null;
+                      const sessionDate = new Date(session.startTime);
+                      if (joinedAtDate && sessionDate < joinedAtDate) {
+                        reason = "Chưa tham gia lớp học tại thời điểm này (Mặc định VẮNG)";
+                      }
+                    }
+
+                    return (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0 font-black text-sm">
+                            #{studentAttendanceDetails.length - idx}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-900 text-[15px]">Phiên {new Date(session.startTime).toLocaleDateString('vi-VN')}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-500 font-medium">
+                                {new Date(session.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {new Date(session.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {session.room && (
+                                <>
+                                  <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                                  <span className="text-xs text-gray-500 font-medium">P. {session.room}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col md:items-end gap-2">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${statusColor}`}>
+                            {statusIcon} {statusLabel}
+                          </span>
+                          {recordedAt && <span className="text-[11px] text-gray-400 font-medium flex items-center gap-1">🕒 {recordedAt}</span>}
+                          {reason && <span className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-100 italic max-w-xs truncate" title={reason}>{reason}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
-
-

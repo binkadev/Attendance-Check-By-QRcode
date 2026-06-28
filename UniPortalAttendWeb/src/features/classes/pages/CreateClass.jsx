@@ -402,6 +402,14 @@ export default function CreateClass() {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
 
+  const [currentUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user')) || {};
+    } catch {
+      return {};
+    }
+  });
+
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -1431,7 +1439,15 @@ export default function CreateClass() {
                       ))}
                     </select>
                   </div>
-                  <div className="hidden md:block"></div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                      Giảng viên (Người tạo)
+                    </label>
+                    <div className="w-full px-4.5 py-3 border border-gray-250 rounded-2xl text-sm font-semibold bg-gray-50 text-gray-500 shadow-sm flex items-center gap-2 cursor-not-allowed">
+                      <UserCheck size={16} className="text-gray-400" />
+                      <span className="truncate">{currentUser?.fullName || currentUser?.name || currentUser?.email || 'Bạn'}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1625,11 +1641,11 @@ export default function CreateClass() {
                           )}
                         </div>
 
-                        {/* Custom Weekday Selector (Monday to Saturday as shown in the design) */}
+                        {/* Custom Weekday Selector (Monday to Sunday as shown in the design) */}
                         <div>
                           <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ngày học trong tuần</label>
                           <div className="flex flex-wrap gap-2.5">
-                            {DAYS_OF_WEEK.slice(0, 6).map((day) => {
+                            {DAYS_OF_WEEK.map((day) => {
                               const isActive = schedule.dayOfWeek === day.value;
                               return (
                                 <button
@@ -1717,7 +1733,7 @@ export default function CreateClass() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    {DAYS_OF_WEEK.slice(0, 6).map((day) => {
+                    {DAYS_OF_WEEK.map((day) => {
                       // Lookup classes of teacher on this dayOfWeek
                       const busySlots = [];
                       existingClasses.forEach((c) => {
