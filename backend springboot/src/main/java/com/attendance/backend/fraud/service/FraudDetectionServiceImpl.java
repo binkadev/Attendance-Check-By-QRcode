@@ -72,6 +72,7 @@ public class FraudDetectionServiceImpl implements FraudDetectionService {
         detectRepeatedFailedToken(context, failureCode);
         detectWrongOrExpired(context, failureCode);
         detectOutOfRange(context, failureCode);
+        detectSharedDevice(context);
         detectIpBurst(context);
     }
 

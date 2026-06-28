@@ -25,6 +25,7 @@ public class FraudCheckinFailureCodeMapper {
             case "CHECKIN_CLOSED" -> CheckinFailureCode.CHECKIN_CLOSED;
 
             case "OUT_OF_RANGE", "CHECKIN_OUT_OF_RANGE", "LOCATION_OUT_OF_RANGE" -> CheckinFailureCode.OUT_OF_RANGE;
+            case "SHARED_DEVICE_MULTI_ACCOUNT" -> CheckinFailureCode.SHARED_DEVICE_MULTI_ACCOUNT;
 
             case "DUPLICATE_CHECKIN", "ALREADY_CHECKED_IN" -> CheckinFailureCode.DUPLICATE_CHECKIN;
 

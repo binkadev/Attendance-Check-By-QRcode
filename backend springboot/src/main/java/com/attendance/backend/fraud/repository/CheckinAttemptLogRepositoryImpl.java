@@ -107,7 +107,13 @@ public class CheckinAttemptLogRepositoryImpl implements CheckinAttemptLogReposit
             from checkin_attempt_logs cal
             where cal.group_id = UUID_TO_BIN(:groupId, 1)
               and cal.device_id = :deviceId
-              and cal.outcome = 'SUCCESS'
+              and (
+                    cal.outcome = 'SUCCESS'
+                    or (
+                        cal.outcome = 'FAIL'
+                        and cal.failure_code = 'SHARED_DEVICE_MULTI_ACCOUNT'
+                    )
+                  )
               and cal.user_id is not null
               and cal.created_at >= :fromTs
             """;

@@ -205,8 +205,12 @@ public class AttendanceCheckinService {
                     cmd.deviceId()
             );
 
-            boolean sharedDeviceDetected = sharedDeviceEvidence.detected();
-            String suspiciousReason = sharedDeviceDetected ? "SHARED_DEVICE_MULTI_ACCOUNT" : null;
+            if (sharedDeviceEvidence.detected()) {
+                throw ApiException.conflict(
+                        "SHARED_DEVICE_MULTI_ACCOUNT",
+                        "This device was already used to check in another account for this session"
+                );
+            }
 
             attendance.attendanceStatus = computed;
             attendance.checkInAt = now;
@@ -218,29 +222,11 @@ public class AttendanceCheckinService {
             attendance.geoLat = cmd.geoLat();
             attendance.geoLng = cmd.geoLng();
             attendance.distanceMeter = cmd.distanceMeter();
-            attendance.suspiciousFlag = sharedDeviceDetected;
-            attendance.suspiciousReason = suspiciousReason;
+            attendance.suspiciousFlag = false;
+            attendance.suspiciousReason = null;
             attendance.updatedAt = now;
 
             sessionAttendanceRepository.saveAndFlush(attendance);
-
-            if (sharedDeviceDetected) {
-                markSharedDeviceAttendanceRowsSuspicious(
-                        cmd.sessionId(),
-                        cmd.deviceId(),
-                        suspiciousReason,
-                        now
-                );
-
-                upsertSharedDeviceFraudIncident(
-                        session.getGroupId(),
-                        cmd.sessionId(),
-                        cmd.userId(),
-                        cmd.deviceId(),
-                        sharedDeviceEvidence,
-                        now
-                );
-            }
 
             AttendanceEvent event = new AttendanceEvent();
             event.id = UUID.randomUUID();
@@ -270,15 +256,7 @@ public class AttendanceCheckinService {
             }
 
             payload.put("computedStatus", computed.name());
-            payload.put("suspiciousFlag", sharedDeviceDetected);
-
-            if (suspiciousReason != null) {
-                payload.put("suspiciousReason", suspiciousReason);
-            }
-
-            if (sharedDeviceEvidence.otherUserIds() != null) {
-                payload.put("sharedDeviceOtherUserIds", sharedDeviceEvidence.otherUserIds());
-            }
+            payload.put("suspiciousFlag", false);
 
             payload.put("locationPolicyRequired", locationPolicy.requireLocation());
             if (locationCheck.distanceMeter() != null) {
@@ -607,6 +585,7 @@ public class AttendanceCheckinService {
         return switch (code) {
             case "CHECKIN_OUT_OF_RANGE" -> CheckinFailureCode.OUT_OF_RANGE;
             case "DEVICE_ID_REQUIRED", "DEVICE_ID_INVALID", "GEO_LOCATION_REQUIRED", "GEO_LOCATION_INVALID" -> CheckinFailureCode.UNKNOWN;
+            case "SHARED_DEVICE_MULTI_ACCOUNT" -> CheckinFailureCode.SHARED_DEVICE_MULTI_ACCOUNT;
 
             case "QR_TOKEN_INVALID" -> CheckinFailureCode.TOKEN_INVALID;
             case "QR_TOKEN_INVALID_FORMAT", "QR_TOKEN_REQUIRED" -> CheckinFailureCode.TOKEN_MALFORMED;
@@ -1090,104 +1069,6 @@ public class AttendanceCheckinService {
         String otherUserIds = row[1] == null ? null : String.valueOf(row[1]);
 
         return new SharedDeviceEvidence(otherUserCount, otherUserIds);
-    }
-
-    private void markSharedDeviceAttendanceRowsSuspicious(
-            UUID sessionId,
-            String deviceId,
-            String suspiciousReason,
-            Instant now
-    ) {
-        entityManager.createNativeQuery("""
-                UPDATE session_attendance sa
-                SET sa.suspicious_flag = 1,
-                    sa.suspicious_reason = :suspiciousReason,
-                    sa.updated_at = :updatedAt
-                WHERE sa.session_id = UUID_TO_BIN(:sessionId, 1)
-                  AND sa.device_id = :deviceId
-                  AND sa.check_in_at IS NOT NULL
-                """)
-                .setParameter("suspiciousReason", suspiciousReason)
-                .setParameter("updatedAt", Timestamp.from(now))
-                .setParameter("sessionId", sessionId.toString())
-                .setParameter("deviceId", deviceId)
-                .executeUpdate();
-    }
-
-    private void upsertSharedDeviceFraudIncident(
-            UUID groupId,
-            UUID sessionId,
-            UUID currentUserId,
-            String deviceId,
-            SharedDeviceEvidence evidence,
-            Instant now
-    ) {
-        String dedupKey = toHex(sha256("SHARED_DEVICE_MULTI_ACCOUNT:" + sessionId + ":" + deviceId));
-
-        entityManager.createNativeQuery("""
-                INSERT INTO fraud_incidents (
-                    id,
-                    group_id,
-                    session_id,
-                    user_id,
-                    type,
-                    severity,
-                    status,
-                    dedup_key,
-                    first_detected_at,
-                    last_detected_at,
-                    occurrence_count,
-                    evidence_json
-                )
-                VALUES (
-                    UUID_TO_BIN(:id, 1),
-                    UUID_TO_BIN(:groupId, 1),
-                    UUID_TO_BIN(:sessionId, 1),
-                    UUID_TO_BIN(:userId, 1),
-                    'SHARED_DEVICE_MULTI_ACCOUNT',
-                    'MEDIUM',
-                    'OPEN',
-                    :dedupKey,
-                    :detectedAt,
-                    :detectedAt,
-                    1,
-                    JSON_OBJECT(
-                        'deviceId', :deviceId,
-                        'currentUserId', :currentUserId,
-                        'otherUserCount', :otherUserCount,
-                        'otherUserIds', :otherUserIds,
-                        'reason', 'Same device checked in for multiple users in the same session'
-                    )
-                )
-                ON DUPLICATE KEY UPDATE
-                    last_detected_at = VALUES(last_detected_at),
-                    occurrence_count = occurrence_count + 1,
-                    evidence_json = VALUES(evidence_json),
-                    resolved_at = CASE
-                        WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN NULL
-                        ELSE resolved_at
-                    END,
-                    resolution_note = CASE
-                        WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN NULL
-                        ELSE resolution_note
-                    END,
-                    status = CASE
-                        WHEN status IN ('RESOLVED', 'FALSE_POSITIVE') THEN 'OPEN'
-                        ELSE status
-                    END,
-                    updated_at = CURRENT_TIMESTAMP(3)
-                """)
-                .setParameter("id", UUID.randomUUID().toString())
-                .setParameter("groupId", groupId.toString())
-                .setParameter("sessionId", sessionId.toString())
-                .setParameter("userId", currentUserId.toString())
-                .setParameter("dedupKey", dedupKey)
-                .setParameter("detectedAt", Timestamp.from(now))
-                .setParameter("deviceId", deviceId)
-                .setParameter("currentUserId", currentUserId.toString())
-                .setParameter("otherUserCount", evidence.otherUserCount())
-                .setParameter("otherUserIds", evidence.otherUserIds())
-                .executeUpdate();
     }
 
     private String blankToNull(String value) {

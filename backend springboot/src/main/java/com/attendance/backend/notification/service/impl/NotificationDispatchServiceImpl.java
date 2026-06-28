@@ -83,6 +83,9 @@ public class NotificationDispatchServiceImpl implements NotificationDispatchServ
             notificationDeliveryRepository.save(delivery);
 
             UUID outboxId = notificationEmailOutboxBridge.enqueue(notification, delivery);
+            if (outboxId == null || !emailOutboxRepository.existsById(outboxId)) {
+                throw new IllegalStateException("Notification email outbox row was not persisted");
+            }
 
             delivery.markEnqueued(outboxId);
             notificationDeliveryRepository.save(delivery);

@@ -183,19 +183,91 @@ class QrCheckinFraudIntegrationIT {
         }
     }
 
+    @Test
+    void shared_device_second_account_should_be_rejected_and_recorded_as_fraud_failure() {
+        FraudScenario scenario = seedScenario(false);
+
+        try {
+            String tokenId = "token-" + UUID.randomUUID().toString().replace("-", "");
+            String secret = "secret-shared-device-123";
+            String deviceId = "shared-device-01";
+            seedQrToken(tokenId, scenario.sessionId(), secret, Instant.now().plusSeconds(600));
+
+            AttendanceCheckinService.QrCheckinCommand firstUserCmd =
+                    new AttendanceCheckinService.QrCheckinCommand(
+                            scenario.sessionId(),
+                            scenario.studentId(),
+                            tokenId + "." + secret,
+                            deviceId,
+                            "10.30.30.10",
+                            "JUnit Shared Device A",
+                            null,
+                            null,
+                            null
+                    );
+
+            AttendanceCheckinService.QrCheckinCommand secondUserCmd =
+                    new AttendanceCheckinService.QrCheckinCommand(
+                            scenario.sessionId(),
+                            scenario.secondStudentId(),
+                            tokenId + "." + secret,
+                            deviceId,
+                            "10.30.30.11",
+                            "JUnit Shared Device B",
+                            null,
+                            null,
+                            null
+                    );
+
+            AttendanceCheckinService.QrCheckinResult firstResult = attendanceCheckinService.qrCheckin(firstUserCmd);
+            assertThat(firstResult.attendanceStatus().name()).isIn("PRESENT", "LATE");
+
+            assertApiCode("SHARED_DEVICE_MULTI_ACCOUNT", () -> attendanceCheckinService.qrCheckin(secondUserCmd));
+
+            assertThat(countPresentOrLateAttendanceRows(scenario.sessionId(), scenario.studentId())).isEqualTo(1);
+            assertThat(countPresentOrLateAttendanceRows(scenario.sessionId(), scenario.secondStudentId())).isZero();
+            assertThat(countCheckinQrEvents(scenario.sessionId(), scenario.studentId())).isEqualTo(1);
+            assertThat(countCheckinQrEvents(scenario.sessionId(), scenario.secondStudentId())).isZero();
+            assertThat(countCheckinSuccessNotifications(scenario.sessionId(), scenario.studentId())).isEqualTo(1);
+            assertThat(countCheckinSuccessNotifications(scenario.sessionId(), scenario.secondStudentId())).isZero();
+
+            assertThat(countAttemptRowsByFailureCode(
+                    scenario.sessionId(),
+                    scenario.secondStudentId(),
+                    "SHARED_DEVICE_MULTI_ACCOUNT"
+            )).isEqualTo(1);
+
+            assertThat(countFraudIncidents(
+                    scenario.sessionId(),
+                    scenario.secondStudentId(),
+                    "SHARED_DEVICE_MULTI_ACCOUNT"
+            )).isEqualTo(1);
+
+            AttendanceCheckinService.QrCheckinResult duplicateResult = attendanceCheckinService.qrCheckin(firstUserCmd);
+            assertThat(duplicateResult.checkInAt()).isEqualTo(firstResult.checkInAt());
+            assertThat(countCheckinQrEvents(scenario.sessionId(), scenario.studentId())).isEqualTo(1);
+
+        } finally {
+            cleanupScenario(scenario);
+        }
+    }
+
     private FraudScenario seedScenario(boolean withOtherSession) {
         UUID ownerId = UUID.randomUUID();
         UUID studentId = UUID.randomUUID();
+        UUID secondStudentId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();
         UUID otherSessionId = withOtherSession ? UUID.randomUUID() : null;
 
         seedUser(ownerId, "owner-" + ownerId + "@it.local", "OWNER User", "USER");
         seedUser(studentId, "student-" + studentId + "@it.local", "Student User", "USER");
+        seedUser(secondStudentId, "student2-" + secondStudentId + "@it.local", "Second Student User", "USER");
 
         seedGroup(groupId, ownerId, "GROUP-" + shortCode(groupId), "JOIN" + shortCode(groupId));
         seedMember(groupId, ownerId, "OWNER");
         seedMember(groupId, studentId, "MEMBER");
+        seedMember(groupId, secondStudentId, "MEMBER");
 
         Instant now = Instant.now();
         seedSession(
@@ -218,7 +290,7 @@ class QrCheckinFraudIntegrationIT {
             );
         }
 
-        return new FraudScenario(ownerId, studentId, groupId, sessionId, otherSessionId);
+        return new FraudScenario(ownerId, studentId, secondStudentId, groupId, sessionId, otherSessionId);
     }
 
     private void seedUser(UUID userId, String email, String fullName, String platformRole) {
@@ -529,7 +601,74 @@ class QrCheckinFraudIntegrationIT {
         );
     }
 
+    private long countPresentOrLateAttendanceRows(UUID sessionId, UUID userId) {
+        Long count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from session_attendance
+                where session_id = UUID_TO_BIN(?, 1)
+                  and user_id = UUID_TO_BIN(?, 1)
+                  and attendance_status in ('PRESENT', 'LATE')
+                  and check_in_at is not null
+                """,
+                Long.class,
+                sessionId.toString(),
+                userId.toString()
+        );
+        return count == null ? 0L : count;
+    }
+
+    private long countCheckinQrEvents(UUID sessionId, UUID userId) {
+        Long count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from attendance_events
+                where session_id = UUID_TO_BIN(?, 1)
+                  and user_id = UUID_TO_BIN(?, 1)
+                  and event_type = 'CHECKIN_QR'
+                """,
+                Long.class,
+                sessionId.toString(),
+                userId.toString()
+        );
+        return count == null ? 0L : count;
+    }
+
+    private long countCheckinSuccessNotifications(UUID sessionId, UUID userId) {
+        Long count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from notifications
+                where session_id = UUID_TO_BIN(?, 1)
+                  and recipient_user_id = UUID_TO_BIN(?, 1)
+                  and type = 'CHECKIN_SUCCESS'
+                """,
+                Long.class,
+                sessionId.toString(),
+                userId.toString()
+        );
+        return count == null ? 0L : count;
+    }
+
     private void cleanupScenario(FraudScenario scenario) {
+        jdbcTemplate.update(
+                """
+                delete nd
+                from notification_deliveries nd
+                join notifications n on n.id = nd.notification_id
+                where n.session_id = UUID_TO_BIN(?, 1)
+                   or n.session_id = UUID_TO_BIN(?, 1)
+                """,
+                scenario.sessionId().toString(),
+                scenario.otherSessionId() == null ? scenario.sessionId().toString() : scenario.otherSessionId().toString()
+        );
+
+        jdbcTemplate.update(
+                "delete from notifications where session_id = UUID_TO_BIN(?, 1) or session_id = UUID_TO_BIN(?, 1)",
+                scenario.sessionId().toString(),
+                scenario.otherSessionId() == null ? scenario.sessionId().toString() : scenario.otherSessionId().toString()
+        );
+
         jdbcTemplate.update(
                 "delete from fraud_incidents where session_id = UUID_TO_BIN(?, 1) or session_id = UUID_TO_BIN(?, 1)",
                 scenario.sessionId().toString(),
@@ -583,9 +722,10 @@ class QrCheckinFraudIntegrationIT {
         );
 
         jdbcTemplate.update(
-                "delete from users where id = UUID_TO_BIN(?, 1) or id = UUID_TO_BIN(?, 1)",
+                "delete from users where id in (UUID_TO_BIN(?, 1), UUID_TO_BIN(?, 1), UUID_TO_BIN(?, 1))",
                 scenario.ownerId().toString(),
-                scenario.studentId().toString()
+                scenario.studentId().toString(),
+                scenario.secondStudentId().toString()
         );
     }
 
@@ -610,6 +750,7 @@ class QrCheckinFraudIntegrationIT {
     private record FraudScenario(
             UUID ownerId,
             UUID studentId,
+            UUID secondStudentId,
             UUID groupId,
             UUID sessionId,
             UUID otherSessionId
