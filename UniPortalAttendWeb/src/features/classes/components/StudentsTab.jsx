@@ -67,6 +67,9 @@ export default function StudentsTab({ classId }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAttendance, setFilterAttendance] = useState('ALL');
   const [filterMember, setFilterMember] = useState('ALL');
+
+  // --- STATE CHÍNH SÁCH ĐIỂM DANH ---
+  const [attendancePolicy, setAttendancePolicy] = useState(null);
   
   // --- STATE CẢNH BÁO BẢO MẬT ---
   const [securityAlerts, setSecurityAlerts] = useState(ALERTS_DATA);
@@ -740,50 +743,52 @@ export default function StudentsTab({ classId }) {
       
       const isMockClass = String(classId).startsWith('mock-');
       if (!isMockClass) {
-        const [res, policyRes] = await Promise.all([
-          classApi.getClassMembers(classId, { 
-            page, 
-            size, 
-            q: searchQuery
-          }),
-          classApi.getStudentsAttendancePolicy(classId).catch(() => null)
-        ]);
-        
-        apiTotal = res?.totalElements || 0;
-        apiTotalPages = res?.totalPages || 1;
-        
-        // Map policy data
-        const policyItems = policyRes?.items || [];
-        const policyMap = new Map();
-        policyItems.forEach(p => {
-           policyMap.set(p.userId, p);
+        // Dùng API tổng hợp: trả về cả policy lẫn thống kê điểm danh từng sinh viên
+        const res = await classApi.getStudentsAttendancePolicy(classId, {
+          page,
+          size,
+          q: searchQuery || undefined,
         });
 
-        apiStudents = (res?.items || [])
-          .filter(member => member.role !== 'LECTURER' && member.role !== 'OWNER') // Lọc giảng viên / chủ phòng ra khỏi danh sách
-          .map(member => {
-          const policy = policyMap.get(member.userId || member.id);
-          const rate = policy ? Math.round(policy.attendanceRate) : undefined;
-          
-          let attendanceStatus = 'Chưa cập nhật';
-          if (rate !== undefined) {
-             if (rate >= 90) attendanceStatus = 'Good';
-             else if (rate >= 75) attendanceStatus = 'Flagged';
-             else attendanceStatus = 'At-Risk';
-          }
-          
+        // Lưu chính sách điểm danh chung của lớp
+        if (res?.policy) {
+          setAttendancePolicy(res.policy);
+        }
+
+        apiTotal = res?.totalElements || 0;
+        apiTotalPages = res?.totalPages || 1;
+
+        apiStudents = (res?.items || []).map(item => {
+          const rate = item.attendanceRate != null ? Math.round(item.attendanceRate * 100) / 100 : undefined;
+
+          // Map policyStatus từ API sang nhãn hiển thị
+          const policyStatus = item.policyStatus || 'NO_DATA';
+          let attendanceStatus;
+          if (policyStatus === 'NO_DATA') attendanceStatus = 'Chưa cập nhật';
+          else if (policyStatus === 'OK') attendanceStatus = 'Good';
+          else if (policyStatus === 'WARNING') attendanceStatus = 'Flagged';
+          else if (policyStatus === 'CRITICAL') attendanceStatus = 'At-Risk';
+          else attendanceStatus = policyStatus;
+
           return {
-            id: member.userCode || member.studentCode || 'N/A',
-            rawId: member.userId || member.id,
-            name: member.fullName || 'N/A',
-            email: member.email || 'N/A',
-            avatar: member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.fullName || 'U')}&background=random`,
-            joinedAt: member.joinedAt,
+            id: 'N/A',          // API này không trả userCode; giữ placeholder, sẽ bổ sung nếu cần
+            rawId: item.userId,
+            name: item.fullName || 'N/A',
+            email: item.email || 'N/A',
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.fullName || 'U')}&background=random`,
+            joinedAt: item.joinedAt,
             attendanceRate: rate,
-            lastSeen: undefined,      
-            memberStatus: member.memberStatus || 'N/A',
-            attendanceStatus: attendanceStatus,
-            role: member.role
+            closedSessionCount: item.closedSessionCount ?? 0,
+            eligibleSessionCount: item.eligibleSessionCount ?? 0,
+            presentCount: item.presentCount ?? 0,
+            lateCount: item.lateCount ?? 0,
+            absentCount: item.absentCount ?? 0,
+            excusedCount: item.excusedCount ?? 0,
+            earnedAttendancePoints: item.earnedAttendancePoints,
+            policyStatus,
+            breachReasons: item.breachReasons || [],
+            memberStatus: 'ACTIVE',   // API này không trả memberStatus; mặc định ACTIVE
+            attendanceStatus,
           };
         });
       }
@@ -833,7 +838,7 @@ export default function StudentsTab({ classId }) {
   }, [classId, page, size, searchQuery, filterAttendance, filterMember]);
 
   const renderProgressBar = (rate) => {
-    if (rate === undefined) 
+    if (rate === undefined || rate === null) 
       return <span className="text-xs text-gray-400 font-medium italic">Chưa cập nhật</span>;
     let colorClass = 'bg-emerald-500';
     if (rate < 75) colorClass = 'bg-red-500';
@@ -849,22 +854,46 @@ export default function StudentsTab({ classId }) {
     );
   };
 
-  const renderStatusBadge = (status) => {
-    if (status === 'Chưa cập nhật' || status === 'N/A' || !status) return <span className="text-xs text-gray-400 font-medium italic">Chưa cập nhật</span>;
+  // Badge dựa trên policyStatus thật từ API
+  const renderStatusBadge = (student) => {
+    const status = student?.attendanceStatus;
+    const breachReasons = student?.breachReasons || [];
+    if (!status || status === 'Chưa cập nhật' || status === 'NO_DATA')
+      return <span className="text-xs text-gray-400 font-medium italic">Chưa cập nhật</span>;
+
     const styles = {
-      'Good': 'bg-emerald-50 text-emerald-600',
-      'At-Risk': 'bg-red-50 text-red-600',
-      'Flagged': 'bg-amber-50 text-amber-600',
+      'Good': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      'At-Risk': 'bg-red-50 text-red-700 border border-red-200',
+      'Flagged': 'bg-amber-50 text-amber-700 border border-amber-200',
     };
     const labels = {
-      'Good': 'Tốt',
-      'At-Risk': 'Nguy cơ',
-      'Flagged': 'Nghi vấn',
+      'Good': '✓ Tốt',
+      'At-Risk': '⚠ Nguy cơ',
+      'Flagged': '⚡ Cảnh báo',
     };
+
+    const breachLabel = {
+      'RATE_BELOW_WARNING': 'TL thấp',
+      'RATE_BELOW_CRITICAL': 'TL nguy hiểm',
+      'ABSENT_ABOVE_WARNING': 'Vắng nhiều',
+      'ABSENT_ABOVE_CRITICAL': 'Vắng nguy hiểm',
+    };
+
     return (
-      <span className={`px-2.5 py-1 rounded-md text-[12px] font-semibold ${styles[status] || 'bg-gray-50 text-gray-600'}`}>
-        {labels[status] || status}
-      </span>
+      <div className="flex flex-col gap-1">
+        <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold w-fit ${styles[status] || 'bg-gray-50 text-gray-600 border border-gray-200'}`}>
+          {labels[status] || status}
+        </span>
+        {breachReasons.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {breachReasons.map(r => (
+              <span key={r} className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">
+                {breachLabel[r] || r}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -953,10 +982,12 @@ export default function StudentsTab({ classId }) {
                     <th className="p-4 w-12 text-center"><input type="checkbox" disabled className="rounded border-gray-300 opacity-50" /></th>
                     <th className="p-4 whitespace-nowrap">Sinh viên</th>
                     <th className="p-4 whitespace-nowrap">Tỷ lệ điểm danh</th>
+                    <th className="p-4 whitespace-nowrap text-center">Có mặt</th>
+                    <th className="p-4 whitespace-nowrap text-center">Trễ</th>
+                    <th className="p-4 whitespace-nowrap text-center">Vắng</th>
+                    <th className="p-4 whitespace-nowrap text-center">Phép</th>
                     <th className="p-4 whitespace-nowrap">Ngày tham gia</th>
-                    <th className="p-4 whitespace-nowrap">Lần cuối thấy</th>
-                    <th className="p-4 whitespace-nowrap">Tham gia lớp</th>
-                    <th className="p-4 whitespace-nowrap">Điểm danh</th>
+                    <th className="p-4 whitespace-nowrap">Trạng thái</th>
                     <th className="p-4 whitespace-nowrap text-center">Thao tác</th>
                   </tr>
                 </thead>
@@ -975,10 +1006,12 @@ export default function StudentsTab({ classId }) {
                         </div>
                       </td>
                       <td className="p-4"><div className="w-16 h-4 bg-gray-200 rounded shimmer-loader" /></td>
-                      <td className="p-4"><div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" /></td>
+                      <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
+                      <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
+                      <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
+                      <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
                       <td className="p-4"><div className="w-24 h-4 bg-gray-200 rounded shimmer-loader" /></td>
                       <td className="p-4"><div className="w-20 h-6 bg-gray-200 rounded shimmer-loader" /></td>
-                      <td className="p-4"><div className="w-16 h-6 bg-gray-200 rounded shimmer-loader" /></td>
                       <td className="p-4 text-center"><div className="w-8 h-8 bg-gray-200 rounded-full shimmer-loader mx-auto" /></td>
                     </tr>
                   ))}
@@ -988,17 +1021,19 @@ export default function StudentsTab({ classId }) {
           ) : students.length === 0 ? (
             <div className="flex justify-center items-center h-48 text-gray-500 font-medium">Không tìm thấy sinh viên nào.</div>
           ) : (
-            <table className="min-w-[850px] w-full text-left text-sm">
+            <table className="min-w-[1050px] w-full text-left text-sm">
               <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-200">
                 <tr>
                   <th className="p-4 w-10 text-center text-[10px] text-gray-400">STT</th>
                   <th className="p-4 w-12 text-center"><input type="checkbox" className="rounded border-gray-300 text-red-600 focus:ring-red-500" /></th>
                   <th className="p-4 whitespace-nowrap">Sinh viên</th>
                   <th className="p-4 whitespace-nowrap">Tỷ lệ điểm danh</th>
+                  <th className="p-4 whitespace-nowrap text-center">Có mặt</th>
+                  <th className="p-4 whitespace-nowrap text-center">Trễ</th>
+                  <th className="p-4 whitespace-nowrap text-center">Vắng</th>
+                  <th className="p-4 whitespace-nowrap text-center">Phép</th>
                   <th className="p-4 whitespace-nowrap">Ngày tham gia</th>
-                  <th className="p-4 whitespace-nowrap">Lần cuối thấy</th>
-                  <th className="p-4 whitespace-nowrap">Tham gia lớp</th>
-                  <th className="p-4 whitespace-nowrap">Điểm danh</th>
+                  <th className="p-4 whitespace-nowrap">Trạng thái</th>
                   <th className="p-4 whitespace-nowrap text-center">Thao tác</th>
                 </tr>
               </thead>
@@ -1014,20 +1049,40 @@ export default function StudentsTab({ classId }) {
                         <div className="flex flex-col">
                           <span className="font-bold text-gray-900 whitespace-nowrap">{student.name}</span>
                           <span className="text-[12px] text-gray-500 font-medium mt-0.5 whitespace-nowrap">{student.email}</span>
-                          <span className="text-[11px] text-[#dc2626] font-bold mt-0.5 whitespace-nowrap">MSSV: {student.id}</span>
+                          {student.eligibleSessionCount > 0 && (
+                            <span className="text-[10px] text-gray-400 mt-0.5">{student.closedSessionCount} buổi / {student.eligibleSessionCount} bắt buộc</span>
+                          )}
                         </div>
                       </div>
                     </td>
 
                     <td className="p-4 whitespace-nowrap">{renderProgressBar(student.attendanceRate)}</td>
+
+                    <td className="p-4 text-center whitespace-nowrap">
+                      <span className="text-[13px] font-semibold text-emerald-600">
+                        {student.presentCount ?? <span className="text-gray-400 text-xs italic">—</span>}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center whitespace-nowrap">
+                      <span className="text-[13px] font-semibold text-amber-600">
+                        {student.lateCount ?? <span className="text-gray-400 text-xs italic">—</span>}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center whitespace-nowrap">
+                      <span className={`text-[13px] font-semibold ${(student.absentCount ?? 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                        {student.absentCount ?? <span className="text-gray-400 text-xs italic">—</span>}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center whitespace-nowrap">
+                      <span className="text-[13px] font-semibold text-blue-600">
+                        {student.excusedCount ?? <span className="text-gray-400 text-xs italic">—</span>}
+                      </span>
+                    </td>
+
                     <td className="p-4 text-gray-500 whitespace-nowrap">
                       {formatDate(student.joinedAt) || <span className="text-xs italic text-gray-400">Chưa cập nhật</span>}
                     </td>
-                    <td className="p-4 text-gray-500 whitespace-nowrap">
-                      {student.lastSeen || <span className="text-xs italic text-gray-400">Chưa cập nhật</span>}
-                    </td>
-                    <td className="p-4 whitespace-nowrap">{renderMemberStatusBadge(student.memberStatus)}</td>
-                    <td className="p-4 whitespace-nowrap">{renderStatusBadge(student.attendanceStatus)}</td>
+                    <td className="p-4 whitespace-nowrap">{renderStatusBadge(student)}</td>
                     <td className="p-4 text-center whitespace-nowrap">
                       <button 
                         onClick={() => handleDeleteStudent(student)}
