@@ -1150,13 +1150,10 @@ export default function StudentsTab({ classId }) {
                 <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-200">
                   <tr>
                     <th className="p-4 w-10 text-center text-[10px] text-gray-400">STT</th>
-                    <th className="p-4 w-12 text-center"><input type="checkbox" disabled className="rounded border-gray-300 opacity-50" /></th>
                     <th className="p-4 whitespace-nowrap">Sinh viên</th>
-                    <th className="p-4 whitespace-nowrap">Tỷ lệ điểm danh</th>
                     <th className="p-4 whitespace-nowrap text-center">Có mặt</th>
                     <th className="p-4 whitespace-nowrap text-center">Trễ</th>
                     <th className="p-4 whitespace-nowrap text-center">Vắng</th>
-                    <th className="p-4 whitespace-nowrap text-center">Phép</th>
                     <th className="p-4 whitespace-nowrap">Ngày tham gia</th>
                     <th className="p-4 whitespace-nowrap">Trạng thái</th>
                     <th className="p-4 whitespace-nowrap text-center">Thao tác</th>
@@ -1166,7 +1163,6 @@ export default function StudentsTab({ classId }) {
                   {[...Array(5)].map((_, index) => (
                     <tr key={`sk-${index}`} className="hover:bg-gray-50/50">
                       <td className="p-4 text-center"><div className="w-5 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
-                      <td className="p-4 text-center"><div className="w-4 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-gray-200 shimmer-loader shrink-0" />
@@ -1176,8 +1172,6 @@ export default function StudentsTab({ classId }) {
                           </div>
                         </div>
                       </td>
-                      <td className="p-4"><div className="w-16 h-4 bg-gray-200 rounded shimmer-loader" /></td>
-                      <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
                       <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
                       <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
                       <td className="p-4"><div className="w-8 h-4 bg-gray-200 rounded shimmer-loader mx-auto" /></td>
@@ -1196,27 +1190,45 @@ export default function StudentsTab({ classId }) {
               <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-200">
                 <tr>
                   <th className="p-4 w-10 text-center text-[10px] text-gray-400">STT</th>
-                  <th className="p-4 w-12 text-center"><input type="checkbox" className="rounded border-gray-300 text-red-600 focus:ring-red-500" /></th>
                   <th className="p-4 whitespace-nowrap">Sinh viên</th>
-                  <th className="p-4 whitespace-nowrap">Tỷ lệ điểm danh</th>
-
                   <th className="p-4 whitespace-nowrap text-center">Có mặt</th>
                   
                   <th className="p-4 whitespace-nowrap text-center">Trễ</th>
                   <th className="p-4 whitespace-nowrap text-center" title="Số buổi vắng = vắng thực tế + buổi trước khi tham gia (mặc định VẮNG với SV join muộn, đánh dấu *)">
                     Vắng <span className="text-red-400 text-[10px] cursor-help" title="* bao gồm buổi trước khi tham gia (mặc định VẮNG)">*</span>
                   </th>
-                  <th className="p-4 whitespace-nowrap text-center">Phép</th>
                   <th className="p-4 whitespace-nowrap">Ngày tham gia</th>
                   <th className="p-4 whitespace-nowrap">Trạng thái</th>
                   <th className="p-4 whitespace-nowrap text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {students.map((student, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                {students.map((student, idx) => {
+                  const isBanned = student.policyStatus === 'CRITICAL' ||
+                                   student.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
+                                   student.breachReasons?.includes('RATE_BELOW_CRITICAL');
+                  
+                  const isWarning = !isBanned && (student.policyStatus === 'WARNING' ||
+                                   student.breachReasons?.includes('ABSENT_ABOVE_WARNING') ||
+                                   student.breachReasons?.includes('RATE_BELOW_WARNING'));
+                                   
+                  const absentCount = student.absentCount ?? 0;
+                  const maxAbsentAllowed = attendancePolicy?.maxAbsentSessions ?? attendancePolicy?.maxAbsentAllowed ?? 3;
+                  const remaining = maxAbsentAllowed - absentCount;
+                  const isNearBan = !isBanned && remaining > 0 && remaining <= 2;
+                  
+                  const isAtRisk = isWarning || isNearBan;
+                  
+                  let rowBgClass = "hover:bg-gray-50 transition-colors";
+                  if (isBanned) {
+                    rowBgClass = "bg-rose-50 hover:bg-rose-100 transition-colors";
+                  } else if (isAtRisk) {
+                    rowBgClass = "bg-orange-50 hover:bg-orange-100 transition-colors";
+                  }
+
+                  return (
+                  <tr key={idx} className={rowBgClass}>
                     <td className="p-4 text-center text-xs text-gray-400 font-semibold">{page * size + idx + 1}</td>
-                    <td className="p-4 text-center"><input type="checkbox" className="rounded border-gray-300 text-red-600 focus:ring-red-500" /></td>
                     
                     <td className="p-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
@@ -1244,18 +1256,18 @@ export default function StudentsTab({ classId }) {
                               </span>
                             );
                           })()}
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <span className="text-[10px] text-gray-400 font-medium">Tỷ lệ:</span>
+                            {(() => {
+                              const defaultSessions = plannedSessions && plannedSessions > 0 ? plannedSessions : (totalClassSessions || 1);
+                              const presentCount = student.presentCount ?? 0;
+                              const lateCount = student.lateCount ?? 0;
+                              const rate = Math.round(((presentCount + lateCount) / defaultSessions) * 100);
+                              return renderProgressBar(Math.min(rate, 100));
+                            })()}
+                          </div>
                         </div>
                       </div>
-                    </td>
-
-                    <td className="p-4 whitespace-nowrap">
-                      {(() => {
-                        const defaultSessions = plannedSessions && plannedSessions > 0 ? plannedSessions : (totalClassSessions || 1);
-                        const presentCount = student.presentCount ?? 0;
-                        const lateCount = student.lateCount ?? 0;
-                        const rate = Math.round(((presentCount + lateCount) / defaultSessions) * 100);
-                        return renderProgressBar(Math.min(rate, 100));
-                      })()}
                     </td>
 
                     <td className="p-4 text-center whitespace-nowrap">
@@ -1288,11 +1300,6 @@ export default function StudentsTab({ classId }) {
                         );
                       })()}
                     </td>
-                    <td className="p-4 text-center whitespace-nowrap">
-                      <span className="text-[13px] font-semibold text-blue-600">
-                        {student.excusedCount ?? <span className="text-gray-400 text-xs italic">—</span>}
-                      </span>
-                    </td>
 
                     <td className="p-4 text-gray-500 whitespace-nowrap">
                       {formatDate(student.joinedAt) || <span className="text-xs italic text-gray-400">Chưa cập nhật</span>}
@@ -1317,7 +1324,7 @@ export default function StudentsTab({ classId }) {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           )}
