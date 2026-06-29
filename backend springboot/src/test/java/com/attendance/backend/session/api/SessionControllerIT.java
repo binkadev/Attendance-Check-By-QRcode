@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,6 +49,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Transactional
 class SessionControllerIT {
+
+    private static final ZoneId NOTIFICATION_BODY_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final DateTimeFormatter NOTIFICATION_BODY_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter NOTIFICATION_BODY_TIME = DateTimeFormatter.ofPattern("HH:mm");
 
     @Autowired
     private MockMvc mockMvc;
@@ -529,12 +534,14 @@ class SessionControllerIT {
         assertContains(body, "Phiên vắng dưới ngưỡng");
         assertContains(body, "môn INT1348");
         assertContains(body, "lớp D22CQCNPM02-N - Thông báo vắng");
-        assertContains(body, "Địa điểm: A101, CS Thu Duc");
+        assertContains(body, "Giảng viên: Owner Absence Below");
+        assertContains(body, "tại phòng A101, CS Thu Duc");
         assertContains(body, "1/6");
         assertContains(body, "16.67%");
         assertContains(body, "83.33%");
         assertContains(body, "Các buổi vắng được tính");
-        assertContains(body, "Ngưỡng cảnh báo của lớp là 20%");
+        assertContains(body, bodyStartAt(baseStartAt.plusSeconds(21600)));
+        assertContains(body, "Ngưỡng cảnh báo của lớp là vắng từ 20% hoặc tỷ lệ điểm danh dưới 80%");
         assertDoesNotContain(body, "null");
         assertDoesNotContain(body, "undefined");
 
@@ -549,6 +556,7 @@ class SessionControllerIT {
         assertEquals("INT1348", payload.get("courseCode").asText());
         assertEquals("INT1348", payload.get("subjectCode").asText());
         assertEquals(sessionId.toString(), payload.get("sessionId").asText());
+        assertEquals(sessionId.toString(), payload.get("triggerSessionId").asText());
         assertEquals("Phiên vắng dưới ngưỡng", payload.get("sessionTitle").asText());
         assertEquals("Phiên vắng dưới ngưỡng", payload.get("sessionName").asText());
         assertEquals("Phiên vắng dưới ngưỡng", payload.get("triggerSessionTitle").asText());
@@ -560,7 +568,9 @@ class SessionControllerIT {
         assertNotNull(payload.get("computedAt").asText(null));
         assertEquals("A101", payload.get("room").asText());
         assertEquals("A101, CS Thu Duc", payload.get("location").asText());
+        assertEquals(ownerUserId.toString(), payload.get("lecturerId").asText());
         assertEquals("Owner Absence Below", payload.get("lecturerName").asText());
+        assertEquals("owner-absence-below@example.com", payload.get("lecturerEmail").asText());
         assertEquals("ABSENT", payload.get("attendanceStatus").asText());
         assertEquals(1, payload.get("absentCount").asInt());
         assertEquals(6, payload.get("eligibleSessionCount").asInt());
@@ -617,13 +627,16 @@ class SessionControllerIT {
         assertContains(policyBody, "Phiên chạm cảnh báo");
         assertContains(policyBody, "môn INT1348");
         assertContains(policyBody, "lớp D22CQCNPM02-N - Thông báo cảnh báo");
-        assertContains(policyBody, "Địa điểm: A101, CS Thu Duc");
+        assertContains(policyBody, "Giảng viên: Owner Absence Warning");
+        assertContains(policyBody, "tại phòng A101, CS Thu Duc");
         assertContains(policyBody, "1/5");
         assertContains(policyBody, "20%");
-        assertContains(policyBody, "tỷ lệ điểm danh 80%");
+        assertContains(policyBody, "Tỷ lệ điểm danh hiện tại là 80%");
         assertContains(policyBody, "Các buổi vắng được tính");
-        assertContains(policyBody, "Ngưỡng cảnh báo của lớp là 20%");
+        assertContains(policyBody, bodyStartAt(baseStartAt.plusSeconds(21600)));
+        assertContains(policyBody, "Ngưỡng cảnh báo của lớp là vắng từ 20% hoặc tỷ lệ điểm danh dưới 80%");
         assertDoesNotContain(policyBody, "Tỷ lệ điểm danh của bạn đang ở mức cảnh báo");
+        assertDoesNotContain(policyBody, "Tình trạng điểm danh của bạn");
         assertDoesNotContain(policyBody, "null");
         assertDoesNotContain(policyBody, "undefined");
 
@@ -641,6 +654,7 @@ class SessionControllerIT {
         assertEquals("AT_RISK", policyPayload.get("examEligibility").asText());
         assertNotNull(policyPayload.get("computedAt").asText(null));
         assertEquals("Phiên chạm cảnh báo", policyPayload.get("triggerSessionTitle").asText());
+        assertEquals(sessionId.toString(), policyPayload.get("triggerSessionId").asText());
         assertEquals(1, policyPayload.get("absenceSessions").size());
         assertEquals("Phiên chạm cảnh báo", policyPayload.get("absenceSessions").get(0).get("sessionTitle").asText());
         assertEquals("MISSING_ATTENDANCE_ROW", policyPayload.get("absenceSessions").get(0).get("source").asText());
@@ -689,18 +703,23 @@ class SessionControllerIT {
         assertContains(policyBody, "nguy cơ nghiêm trọng");
         assertContains(policyBody, "môn INT1348");
         assertContains(policyBody, "lớp D22CQCNPM02-N - Thông báo nghiêm trọng");
+        assertContains(policyBody, "Giảng viên: Owner Absence Critical");
         assertContains(policyBody, "Phiên chạm nghiêm trọng");
         assertContains(policyBody, "2/7");
         assertContains(policyBody, "28.57%");
         assertContains(policyBody, "71.43%");
         assertContains(policyBody, "Lịch sử điểm danh 6");
         assertContains(policyBody, "Phiên chạm nghiêm trọng");
-        assertContains(policyBody, "Ngưỡng nguy cơ nghiêm trọng của lớp là 25%");
+        assertContains(policyBody, bodyStartAt(baseStartAt.plusSeconds(5 * 3600L)));
+        assertContains(policyBody, bodyStartAt(baseStartAt.plusSeconds(28800)));
+        assertContains(policyBody, "Ngưỡng nguy cơ nghiêm trọng của lớp là vắng từ 25% hoặc tỷ lệ điểm danh dưới 75%");
         assertDoesNotContain(policyBody, "Lịch sử điểm danh 7");
+        assertDoesNotContain(policyBody, "Tình trạng điểm danh của bạn đã ở mức nghiêm trọng.");
         assertDoesNotContain(policyBody, "null");
         assertDoesNotContain(policyBody, "undefined");
 
         JsonNode policyPayload = notificationPayload(policyRow);
+        assertEquals(sessionId.toString(), policyPayload.get("triggerSessionId").asText());
         assertEquals("CRITICAL", policyPayload.get("policyStatus").asText());
         assertEquals("CRITICAL", policyPayload.get("riskLevel").asText());
         assertEquals("AT_RISK", policyPayload.get("examEligibility").asText());
@@ -713,8 +732,10 @@ class SessionControllerIT {
         assertEquals(2, absenceSessions.size());
         assertEquals("Lịch sử điểm danh 6", absenceSessions.get(0).get("sessionTitle").asText());
         assertEquals("SESSION_ATTENDANCE", absenceSessions.get(0).get("source").asText());
+        assertEquals("ABSENT", absenceSessions.get(0).get("attendanceStatus").asText());
         assertEquals("Phiên chạm nghiêm trọng", absenceSessions.get(1).get("sessionTitle").asText());
         assertEquals("MISSING_ATTENDANCE_ROW", absenceSessions.get(1).get("source").asText());
+        assertEquals("ABSENT", absenceSessions.get(1).get("attendanceStatus").asText());
         assertTrue(!absenceSessionsContainTitle(absenceSessions, "Lịch sử điểm danh 7"));
     }
 
@@ -764,19 +785,25 @@ class SessionControllerIT {
         assertContains(policyBody, "Phiên chạm cấm thi");
         assertContains(policyBody, "môn INT1348");
         assertContains(policyBody, "lớp D22CQCNPM02-N - Thông báo cấm thi");
+        assertContains(policyBody, "Giảng viên: Owner Absence Exam");
         assertContains(policyBody, "3/10");
         assertContains(policyBody, "30%");
-        assertContains(policyBody, "tỷ lệ điểm danh 70%");
+        assertContains(policyBody, "Tỷ lệ điểm danh hiện tại là 70%");
+        assertContains(policyBody, "đạt hoặc vượt ngưỡng cấm thi 30%");
         assertContains(policyBody, "Lịch sử điểm danh 8");
         assertContains(policyBody, "Lịch sử điểm danh 9");
         assertContains(policyBody, "Phiên chạm cấm thi");
-        assertContains(policyBody, "Ngưỡng cấm thi của lớp là 30%");
+        assertContains(policyBody, bodyStartAt(baseStartAt.plusSeconds(7 * 3600L)));
+        assertContains(policyBody, bodyStartAt(baseStartAt.plusSeconds(8 * 3600L)));
+        assertContains(policyBody, "Ngưỡng cấm thi của lớp là vắng từ 30%");
+        assertDoesNotContain(policyBody, "Tình trạng điểm danh của bạn");
         assertDoesNotContain(policyBody, "null");
         assertDoesNotContain(policyBody, "undefined");
 
         JsonNode policyPayload = notificationPayload(policyRow);
         assertEquals("INT1348", policyPayload.get("courseCode").asText());
         assertEquals("D22CQCNPM02-N", policyPayload.get("classCode").asText());
+        assertEquals(sessionId.toString(), policyPayload.get("triggerSessionId").asText());
         assertEquals("Phiên chạm cấm thi", policyPayload.get("triggerSessionTitle").asText());
         assertEquals("EXAM_BANNED", policyPayload.get("policyStatus").asText());
         assertEquals("EXAM_BANNED", policyPayload.get("riskLevel").asText());
@@ -785,6 +812,7 @@ class SessionControllerIT {
         assertEquals(10, policyPayload.get("eligibleSessionCount").asInt());
         assertEquals("30", decimalText(policyPayload.get("absenceRate")));
         assertEquals("30", decimalText(policyPayload.get("examBanAbsenceRate")));
+        assertTrue(policyPayload.get("examBanBelowRate").isNull());
         assertNotNull(policyPayload.get("computedAt").asText(null));
         JsonNode absenceSessions = policyPayload.get("absenceSessions");
         assertEquals(3, absenceSessions.size());
@@ -816,24 +844,36 @@ class SessionControllerIT {
         Map<String, Object> row = findNotificationRowWithoutSession(studentUserId, "ATTENDANCE_POLICY_WARNING");
         String body = row.get("body").toString();
         assertContains(body, "buổi học này");
-        assertContains(body, "môn học này");
-        assertContains(body, "lớp học này");
+        assertContains(body, "môn INT1348");
+        assertContains(body, "lớp D22CQCNPM02-N - Fallback thông báo");
+        assertContains(body, "Giảng viên: Owner Absence Fallback");
         assertContains(body, "1/5");
         assertContains(body, "20%");
+        assertContains(body, "Ngưỡng cảnh báo của lớp là vắng từ 20% hoặc tỷ lệ điểm danh dưới 80%");
         assertDoesNotContain(body, "null");
         assertDoesNotContain(body, "undefined");
 
         JsonNode payload = notificationPayload(row);
         assertEquals(groupId.toString(), payload.get("groupId").asText());
-        assertTrue(payload.get("groupName").isNull());
-        assertTrue(payload.get("className").isNull());
+        assertEquals("Fallback thông báo", payload.get("groupName").asText());
+        assertEquals("Fallback thông báo", payload.get("className").asText());
         assertTrue(payload.get("courseName").isNull());
         assertTrue(payload.get("subjectName").isNull());
+        assertTrue(payload.get("courseId").isNull());
+        assertEquals("INT1348", payload.get("courseCode").asText());
+        assertEquals("INT1348", payload.get("subjectCode").asText());
+        assertEquals("ABW006", payload.get("groupCode").asText());
+        assertEquals("D22CQCNPM02-N", payload.get("classCode").asText());
         assertTrue(payload.get("sessionId").isNull());
+        assertTrue(payload.get("triggerSessionId").isNull());
         assertTrue(payload.get("sessionTitle").isNull());
         assertTrue(payload.get("sessionName").isNull());
+        assertEquals(ownerUserId.toString(), payload.get("lecturerId").asText());
+        assertEquals("Owner Absence Fallback", payload.get("lecturerName").asText());
+        assertEquals("owner-absence-fallback@example.com", payload.get("lecturerEmail").asText());
         assertTrue(payload.get("attendanceStatus").isNull());
         assertEquals("WARNING", payload.get("policyStatus").asText());
+        assertEquals(1, payload.get("absenceSessions").size());
     }
 
     @Test
@@ -1391,6 +1431,12 @@ class SessionControllerIT {
 
     private JsonNode notificationPayload(Map<String, Object> notificationRow) throws Exception {
         return objectMapper.readTree(notificationRow.get("payload_json").toString());
+    }
+
+    private String bodyStartAt(Instant instant) {
+        return NOTIFICATION_BODY_DATE.format(instant.atZone(NOTIFICATION_BODY_ZONE))
+                + " "
+                + NOTIFICATION_BODY_TIME.format(instant.atZone(NOTIFICATION_BODY_ZONE));
     }
 
     private String decimalText(JsonNode node) {

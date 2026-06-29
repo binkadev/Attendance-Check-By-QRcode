@@ -22,11 +22,18 @@ import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class AttendancePolicyNotificationOrchestrator {
+
+    private static final ZoneId BODY_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final DateTimeFormatter BODY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter BODY_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     private final AttendancePolicyService attendancePolicyService;
     private final AttendancePolicyQueryRepository attendancePolicyQueryRepository;
@@ -190,12 +197,13 @@ public class AttendancePolicyNotificationOrchestrator {
             reasons.add(reason.name());
         }
 
-        payload.put("lateWeight", policy.lateWeight());
-        payload.put("warningBelowRate", policy.warningBelowRate());
+        putNullableDecimal(payload, "lateWeight", policy.lateWeight());
+        putNullableDecimal(payload, "warningBelowRate", policy.warningBelowRate());
         putNullableDecimal(payload, "warningAbsenceRate", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.warningBelowRate()));
 
         putNullableDecimal(payload, "criticalBelowRate", policy.criticalBelowRate());
         putNullableDecimal(payload, "criticalAbsenceRate", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.criticalBelowRate()));
+        putNullableDecimal(payload, "examBanBelowRate", null);
         putNullableDecimal(payload, "examBanAbsenceRate", policy.examBanAbsenceRate());
 
         putNullableInteger(payload, "warningAbsentCount", policy.warningAbsentCount());
@@ -252,16 +260,16 @@ public class AttendancePolicyNotificationOrchestrator {
         return "Bạn đã vắng " + sessionPhrase(sourceSession)
                 + " của " + coursePhrase(sourceSession)
                 + ", " + classPhrase(sourceSession)
-                + startAtPhrase(sourceSession, ", diễn ra vào")
                 + "."
-                + locationSentence(sourceSession)
+                + lecturerSentence(sourceSession)
+                + " Thông tin buổi vắng: " + triggerSessionContext(sourceSession) + "."
                 + " Hiện bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
                 + "/" + computed.eligibleSessionCount()
-                + " buổi, tỷ lệ vắng là " + formatRate(computed.absenceRate())
-                + "% và tỷ lệ điểm danh là " + formatRate(computed.attendanceRate())
-                + "%."
+                + " buổi (tỷ lệ vắng " + formatRate(computed.absenceRate())
+                + "%, tỷ lệ điểm danh " + formatRate(computed.attendanceRate())
+                + "%)."
                 + absenceEvidenceSentence(snapshot)
-                + thresholdSentence("cảnh báo", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.warningBelowRate()));
+                + thresholdSentence("cảnh báo", warningThresholdDescriptions(policy));
     }
 
     private String policyWarningBody(
@@ -274,17 +282,15 @@ public class AttendancePolicyNotificationOrchestrator {
 
         return "Bạn đang ở mức cảnh báo chuyên cần " + coursePhrase(sourceSession)
                 + ", " + classPhrase(sourceSession)
-                + " sau " + sessionPhrase(sourceSession)
-                + startAtPhrase(sourceSession, " ngày")
                 + "."
-                + locationSentence(sourceSession)
-                + " Hiện bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
+                + lecturerSentence(sourceSession)
+                + " Tính đến " + triggerSessionContext(sourceSession)
+                + ", bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
                 + "/" + computed.eligibleSessionCount()
-                + " buổi (tỷ lệ vắng " + formatRate(computed.absenceRate())
-                + "%, tỷ lệ điểm danh " + formatRate(computed.attendanceRate())
-                + "%)."
+                + " buổi (" + formatRate(computed.absenceRate())
+                + "%). Tỷ lệ điểm danh hiện tại là " + formatRate(computed.attendanceRate()) + "%."
                 + absenceEvidenceSentence(snapshot)
-                + thresholdSentence("cảnh báo", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.warningBelowRate()))
+                + thresholdSentence("cảnh báo", warningThresholdDescriptions(policy))
                 + " Vui lòng điểm danh đầy đủ các buổi tiếp theo.";
     }
 
@@ -298,17 +304,16 @@ public class AttendancePolicyNotificationOrchestrator {
 
         return "Bạn đang ở mức nguy cơ nghiêm trọng về chuyên cần " + coursePhrase(sourceSession)
                 + ", " + classPhrase(sourceSession)
-                + " sau " + sessionPhrase(sourceSession)
-                + startAtPhrase(sourceSession, " ngày")
                 + "."
-                + locationSentence(sourceSession)
-                + " Hiện bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
+                + lecturerSentence(sourceSession)
+                + " Tính đến " + triggerSessionContext(sourceSession)
+                + ", bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
                 + "/" + computed.eligibleSessionCount()
-                + " buổi (tỷ lệ vắng " + formatRate(computed.absenceRate())
-                + "%, tỷ lệ điểm danh " + formatRate(computed.attendanceRate())
-                + "%), gần ngưỡng không đủ điều kiện dự thi."
+                + " buổi (" + formatRate(computed.absenceRate())
+                + "%). Tỷ lệ điểm danh hiện tại là " + formatRate(computed.attendanceRate())
+                + "%, gần ngưỡng không đủ điều kiện dự thi."
                 + absenceEvidenceSentence(snapshot)
-                + thresholdSentence("nguy cơ nghiêm trọng", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.criticalBelowRate()));
+                + thresholdSentence("nguy cơ nghiêm trọng", criticalThresholdDescriptions(policy));
     }
 
     private String policyExamBannedBody(
@@ -321,16 +326,17 @@ public class AttendancePolicyNotificationOrchestrator {
 
         return "Bạn có thể không đủ điều kiện dự thi " + coursePhrase(sourceSession)
                 + ", " + classPhrase(sourceSession)
-                + ". Sau " + sessionPhrase(sourceSession)
-                + startAtPhrase(sourceSession, " ngày")
+                + "."
+                + lecturerSentence(sourceSession)
+                + " Tính đến " + triggerSessionContext(sourceSession)
                 + ", bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
                 + "/" + computed.eligibleSessionCount()
-                + " buổi (tỷ lệ vắng " + formatRate(computed.absenceRate())
-                + "%, tỷ lệ điểm danh " + formatRate(computed.attendanceRate())
-                + "%)."
-                + locationSentence(sourceSession)
+                + " buổi (" + formatRate(computed.absenceRate())
+                + "%)" + reachedExamBanThresholdPhrase(policy)
+                + ". Tỷ lệ điểm danh hiện tại là " + formatRate(computed.attendanceRate()) + "%."
                 + absenceEvidenceSentence(snapshot)
-                + thresholdSentence("cấm thi", policy.examBanAbsenceRate());
+                + thresholdSentence("cấm thi", examBanThresholdDescriptions(policy))
+                + " Vui lòng liên hệ giảng viên hoặc phòng đào tạo để được hướng dẫn.";
     }
 
     private NotificationType notificationType(AttendancePolicyStatus status) {
@@ -370,7 +376,7 @@ public class AttendancePolicyNotificationOrchestrator {
 
     private SourceSessionInfo findSourceSessionInfo(UUID groupId, UUID userId, UUID sourceSessionId) {
         if (sourceSessionId == null) {
-            return SourceSessionInfo.empty();
+            return findGroupContextInfo(groupId);
         }
 
         if (userId == null) {
@@ -389,7 +395,9 @@ public class AttendancePolicyNotificationOrchestrator {
                         s.session_date,
                         g.room,
                         g.campus,
+                        BIN_TO_UUID(lecturer.id, 1) as lecturer_id,
                         lecturer.full_name as lecturer_name,
+                        lecturer.email as lecturer_email,
                         'ABSENT' as attendance_status
                     from attendance_sessions s
                     join class_groups g
@@ -407,7 +415,8 @@ public class AttendancePolicyNotificationOrchestrator {
                     .setParameter("sessionId", sourceSessionId.toString())
                     .getResultList();
 
-            return toSourceSessionInfo(rows);
+            SourceSessionInfo sourceSession = toSourceSessionInfo(rows);
+            return sourceSession.groupId() == null ? findGroupContextInfo(groupId) : sourceSession;
         }
 
         @SuppressWarnings("unchecked")
@@ -423,12 +432,14 @@ public class AttendancePolicyNotificationOrchestrator {
                     s.start_at,
                     s.end_at,
                     s.session_date,
-                    g.room,
-                    g.campus,
-                    lecturer.full_name as lecturer_name,
-                    coalesce(sa.attendance_status, 'ABSENT') as attendance_status
-                from attendance_sessions s
-                join class_groups g
+                g.room,
+                g.campus,
+                BIN_TO_UUID(lecturer.id, 1) as lecturer_id,
+                lecturer.full_name as lecturer_name,
+                lecturer.email as lecturer_email,
+                coalesce(sa.attendance_status, 'ABSENT') as attendance_status
+            from attendance_sessions s
+            join class_groups g
                   on g.id = s.group_id
                  and g.deleted_at is null
                 left join users lecturer
@@ -447,7 +458,63 @@ public class AttendancePolicyNotificationOrchestrator {
                 .setParameter("sessionId", sourceSessionId.toString())
                 .getResultList();
 
-        return toSourceSessionInfo(rows);
+        SourceSessionInfo sourceSession = toSourceSessionInfo(rows);
+        return sourceSession.groupId() == null ? findGroupContextInfo(groupId) : sourceSession;
+    }
+
+    private SourceSessionInfo findGroupContextInfo(UUID groupId) {
+        if (groupId == null) {
+            return SourceSessionInfo.empty();
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                select
+                    BIN_TO_UUID(g.id, 1) as group_id,
+                    g.name as group_name,
+                    g.code as group_code,
+                    g.class_code,
+                    g.course_code,
+                    g.room,
+                    g.campus,
+                    BIN_TO_UUID(lecturer.id, 1) as lecturer_id,
+                    lecturer.full_name as lecturer_name,
+                    lecturer.email as lecturer_email
+                from class_groups g
+                left join users lecturer
+                  on lecturer.id = g.owner_user_id
+                 and lecturer.deleted_at is null
+                where g.id = UUID_TO_BIN(:groupId, 1)
+                  and g.deleted_at is null
+                limit 1
+                """)
+                .setParameter("groupId", groupId.toString())
+                .getResultList();
+
+        if (rows.isEmpty()) {
+            return SourceSessionInfo.empty();
+        }
+
+        Object[] row = rows.get(0);
+        return new SourceSessionInfo(
+                toUuid(row[0]),
+                clean(row[1]),
+                clean(row[2]),
+                clean(row[3]),
+                null,
+                clean(row[4]),
+                null,
+                null,
+                null,
+                null,
+                null,
+                clean(row[5]),
+                buildLocation(row[5], row[6]),
+                toUuid(row[7]),
+                clean(row[8]),
+                clean(row[9]),
+                null
+        );
     }
 
     private SourceSessionInfo toSourceSessionInfo(List<Object[]> rows) {
@@ -470,8 +537,10 @@ public class AttendancePolicyNotificationOrchestrator {
                 toLocalDate(row[9]),
                 clean(row[10]),
                 buildLocation(row[10], row[11]),
-                clean(row[12]),
-                clean(row[13])
+                toUuid(row[12]),
+                clean(row[13]),
+                clean(row[14]),
+                clean(row[15])
         );
     }
 
@@ -575,6 +644,7 @@ public class AttendancePolicyNotificationOrchestrator {
         putNullableInteger(critical, "absentCount", policy.criticalAbsentCount());
 
         ObjectNode examBan = payload.putObject("examBanThresholds");
+        putNullableDecimal(examBan, "belowRate", null);
         putNullableDecimal(examBan, "absenceRate", policy.examBanAbsenceRate());
         putNullableInteger(examBan, "absentCount", policy.examBanAbsentCount());
     }
@@ -598,12 +668,14 @@ public class AttendancePolicyNotificationOrchestrator {
         putNullableString(payload, "className", groupName);
         putNullableString(payload, "groupCode", groupCode);
         putNullableString(payload, "classCode", firstText(classCode, groupCode));
+        putNullableUuid(payload, "courseId", null);
         putNullableString(payload, "courseName", courseName);
         putNullableString(payload, "subjectName", courseName);
         putNullableString(payload, "courseCode", courseCode);
         putNullableString(payload, "subjectCode", courseCode);
 
         putNullableUuid(payload, "sessionId", sessionId);
+        putNullableUuid(payload, "triggerSessionId", sessionId);
         putNullableString(payload, "sessionTitle", clean(sourceSession.title()));
         putNullableString(payload, "sessionName", clean(sourceSession.title()));
         putNullableInstant(payload, "sessionStartAt", sourceSession.startAt());
@@ -624,7 +696,9 @@ public class AttendancePolicyNotificationOrchestrator {
 
         putNullableString(payload, "room", clean(sourceSession.room()));
         putNullableString(payload, "location", clean(sourceSession.location()));
+        putNullableUuid(payload, "lecturerId", sourceSession.lecturerId());
         putNullableString(payload, "lecturerName", clean(sourceSession.lecturerName()));
+        putNullableString(payload, "lecturerEmail", clean(sourceSession.lecturerEmail()));
         putNullableString(payload, "attendanceStatus", clean(sourceSession.attendanceStatus()));
     }
 
@@ -773,16 +847,47 @@ public class AttendancePolicyNotificationOrchestrator {
         return className == null ? "lớp học này" : "lớp " + className;
     }
 
-    private String startAtPhrase(SourceSessionInfo sourceSession, String prefix) {
-        if (sourceSession.startAt() == null) {
-            return "";
-        }
-        return prefix + " " + sourceSession.startAt();
+    private String lecturerSentence(SourceSessionInfo sourceSession) {
+        String lecturerName = clean(sourceSession.lecturerName());
+        return lecturerName == null ? "" : " Giảng viên: " + lecturerName + ".";
     }
 
-    private String locationSentence(SourceSessionInfo sourceSession) {
-        String location = firstText(sourceSession.location(), sourceSession.room());
-        return location == null ? "" : " Địa điểm: " + location + ".";
+    private String triggerSessionContext(SourceSessionInfo sourceSession) {
+        return sessionPhrase(sourceSession)
+                + sessionDateTimeClause(sourceSession.sessionDate(), sourceSession.startAt(), sourceSession.endAt())
+                + locationClause(sourceSession.location(), sourceSession.room());
+    }
+
+    private String sessionDateTimeClause(LocalDate sessionDate, Instant startAt, Instant endAt) {
+        LocalDate effectiveDate = sessionDate;
+        if (effectiveDate == null && startAt != null) {
+            effectiveDate = LocalDate.ofInstant(startAt, BODY_ZONE);
+        }
+        if (effectiveDate == null && startAt == null) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder(" ngày ");
+        if (effectiveDate != null) {
+            sb.append(BODY_DATE_FORMATTER.format(effectiveDate));
+        }
+
+        if (startAt != null) {
+            if (effectiveDate == null) {
+                sb.append(BODY_DATE_FORMATTER.format(LocalDate.ofInstant(startAt, BODY_ZONE)));
+            }
+            sb.append(" ").append(BODY_TIME_FORMATTER.format(startAt.atZone(BODY_ZONE)));
+            if (endAt != null) {
+                sb.append("-").append(BODY_TIME_FORMATTER.format(endAt.atZone(BODY_ZONE)));
+            }
+        }
+
+        return sb.toString();
+    }
+
+    private String locationClause(String location, String room) {
+        String locationText = firstText(location, room);
+        return locationText == null ? "" : " tại phòng " + locationText;
     }
 
     private String absenceEvidenceSentence(AttendancePolicySnapshot snapshot) {
@@ -795,7 +900,7 @@ public class AttendancePolicyNotificationOrchestrator {
             return null;
         }
 
-        int visibleCount = Math.min(absenceSessions.size(), 5);
+        int visibleCount = Math.min(absenceSessions.size(), 3);
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < visibleCount; i++) {
             if (i > 0) {
@@ -811,21 +916,72 @@ public class AttendancePolicyNotificationOrchestrator {
     }
 
     private String absenceSessionLabel(AbsenceSessionEvidence evidence) {
-        String when = evidence.startAt() != null
-                ? evidence.startAt().toString()
-                : evidence.sessionDate() == null ? null : evidence.sessionDate().toString();
+        String when = clean(sessionDateTimeClause(evidence.sessionDate(), evidence.startAt(), evidence.endAt()));
         String title = clean(evidence.title());
+        String location = firstText(evidence.location(), evidence.room());
+        String locationSuffix = location == null ? "" : " tại phòng " + location;
         if (title == null) {
-            return when == null ? "buổi vắng" : when;
+            return (when == null ? "buổi vắng" : when) + locationSuffix;
         }
-        return when == null ? "\"" + title + "\"" : "\"" + title + "\" " + when;
+        return (when == null ? "\"" + title + "\"" : "\"" + title + "\" " + when) + locationSuffix;
     }
 
-    private String thresholdSentence(String label, BigDecimal value) {
-        if (value == null) {
+    private String thresholdSentence(String label, List<String> thresholdDescriptions) {
+        if (thresholdDescriptions == null || thresholdDescriptions.isEmpty()) {
             return "";
         }
-        return " Ngưỡng " + label + " của lớp là " + formatRate(value) + "%.";
+        return " Ngưỡng " + label + " của lớp là " + String.join(" hoặc ", thresholdDescriptions) + ".";
+    }
+
+    private List<String> warningThresholdDescriptions(AttendancePolicyService.EffectivePolicy policy) {
+        return thresholdDescriptions(
+                AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.warningBelowRate()),
+                policy.warningBelowRate(),
+                policy.warningAbsentCount()
+        );
+    }
+
+    private List<String> criticalThresholdDescriptions(AttendancePolicyService.EffectivePolicy policy) {
+        return thresholdDescriptions(
+                AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.criticalBelowRate()),
+                policy.criticalBelowRate(),
+                policy.criticalAbsentCount()
+        );
+    }
+
+    private List<String> examBanThresholdDescriptions(AttendancePolicyService.EffectivePolicy policy) {
+        List<String> descriptions = new ArrayList<>();
+        if (policy.examBanAbsenceRate() != null) {
+            descriptions.add("vắng từ " + formatRate(policy.examBanAbsenceRate()) + "%");
+        }
+        if (policy.examBanAbsentCount() != null) {
+            descriptions.add("vắng từ " + policy.examBanAbsentCount() + " buổi");
+        }
+        return descriptions;
+    }
+
+    private List<String> thresholdDescriptions(BigDecimal absenceRate, BigDecimal belowRate, Integer absentCount) {
+        List<String> descriptions = new ArrayList<>();
+        if (absenceRate != null) {
+            descriptions.add("vắng từ " + formatRate(absenceRate) + "%");
+        }
+        if (belowRate != null) {
+            descriptions.add("tỷ lệ điểm danh dưới " + formatRate(belowRate) + "%");
+        }
+        if (absentCount != null) {
+            descriptions.add("vắng từ " + absentCount + " buổi");
+        }
+        return descriptions;
+    }
+
+    private String reachedExamBanThresholdPhrase(AttendancePolicyService.EffectivePolicy policy) {
+        if (policy.examBanAbsenceRate() != null) {
+            return ", đạt hoặc vượt ngưỡng cấm thi " + formatRate(policy.examBanAbsenceRate()) + "%";
+        }
+        if (policy.examBanAbsentCount() != null) {
+            return ", đạt hoặc vượt ngưỡng cấm thi " + policy.examBanAbsentCount() + " buổi vắng";
+        }
+        return "";
     }
 
     private String formatRate(BigDecimal value) {
@@ -940,11 +1096,13 @@ public class AttendancePolicyNotificationOrchestrator {
             LocalDate sessionDate,
             String room,
             String location,
+            UUID lecturerId,
             String lecturerName,
+            String lecturerEmail,
             String attendanceStatus
     ) {
         static SourceSessionInfo empty() {
-            return new SourceSessionInfo(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+            return new SourceSessionInfo(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         }
 
         SourceSessionInfo withAttendanceStatus(String value) {
@@ -962,7 +1120,9 @@ public class AttendancePolicyNotificationOrchestrator {
                     sessionDate,
                     room,
                     location,
+                    lecturerId,
                     lecturerName,
+                    lecturerEmail,
                     value
             );
         }
