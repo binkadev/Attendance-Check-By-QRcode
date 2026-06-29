@@ -7,4 +7,8 @@ public interface AttendancePolicyGroupBasicProjection {
     String getGroupName();
 
     String getGroupStatus();
+
+    Integer getTotalSessions();
+
+    Integer getMaxAllowedAbsences();
 }

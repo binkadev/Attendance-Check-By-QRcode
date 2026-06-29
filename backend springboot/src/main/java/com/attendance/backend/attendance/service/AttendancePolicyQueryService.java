@@ -58,8 +58,8 @@ public class AttendancePolicyQueryService {
             );
         }
 
-        AttendancePolicyQueryDtos.AttendancePolicyView policy = resolvePolicy(groupId);
-        AttendancePolicyQueryDtos.AttendancePolicyStudentStatusView item = toStudentStatusView(policy, aggregate);
+        AttendancePolicyQueryDtos.AttendancePolicyView policy = resolvePolicy(groupId, group);
+        AttendancePolicyQueryDtos.AttendancePolicyStudentStatusView item = toStudentStatusView(policy, aggregate, group);
 
         return new AttendancePolicyQueryDtos.MyAttendancePolicyStatusResponse(
                 groupId,
@@ -67,6 +67,8 @@ public class AttendancePolicyQueryService {
                 policy,
                 item.closedSessionCount(),
                 item.eligibleSessionCount(),
+                item.totalPlannedSessionCount(),
+                item.maxAllowedAbsences(),
                 item.presentCount(),
                 item.lateCount(),
                 item.absentCount(),
@@ -77,6 +79,9 @@ public class AttendancePolicyQueryService {
                 item.policyStatus(),
                 item.riskLevel(),
                 item.examEligibility(),
+                item.computedWarningAbsentCount(),
+                item.computedCriticalAbsentCount(),
+                item.computedExamBanAbsentCount(),
                 item.breachReasons()
         );
     }
@@ -90,7 +95,7 @@ public class AttendancePolicyQueryService {
             int size,
             String sort
     ) {
-        requireGroup(groupId);
+        AttendancePolicyGroupBasicProjection group = requireGroup(groupId);
         requireOwnerOrCoHost(groupId, actorUserId);
 
         int safePage = Math.max(page, 0);
@@ -110,10 +115,10 @@ public class AttendancePolicyQueryService {
                         safePage * safeSize
                 );
 
-        AttendancePolicyQueryDtos.AttendancePolicyView policy = resolvePolicy(groupId);
+        AttendancePolicyQueryDtos.AttendancePolicyView policy = resolvePolicy(groupId, group);
 
         List<AttendancePolicyQueryDtos.AttendancePolicyStudentStatusView> items = rows.stream()
-                .map(row -> toStudentStatusView(policy, row))
+                .map(row -> toStudentStatusView(policy, row, group))
                 .toList();
 
         int totalPages = totalElements == 0 ? 0 : (int) Math.ceil((double) totalElements / safeSize);
@@ -156,8 +161,11 @@ public class AttendancePolicyQueryService {
         }
     }
 
-    private AttendancePolicyQueryDtos.AttendancePolicyView resolvePolicy(UUID groupId) {
-        return attendancePolicyRepository.findByGroupId(groupId)
+    private AttendancePolicyQueryDtos.AttendancePolicyView resolvePolicy(
+            UUID groupId,
+            AttendancePolicyGroupBasicProjection group
+    ) {
+        AttendancePolicyQueryDtos.AttendancePolicyView raw = attendancePolicyRepository.findByGroupId(groupId)
                 .map(this::toCustomPolicyView)
                 .orElseGet(() -> new AttendancePolicyQueryDtos.AttendancePolicyView(
                         groupId,
@@ -177,6 +185,32 @@ public class AttendancePolicyQueryService {
                         null,
                         null
                 ));
+
+        Integer effectiveExamBanAbsentCount = AttendancePolicyComputation.resolveEffectiveExamBanAbsentCount(
+                raw.examBanAbsentCount(),
+                positive(group.getMaxAllowedAbsences()),
+                positiveLong(group.getTotalSessions()),
+                raw.examBanAbsenceRate()
+        );
+
+        return new AttendancePolicyQueryDtos.AttendancePolicyView(
+                raw.groupId(),
+                raw.source(),
+                raw.lateWeight(),
+                raw.warningBelowRate(),
+                raw.criticalBelowRate(),
+                raw.examBanAbsenceRate(),
+                raw.warningAbsentCount(),
+                raw.criticalAbsentCount(),
+                effectiveExamBanAbsentCount,
+                raw.excusedHandling(),
+                raw.sessionScope(),
+                raw.membershipScope(),
+                raw.createdAt(),
+                raw.createdByUserId(),
+                raw.updatedAt(),
+                raw.updatedByUserId()
+        );
     }
 
     private AttendancePolicyQueryDtos.AttendancePolicyView toCustomPolicyView(AttendancePolicy policy) {
@@ -206,13 +240,16 @@ public class AttendancePolicyQueryService {
 
     private AttendancePolicyQueryDtos.AttendancePolicyStudentStatusView toStudentStatusView(
             AttendancePolicyQueryDtos.AttendancePolicyView policy,
-            AttendancePolicyStudentAggregateProjection row
+            AttendancePolicyStudentAggregateProjection row,
+            AttendancePolicyGroupBasicProjection group
     ) {
         long closedSessionCount = nvl(row.getClosedSessionCount());
         long presentCount = nvl(row.getPresentCount());
         long lateCount = nvl(row.getLateCount());
         long absentCount = nvl(row.getAbsentCount());
         long excusedCount = nvl(row.getExcusedCount());
+        long totalPlannedSessionCount = positiveLong(group.getTotalSessions());
+        Integer maxAllowedAbsences = positive(group.getMaxAllowedAbsences());
 
         AttendancePolicyComputation.ComputedPolicyStatus computed =
                 AttendancePolicyComputation.compute(
@@ -220,7 +257,9 @@ public class AttendancePolicyQueryService {
                         presentCount,
                         lateCount,
                         absentCount,
-                        excusedCount
+                        excusedCount,
+                        totalPlannedSessionCount,
+                        maxAllowedAbsences
                 );
 
         return new AttendancePolicyQueryDtos.AttendancePolicyStudentStatusView(
@@ -230,6 +269,8 @@ public class AttendancePolicyQueryService {
                 toInstant(row.getJoinedAt()),
                 closedSessionCount,
                 computed.eligibleSessionCount(),
+                computed.thresholdBaseSessionCount(),
+                computed.maxAllowedAbsences(),
                 presentCount,
                 lateCount,
                 absentCount,
@@ -240,6 +281,9 @@ public class AttendancePolicyQueryService {
                 computed.policyStatus(),
                 computed.riskLevel(),
                 computed.examEligibility(),
+                computed.computedWarningAbsentCount(),
+                computed.computedCriticalAbsentCount(),
+                computed.computedExamBanAbsentCount(),
                 computed.breachReasons()
         );
     }
@@ -261,21 +305,17 @@ public class AttendancePolicyQueryService {
         }
 
         if (!sortDir.equals("asc") && !sortDir.equals("desc")) {
-            throw ApiException.badRequest(
-                    "INVALID_SORT_DIRECTION",
-                    "sort direction must be asc or desc"
-            );
+            throw ApiException.badRequest("INVALID_SORT", "sort direction must be asc or desc");
         }
 
         return new SortSpec(sortBy, sortDir);
     }
 
     private String normalizeKeyword(String q) {
-        if (q == null) {
+        if (q == null || q.isBlank()) {
             return null;
         }
-        String trimmed = q.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+        return q.trim();
     }
 
     private BigDecimal normalizeWeight(BigDecimal value) {
@@ -287,21 +327,44 @@ public class AttendancePolicyQueryService {
 
     private BigDecimal normalizePercent(BigDecimal value) {
         if (value == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            return new BigDecimal("80.00");
         }
         return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal normalizeNullablePercent(BigDecimal value) {
-        return value == null ? null : value.setScale(2, RoundingMode.HALF_UP);
+        if (value == null) {
+            return null;
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private long nvl(Long value) {
         return value == null ? 0L : value;
     }
 
-    private Instant toInstant(Timestamp value) {
-        return value == null ? null : value.toInstant();
+    private long positiveLong(Integer value) {
+        return value == null || value <= 0 ? 0L : value.longValue();
+    }
+
+    private Integer positive(Integer value) {
+        return value == null || value <= 0 ? null : value;
+    }
+
+    private Instant toInstant(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Timestamp ts) {
+            return ts.toInstant();
+        }
+        if (value instanceof java.util.Date d) {
+            return d.toInstant();
+        }
+        if (value instanceof Instant instant) {
+            return instant;
+        }
+        throw new IllegalStateException("Unsupported timestamp type: " + value.getClass());
     }
 
     private record SortSpec(String sortBy, String sortDir) {

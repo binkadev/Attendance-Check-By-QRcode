@@ -41,6 +41,8 @@ public final class AttendancePolicyQueryDtos {
             Instant joinedAt,
             long closedSessionCount,
             long eligibleSessionCount,
+            long totalPlannedSessionCount,
+            Integer maxAllowedAbsences,
             long presentCount,
             long lateCount,
             long absentCount,
@@ -51,6 +53,9 @@ public final class AttendancePolicyQueryDtos {
             AttendancePolicyStatus policyStatus,
             String riskLevel,
             String examEligibility,
+            Integer computedWarningAbsentCount,
+            Integer computedCriticalAbsentCount,
+            Integer computedExamBanAbsentCount,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }
@@ -71,6 +76,8 @@ public final class AttendancePolicyQueryDtos {
             AttendancePolicyView policy,
             long closedSessionCount,
             long eligibleSessionCount,
+            long totalPlannedSessionCount,
+            Integer maxAllowedAbsences,
             long presentCount,
             long lateCount,
             long absentCount,
@@ -81,6 +88,9 @@ public final class AttendancePolicyQueryDtos {
             AttendancePolicyStatus policyStatus,
             String riskLevel,
             String examEligibility,
+            Integer computedWarningAbsentCount,
+            Integer computedCriticalAbsentCount,
+            Integer computedExamBanAbsentCount,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }
