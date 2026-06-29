@@ -48,6 +48,11 @@ public class ClassDetailFragment extends Fragment {
     private RecyclerView rvAttendanceHistory;
     private TextView tvAttendanceSummary;
     private AttendanceHistoryAdapter adapter;
+
+    // Thêm các biến cho phần thống kê cấm thi
+    private TextView tvAbsentCount, tvExamStatus;
+    private android.widget.ProgressBar pbAbsenceWarning;
+
     private List<AttendanceHistoryItem> attendanceList = new ArrayList<>();
 
     // Hàm khởi tạo Fragment có kèm ID truyền vào
@@ -59,28 +64,12 @@ public class ClassDetailFragment extends Fragment {
         return fragment;
     }
 
-//    public static ClassDetailFragment newInstance(ClassItem item) {
-//        ClassDetailFragment fragment = new ClassDetailFragment();
-//        Bundle args = new Bundle();
-//        args.putSerializable("CLASS_DATA", item);
-//        fragment.setArguments(args);
-//        return fragment;
-//    }
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (getArguments() != null) {
             groupId = getArguments().getString("GROUP_ID", "");
-//            // Mở gói dữ liệu ra
-//            // Kiểm tra: Nếu là Android 13 (TIRAMISU) trở lên thì dùng cách mới
-//            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-//                currentClass = getArguments().getSerializable("CLASS_DATA", ClassItem.class);
-//            }
-//            // Nếu là Android cũ thì dùng cách ép kiểu truyền thống
-//            else {
-//                currentClass = (ClassItem) getArguments().getSerializable("CLASS_DATA");
-//            }
         }
     }
 
@@ -97,14 +86,6 @@ public class ClassDetailFragment extends Fragment {
         } else {
             Toast.makeText(requireContext(), "Lỗi: Không tìm thấy ID lớp học", Toast.LENGTH_SHORT).show();
         }
-
-//        // NẾU NHẬN ĐƯỢC DỮ LIỆU TỪ MÀN HÌNH TRƯỚC -> HIỂN THỊ NGAY LẬP TỨC!
-//        if (currentClass != null) {
-//            updateUIFromList();
-//        }
-//
-//        // Tùy chọn: Bạn có thể tiếp tục gọi hàm fetchClassDetail() ở đây để
-//        // lấy thêm những thông tin mà màn danh sách không có (nếu Backend sửa xong lỗi 403).
 
         return view;
     }
@@ -130,6 +111,11 @@ public class ClassDetailFragment extends Fragment {
         rvAttendanceHistory.setLayoutManager(new LinearLayoutManager(getContext()));
         adapter = new AttendanceHistoryAdapter(attendanceList);
         rvAttendanceHistory.setAdapter(adapter);
+
+        // Ánh xạ UI thống kê cấm thi
+        tvAbsentCount = view.findViewById(R.id.tvAbsentCount);
+        tvExamStatus = view.findViewById(R.id.tvExamStatus);
+        pbAbsenceWarning = view.findViewById(R.id.pbAbsenceWarning);
     }
 
     private void setupListeners() {
@@ -200,7 +186,7 @@ public class ClassDetailFragment extends Fragment {
         String token = prefs.getString("ACCESS_TOKEN", "");
         if (token.isEmpty()) return;
 
-        // In ra Logcat cái ID đang được truyền đi để kiểm tra xem có bị sai hoặc null không
+        // In ra Logcat
         android.util.Log.d("API_DETAIL", "Đang gọi API cho Group ID: " + groupId);
 
         RetrofitClient.getApiService().getGroupDetail("Bearer " + token, groupId)
@@ -213,12 +199,11 @@ public class ClassDetailFragment extends Fragment {
                             GroupDetail detail = response.body();
                             updateUI(detail);
                         } else {
-                            // 🚨 ĐOẠN CODE NÀY ĐÃ ĐƯỢC THÊM LOG ĐỂ BẮT BỆNH 🚨
+                            // LOG
                             try {
                                 String errorBody = response.errorBody() != null ? response.errorBody().string() : "Unknown Error";
                                 int errorCode = response.code();
 
-                                // In lỗi đỏ lòm ra Logcat để bạn dễ nhìn
                                 android.util.Log.e("API_DETAIL", "Lỗi Server - Mã " + errorCode + ": " + errorBody);
 
                                 Toast.makeText(getContext(), "Lỗi tải dữ liệu (Mã " + errorCode + ")", Toast.LENGTH_SHORT).show();
@@ -240,12 +225,47 @@ public class ClassDetailFragment extends Fragment {
         fetchAttendanceHistory();
     }
 
+//    private void fetchAttendanceHistory() {
+//        SharedPreferences prefs = requireActivity().getSharedPreferences("UniPortalPrefs", Context.MODE_PRIVATE);
+//        String token = prefs.getString("ACCESS_TOKEN", "");
+//
+//        RetrofitClient.getApiService().getAttendanceHistory("Bearer " + token, groupId, 0, 10) // Lấy 10 buổi gần nhất
+//                .enqueue(new Callback<AttendanceHistoryResponse>() {
+//                    @Override
+//                    public void onResponse(Call<AttendanceHistoryResponse> call, Response<AttendanceHistoryResponse> response) {
+//                        if (response.isSuccessful() && response.body() != null) {
+//                            attendanceList.clear();
+//                            attendanceList.addAll(response.body().getItems());
+//                            adapter.notifyDataSetChanged();
+//
+//                            // Tính toán số buổi có mặt
+//                            int presentCount = 0;
+//                            for(AttendanceHistoryItem item : attendanceList) {
+//                                if("PRESENT".equalsIgnoreCase(item.getAttendanceStatus())) {
+//                                    presentCount++;
+//                                }
+//                            }
+//                            int total = response.body().getTotalElements();
+//                            tvAttendanceSummary.setText("Tổng: " + presentCount + "/" + total + " buổi");
+//                        }
+//                    }
+//
+//                    @Override
+//                    public void onFailure(Call<AttendanceHistoryResponse> call, Throwable t) {
+//                        // Xử lý lỗi mạng
+//                    }
+//
+//
+//                });
+//    }
+
     private void fetchAttendanceHistory() {
         SharedPreferences prefs = requireActivity().getSharedPreferences("UniPortalPrefs", Context.MODE_PRIVATE);
         String token = prefs.getString("ACCESS_TOKEN", "");
 
         RetrofitClient.getApiService().getAttendanceHistory("Bearer " + token, groupId, 0, 10) // Lấy 10 buổi gần nhất
                 .enqueue(new Callback<AttendanceHistoryResponse>() {
+
                     @Override
                     public void onResponse(Call<AttendanceHistoryResponse> call, Response<AttendanceHistoryResponse> response) {
                         if (response.isSuccessful() && response.body() != null) {
@@ -253,21 +273,61 @@ public class ClassDetailFragment extends Fragment {
                             attendanceList.addAll(response.body().getItems());
                             adapter.notifyDataSetChanged();
 
-                            // Tính toán số buổi có mặt
+                            // Tính toán số buổi có mặt và vắng mặt
                             int presentCount = 0;
+                            int absentCount = 0; // Thêm biến đếm số buổi vắng
+
                             for(AttendanceHistoryItem item : attendanceList) {
                                 if("PRESENT".equalsIgnoreCase(item.getAttendanceStatus())) {
                                     presentCount++;
+                                } else if("ABSENT".equalsIgnoreCase(item.getAttendanceStatus())) {
+                                    absentCount++;
                                 }
                             }
+
                             int total = response.body().getTotalElements();
-                            tvAttendanceSummary.setText("Tổng: " + presentCount + "/" + total + " buổi");
+                            if(tvAttendanceSummary != null) {
+                                tvAttendanceSummary.setText("Tổng: " + presentCount + "/" + total + " buổi");
+                            }
+
+                            // --- BẮT ĐẦU LOGIC THỐNG KÊ CẤM THI ---
+                            int maxAbsence = 3; // Quy định vắng tối đa 3 buổi
+
+                            if(tvAbsentCount != null && pbAbsenceWarning != null && tvExamStatus != null) {
+                                tvAbsentCount.setText(absentCount + "/" + maxAbsence + " buổi");
+                                pbAbsenceWarning.setProgress(absentCount);
+
+                                if (absentCount > maxAbsence) {
+                                    // Cấm thi (Đỏ)
+                                    tvExamStatus.setText("Cấm thi");
+                                    tvExamStatus.setTextColor(android.graphics.Color.parseColor("#EF4444"));
+                                    tvAbsentCount.setTextColor(android.graphics.Color.parseColor("#EF4444"));
+                                    pbAbsenceWarning.setProgressTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#EF4444")));
+                                } else if (absentCount == maxAbsence) {
+                                    // Nguy cơ (Cam)
+                                    tvExamStatus.setText("Nguy cơ cấm thi");
+                                    tvExamStatus.setTextColor(android.graphics.Color.parseColor("#F59E0B"));
+                                    tvAbsentCount.setTextColor(android.graphics.Color.parseColor("#F59E0B"));
+                                    pbAbsenceWarning.setProgressTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#F59E0B")));
+                                } else {
+                                    // An toàn (Xanh lá)
+                                    tvExamStatus.setText("Đủ điều kiện");
+                                    tvExamStatus.setTextColor(android.graphics.Color.parseColor("#10B981"));
+                                    tvAbsentCount.setTextColor(android.graphics.Color.parseColor("#10B981"));
+                                    pbAbsenceWarning.setProgressTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#10B981")));
+                                }
+                            }
+                            // --- KẾT THÚC LOGIC THỐNG KÊ ---
                         }
                     }
 
+                    // BẠN BỊ THIẾU HÀM NÀY: Bắt buộc phải có để xử lý khi rớt mạng
                     @Override
                     public void onFailure(Call<AttendanceHistoryResponse> call, Throwable t) {
-                        // Xử lý lỗi mạng
+                        if (isAdded() && getContext() != null) {
+                            Toast.makeText(getContext(), "Lỗi tải dữ liệu điểm danh", Toast.LENGTH_SHORT).show();
+                            android.util.Log.e("API_ATTENDANCE", "Lỗi: " + t.getMessage());
+                        }
                     }
                 });
     }

@@ -256,32 +256,12 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:layout_marginBottom="12dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Thông báo lớp học"
-                android:textColor="#0A2540"
-                android:textSize="16sp"
-                android:textStyle="bold"/>
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Xem tất cả"
-                android:textColor="#A6192E"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true"/>
-        </RelativeLayout>
 
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardAttendanceStats"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
             app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
             app:strokeWidth="1dp"
@@ -290,75 +270,97 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
+                android:orientation="vertical"
                 android:padding="16dp">
 
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/bg_icon_circle_blue"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_announcement"
-                    app:tint="#3B82F6"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Thống kê chuyên cần"
+                    android:textColor="#0A2540"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp"/>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_marginStart="12dp">
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
+
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="Nộp bài tập giữa kỳ"
-                        android:textColor="#0A2540"
-                        android:textStyle="bold"
-                        android:textSize="14sp"/>
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Nhắc nhở các em nộp bài tập giữa kỳ trước 23:59 ngày thứ 6 tuần này qua hệ thống e..."
+                        android:text="Số buổi vắng:"
                         android:textColor="#6B7280"
-                        android:textSize="12sp"
-                        android:layout_marginTop="4dp"
-                        android:maxLines="2"
-                        android:ellipsize="end"/>
+                        android:textSize="14sp"/>
+
                     <TextView
+                        android:id="@+id/tvAbsentCount"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="2 ngày trước"
-                        android:textColor="#9CA3AF"
-                        android:textSize="10sp"
-                        android:layout_marginTop="8dp"/>
+                        android:text="2/3 buổi"
+                        android:textColor="#EF4444"
+                        android:textSize="14sp"
+                        android:textStyle="bold"/>
                 </LinearLayout>
+
+                <ProgressBar
+                    android:id="@+id/pbAbsenceWarning"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:max="3"
+                    android:progress="2"
+                    android:progressTint="#F59E0B"
+                    android:progressBackgroundTint="#E5E7EB"
+                    android:layout_marginBottom="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="Tình trạng thi:"
+                        android:textColor="#6B7280"
+                        android:textSize="14sp"/>
+
+                    <TextView
+                        android:id="@+id/tvExamStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Nguy cơ cấm thi"
+                        android:textColor="#F59E0B"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_pill_gray"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="4dp"/>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#F3F4F6"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="8dp"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="* Lưu ý: Sinh viên vắng quá 3 buổi sẽ bị cấm thi."
+                    android:textColor="#9CA3AF"
+                    android:textSize="11sp"
+                    android:textStyle="italic"/>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
-
-<!--        <RelativeLayout-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:layout_marginTop="32dp"-->
-<!--            android:layout_marginBottom="16dp">-->
-<!--            <TextView-->
-<!--                android:layout_width="wrap_content"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:text="Lịch sử điểm danh"-->
-<!--                android:textColor="#0A2540"-->
-<!--                android:textSize="16sp"-->
-<!--                android:textStyle="bold"-->
-<!--                android:layout_centerVertical="true"/>-->
-<!--            <TextView-->
-<!--                android:layout_width="wrap_content"-->
-<!--                android:layout_height="wrap_content"-->
-<!--                android:text="Tổng: 3/15 buổi"-->
-<!--                android:textColor="#4B5563"-->
-<!--                android:textSize="12sp"-->
-<!--                android:textStyle="bold"-->
-<!--                android:background="@drawable/bg_pill_gray"-->
-<!--                android:paddingHorizontal="12dp"-->
-<!--                android:paddingVertical="6dp"-->
-<!--                android:layout_alignParentEnd="true"-->
-<!--                android:layout_centerVertical="true"/>-->
-<!--        </RelativeLayout>-->
 
         <RelativeLayout
             android:layout_width="match_parent"
