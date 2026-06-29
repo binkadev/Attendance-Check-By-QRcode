@@ -23,27 +23,17 @@ public final class AttendancePolicyComputation {
             long absentCount,
             long excusedCount
     ) {
-        return computeInternal(
-                policy.lateWeight(),
-                policy.warningBelowRate(),
-                policy.criticalBelowRate(),
-                policy.examBanAbsenceRate(),
-                policy.warningAbsentCount(),
-                policy.criticalAbsentCount(),
-                policy.examBanAbsentCount(),
-                presentCount,
-                lateCount,
-                absentCount,
-                excusedCount
-        );
+        return compute(policy, presentCount, lateCount, absentCount, excusedCount, 0L, null);
     }
 
     public static ComputedPolicyStatus compute(
-            AttendancePolicyService.EffectivePolicy policy,
+            AttendancePolicyQueryDtos.AttendancePolicyView policy,
             long presentCount,
             long lateCount,
             long absentCount,
-            long excusedCount
+            long excusedCount,
+            long thresholdBaseSessionCount,
+            Integer maxAllowedAbsences
     ) {
         return computeInternal(
                 policy.lateWeight(),
@@ -56,7 +46,45 @@ public final class AttendancePolicyComputation {
                 presentCount,
                 lateCount,
                 absentCount,
-                excusedCount
+                excusedCount,
+                thresholdBaseSessionCount,
+                maxAllowedAbsences
+        );
+    }
+
+    public static ComputedPolicyStatus compute(
+            AttendancePolicyService.EffectivePolicy policy,
+            long presentCount,
+            long lateCount,
+            long absentCount,
+            long excusedCount
+    ) {
+        return compute(policy, presentCount, lateCount, absentCount, excusedCount, 0L, null);
+    }
+
+    public static ComputedPolicyStatus compute(
+            AttendancePolicyService.EffectivePolicy policy,
+            long presentCount,
+            long lateCount,
+            long absentCount,
+            long excusedCount,
+            long thresholdBaseSessionCount,
+            Integer maxAllowedAbsences
+    ) {
+        return computeInternal(
+                policy.lateWeight(),
+                policy.warningBelowRate(),
+                policy.criticalBelowRate(),
+                policy.examBanAbsenceRate(),
+                policy.warningAbsentCount(),
+                policy.criticalAbsentCount(),
+                policy.examBanAbsentCount(),
+                presentCount,
+                lateCount,
+                absentCount,
+                excusedCount,
+                thresholdBaseSessionCount,
+                maxAllowedAbsences
         );
     }
 
@@ -71,9 +99,34 @@ public final class AttendancePolicyComputation {
             long presentCount,
             long lateCount,
             long absentCount,
-            long excusedCount
+            long excusedCount,
+            long thresholdBaseSessionCount,
+            Integer maxAllowedAbsences
     ) {
         long eligibleSessionCount = presentCount + lateCount + absentCount;
+        long effectiveThresholdBaseSessionCount = thresholdBaseSessionCount > 0
+                ? thresholdBaseSessionCount
+                : eligibleSessionCount;
+
+        BigDecimal warningAbsenceRate = absenceRateThresholdForBelowRate(warningBelowRate);
+        BigDecimal criticalAbsenceRate = absenceRateThresholdForBelowRate(criticalBelowRate);
+
+        Integer computedWarningAbsentCount = resolveEffectiveAbsentCount(
+                warningAbsentCount,
+                effectiveThresholdBaseSessionCount,
+                warningAbsenceRate
+        );
+        Integer computedCriticalAbsentCount = resolveEffectiveAbsentCount(
+                criticalAbsentCount,
+                effectiveThresholdBaseSessionCount,
+                criticalAbsenceRate
+        );
+        Integer computedExamBanAbsentCount = resolveEffectiveExamBanAbsentCount(
+                examBanAbsentCount,
+                maxAllowedAbsences,
+                effectiveThresholdBaseSessionCount,
+                examBanAbsenceRate
+        );
 
         BigDecimal earnedAttendancePoints = BigDecimal.valueOf(presentCount)
                 .add(lateWeight.multiply(BigDecimal.valueOf(lateCount)));
@@ -81,12 +134,17 @@ public final class AttendancePolicyComputation {
         if (eligibleSessionCount <= 0) {
             return new ComputedPolicyStatus(
                     eligibleSessionCount,
+                    effectiveThresholdBaseSessionCount,
+                    maxAllowedAbsences,
                     earnedAttendancePoints.setScale(2, RoundingMode.HALF_UP),
                     null,
                     null,
                     AttendancePolicyStatus.NO_DATA,
                     AttendancePolicyStatus.NO_DATA.name(),
                     "ELIGIBLE",
+                    computedWarningAbsentCount,
+                    computedCriticalAbsentCount,
+                    computedExamBanAbsentCount,
                     List.of()
             );
         }
@@ -104,28 +162,22 @@ public final class AttendancePolicyComputation {
         boolean criticalByRate = criticalBelowRate != null
                 && attendanceRate.compareTo(criticalBelowRate) < 0;
 
-        boolean examBannedByAbsenceRate = examBanAbsenceRate != null
-                && absenceRate.compareTo(examBanAbsenceRate) >= 0;
-
-        BigDecimal warningAbsenceRate = absenceRateThresholdForBelowRate(warningBelowRate);
-        BigDecimal criticalAbsenceRate = absenceRateThresholdForBelowRate(criticalBelowRate);
-
         boolean criticalByAbsenceRate = criticalAbsenceRate != null
                 && absenceRate.compareTo(criticalAbsenceRate) >= 0;
 
         boolean warningByAbsenceRate = warningAbsenceRate != null
                 && absenceRate.compareTo(warningAbsenceRate) >= 0;
 
-        boolean criticalByAbsentCount = criticalAbsentCount != null
-                && absentCount >= criticalAbsentCount;
+        boolean criticalByAbsentCount = computedCriticalAbsentCount != null
+                && absentCount >= computedCriticalAbsentCount;
 
-        boolean examBannedByAbsentCount = examBanAbsentCount != null
-                && absentCount >= examBanAbsentCount;
+        boolean examBannedByAbsentCount = computedExamBanAbsentCount != null
+                && absentCount >= computedExamBanAbsentCount;
 
         boolean warningByRate = attendanceRate.compareTo(warningBelowRate) < 0;
 
-        boolean warningByAbsentCount = warningAbsentCount != null
-                && absentCount >= warningAbsentCount;
+        boolean warningByAbsentCount = computedWarningAbsentCount != null
+                && absentCount >= computedWarningAbsentCount;
 
         if (criticalByRate) {
             breachReasons.add(AttendancePolicyBreachReason.RATE_BELOW_CRITICAL);
@@ -133,24 +185,24 @@ public final class AttendancePolicyComputation {
             breachReasons.add(AttendancePolicyBreachReason.RATE_BELOW_WARNING);
         }
 
-        if (examBannedByAbsenceRate) {
-            breachReasons.add(AttendancePolicyBreachReason.ABSENCE_RATE_EXAM_BANNED);
+        if (examBannedByAbsentCount) {
+            breachReasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_EXAM_BANNED);
         } else if (criticalByAbsenceRate) {
             breachReasons.add(AttendancePolicyBreachReason.ABSENCE_RATE_CRITICAL);
         } else if (warningByAbsenceRate) {
             breachReasons.add(AttendancePolicyBreachReason.ABSENCE_RATE_WARNING);
         }
 
-        if (examBannedByAbsentCount) {
-            breachReasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_EXAM_BANNED);
-        } else if (criticalByAbsentCount) {
-            breachReasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_CRITICAL);
-        } else if (warningByAbsentCount) {
-            breachReasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_WARNING);
+        if (!examBannedByAbsentCount) {
+            if (criticalByAbsentCount) {
+                breachReasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_CRITICAL);
+            } else if (warningByAbsentCount) {
+                breachReasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_WARNING);
+            }
         }
 
         AttendancePolicyStatus status;
-        if (examBannedByAbsenceRate || examBannedByAbsentCount) {
+        if (examBannedByAbsentCount) {
             status = AttendancePolicyStatus.EXAM_BANNED;
         } else if (criticalByRate || criticalByAbsenceRate || criticalByAbsentCount) {
             status = AttendancePolicyStatus.CRITICAL;
@@ -162,12 +214,17 @@ public final class AttendancePolicyComputation {
 
         return new ComputedPolicyStatus(
                 eligibleSessionCount,
+                effectiveThresholdBaseSessionCount,
+                maxAllowedAbsences,
                 earnedAttendancePoints.setScale(2, RoundingMode.HALF_UP),
                 attendanceRate,
                 absenceRate,
                 status,
                 status.name(),
                 examEligibility(status),
+                computedWarningAbsentCount,
+                computedCriticalAbsentCount,
+                computedExamBanAbsentCount,
                 List.copyOf(breachReasons)
         );
     }
@@ -177,6 +234,46 @@ public final class AttendancePolicyComputation {
             return null;
         }
         return ONE_HUNDRED.subtract(belowRate).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    static Integer resolveEffectiveAbsentCount(
+            Integer configuredAbsentCount,
+            long thresholdBaseSessionCount,
+            BigDecimal absenceRate
+    ) {
+        if (configuredAbsentCount != null && configuredAbsentCount > 0) {
+            return configuredAbsentCount;
+        }
+        if (thresholdBaseSessionCount <= 0 || absenceRate == null) {
+            return null;
+        }
+        return ceilPercent(thresholdBaseSessionCount, absenceRate);
+    }
+
+    static Integer resolveEffectiveExamBanAbsentCount(
+            Integer configuredExamBanAbsentCount,
+            Integer maxAllowedAbsences,
+            long thresholdBaseSessionCount,
+            BigDecimal examBanAbsenceRate
+    ) {
+        if (configuredExamBanAbsentCount != null && configuredExamBanAbsentCount > 0) {
+            return configuredExamBanAbsentCount;
+        }
+        if (maxAllowedAbsences != null && maxAllowedAbsences > 0) {
+            return maxAllowedAbsences;
+        }
+        if (thresholdBaseSessionCount <= 0 || examBanAbsenceRate == null) {
+            return null;
+        }
+        return ceilPercent(thresholdBaseSessionCount, examBanAbsenceRate);
+    }
+
+    private static int ceilPercent(long total, BigDecimal percent) {
+        BigDecimal raw = BigDecimal.valueOf(total)
+                .multiply(percent)
+                .divide(ONE_HUNDRED, 10, RoundingMode.HALF_UP);
+        int computed = raw.setScale(0, RoundingMode.CEILING).intValue();
+        return Math.max(computed, 1);
     }
 
     private static String examEligibility(AttendancePolicyStatus status) {
@@ -189,12 +286,17 @@ public final class AttendancePolicyComputation {
 
     public record ComputedPolicyStatus(
             long eligibleSessionCount,
+            long thresholdBaseSessionCount,
+            Integer maxAllowedAbsences,
             BigDecimal earnedAttendancePoints,
             BigDecimal attendanceRate,
             BigDecimal absenceRate,
             AttendancePolicyStatus policyStatus,
             String riskLevel,
             String examEligibility,
+            Integer computedWarningAbsentCount,
+            Integer computedCriticalAbsentCount,
+            Integer computedExamBanAbsentCount,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }
