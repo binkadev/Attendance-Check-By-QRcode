@@ -14,7 +14,9 @@ public interface AttendancePolicyQueryRepository extends Repository<AttendancePo
             select
                 BIN_TO_UUID(g.id, 1) as groupId,
                 g.name as groupName,
-                g.status as groupStatus
+                g.status as groupStatus,
+                g.total_sessions as totalSessions,
+                g.max_allowed_absences as maxAllowedAbsences
             from class_groups g
             where g.id = UUID_TO_BIN(:groupId, 1)
               and g.deleted_at is null
