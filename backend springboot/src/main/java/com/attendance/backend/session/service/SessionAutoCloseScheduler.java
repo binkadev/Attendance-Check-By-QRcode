@@ -6,14 +6,21 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 @Component
 public class SessionAutoCloseScheduler {
 
     private final AttendanceSessionRepository attendanceSessionRepository;
+    private final SessionServiceImpl sessionService;
 
-    public SessionAutoCloseScheduler(AttendanceSessionRepository attendanceSessionRepository) {
+    public SessionAutoCloseScheduler(
+            AttendanceSessionRepository attendanceSessionRepository,
+            SessionServiceImpl sessionService
+    ) {
         this.attendanceSessionRepository = attendanceSessionRepository;
+        this.sessionService = sessionService;
     }
 
     @Scheduled(
@@ -22,6 +29,13 @@ public class SessionAutoCloseScheduler {
     )
     @Transactional
     public void closeExpiredOpenSessions() {
-        attendanceSessionRepository.closeExpiredOpenSessions(Instant.now());
+        Instant now = Instant.now();
+        List<UUID> expiredSessionIds = attendanceSessionRepository.findExpiredOpenSessionIds(now);
+        if (expiredSessionIds == null || expiredSessionIds.isEmpty()) {
+            return;
+        }
+        for (UUID sessionId : expiredSessionIds) {
+            sessionService.closeExpiredOpenSession(sessionId, now);
+        }
     }
 }

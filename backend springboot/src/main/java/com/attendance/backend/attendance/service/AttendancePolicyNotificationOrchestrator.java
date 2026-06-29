@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,7 +51,41 @@ public class AttendancePolicyNotificationOrchestrator {
     @Transactional
     public void reevaluateOne(UUID groupId, UUID userId, UUID sourceSessionId) {
         AttendancePolicyService.EffectivePolicy policy = attendancePolicyService.getEffectivePolicy(groupId);
+        AttendancePolicySnapshot snapshot = buildPolicySnapshot(policy, groupId, userId);
 
+        if (snapshot == null) {
+            return;
+        }
+
+        SourceSessionInfo sourceSession = findSourceSessionInfo(groupId, userId, sourceSessionId);
+        publishPolicyNotification(policy, snapshot, groupId, sourceSessionId, sourceSession);
+    }
+
+    @Transactional
+    public void reevaluateClosedSession(UUID groupId, UUID sourceSessionId) {
+        AttendancePolicyService.EffectivePolicy policy = attendancePolicyService.getEffectivePolicy(groupId);
+        List<SessionClosureMemberStatus> statuses = findSessionClosureMemberStatuses(groupId, sourceSessionId);
+
+        for (SessionClosureMemberStatus status : statuses) {
+            AttendancePolicySnapshot snapshot = buildPolicySnapshot(policy, groupId, status.userId());
+            if (snapshot == null) {
+                continue;
+            }
+
+            SourceSessionInfo sourceSession = findSourceSessionInfo(groupId, status.userId(), sourceSessionId);
+            if ("ABSENT".equals(status.attendanceStatus())) {
+                publishAbsenceWarning(status.userId(), groupId, sourceSessionId, sourceSession, policy, snapshot);
+            }
+
+            publishPolicyNotification(policy, snapshot, groupId, sourceSessionId, sourceSession);
+        }
+    }
+
+    private AttendancePolicySnapshot buildPolicySnapshot(
+            AttendancePolicyService.EffectivePolicy policy,
+            UUID groupId,
+            UUID userId
+    ) {
         AttendancePolicyStudentAggregateProjection aggregate =
                 attendancePolicyQueryRepository.aggregateForApprovedMember(
                         groupId.toString(),
@@ -58,7 +93,7 @@ public class AttendancePolicyNotificationOrchestrator {
                 );
 
         if (aggregate == null) {
-            return;
+            return null;
         }
 
         AttendancePolicyComputation.ComputedPolicyStatus computed =
@@ -70,6 +105,18 @@ public class AttendancePolicyNotificationOrchestrator {
                         nullSafe(aggregate.getExcusedCount())
                 );
 
+        return new AttendancePolicySnapshot(aggregate, computed);
+    }
+
+    private void publishPolicyNotification(
+            AttendancePolicyService.EffectivePolicy policy,
+            AttendancePolicySnapshot snapshot,
+            UUID groupId,
+            UUID sourceSessionId,
+            SourceSessionInfo sourceSession
+    ) {
+        AttendancePolicyStudentAggregateProjection aggregate = snapshot.aggregate();
+        AttendancePolicyComputation.ComputedPolicyStatus computed = snapshot.computed();
         UUID recipientUserId = UUID.fromString(aggregate.getUserId());
 
         NotificationType notificationType = notificationType(computed.policyStatus());
@@ -77,8 +124,7 @@ public class AttendancePolicyNotificationOrchestrator {
             return;
         }
 
-        NotificationContent content = notificationContent(computed.policyStatus());
-        SourceSessionInfo sourceSession = findSourceSessionInfo(groupId, recipientUserId, sourceSessionId);
+        NotificationContent content = notificationContent(computed.policyStatus(), policy, snapshot, sourceSession);
 
         notificationService.createOne(new NotificationService.CreateNotificationCommand(
                 recipientUserId,
@@ -87,7 +133,7 @@ public class AttendancePolicyNotificationOrchestrator {
                 notificationType,
                 content.title(),
                 content.body(),
-                buildPayload(policy, aggregate, computed, sourceSessionId, sourceSession),
+                buildPayload(policy, aggregate, computed, groupId, sourceSessionId, sourceSession),
                 content.severity(),
                 NotificationSourceType.ATTENDANCE_POLICY,
                 sourceSessionId,
@@ -104,24 +150,13 @@ public class AttendancePolicyNotificationOrchestrator {
             AttendancePolicyService.EffectivePolicy policy,
             AttendancePolicyStudentAggregateProjection aggregate,
             AttendancePolicyComputation.ComputedPolicyStatus computed,
+            UUID groupId,
             UUID sourceSessionId,
             SourceSessionInfo sourceSession
     ) {
         ObjectNode payload = objectMapper.createObjectNode();
 
-        if (sourceSessionId != null) {
-            payload.put("sessionId", sourceSessionId.toString());
-        } else {
-            payload.putNull("sessionId");
-        }
-        putNullableString(payload, "sessionTitle", sourceSession.title());
-        putNullableString(payload, "sessionName", sourceSession.title());
-        if (sourceSession.startAt() != null) {
-            payload.put("sessionStartAt", sourceSession.startAt().toString());
-        } else {
-            payload.putNull("sessionStartAt");
-        }
-        putNullableString(payload, "attendanceStatus", sourceSession.attendanceStatus());
+        putAcademicContext(payload, groupId, sourceSessionId, sourceSession);
 
         payload.put("userId", aggregate.getUserId());
         payload.put("fullName", aggregate.getFullName());
@@ -165,6 +200,107 @@ public class AttendancePolicyNotificationOrchestrator {
         return payload;
     }
 
+    private void publishAbsenceWarning(
+            UUID recipientUserId,
+            UUID groupId,
+            UUID sourceSessionId,
+            SourceSessionInfo sourceSession,
+            AttendancePolicyService.EffectivePolicy policy,
+            AttendancePolicySnapshot snapshot
+    ) {
+        ObjectNode payload = buildPayload(
+                policy,
+                snapshot.aggregate(),
+                snapshot.computed(),
+                groupId,
+                sourceSessionId,
+                sourceSession.withAttendanceStatus("ABSENT")
+        );
+
+        notificationService.createOne(new NotificationService.CreateNotificationCommand(
+                recipientUserId,
+                groupId,
+                sourceSessionId,
+                NotificationType.ABSENCE_WARNING,
+                "Bạn đã vắng buổi học",
+                absenceWarningBody(sourceSession, snapshot),
+                payload,
+                NotificationSeverity.WARNING,
+                NotificationSourceType.ATTENDANCE_SESSION,
+                sourceSessionId,
+                buildAbsenceDedupKey(recipientUserId, groupId, sourceSessionId)
+        ));
+    }
+
+    private String absenceWarningBody(SourceSessionInfo sourceSession, AttendancePolicySnapshot snapshot) {
+        AttendancePolicyStudentAggregateProjection aggregate = snapshot.aggregate();
+        AttendancePolicyComputation.ComputedPolicyStatus computed = snapshot.computed();
+
+        return "Bạn đã vắng " + sessionPhrase(sourceSession)
+                + " của " + coursePhrase(sourceSession)
+                + ", " + classPhrase(sourceSession)
+                + startAtPhrase(sourceSession, ", diễn ra vào")
+                + "."
+                + locationSentence(sourceSession)
+                + " Hiện bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
+                + "/" + computed.eligibleSessionCount()
+                + " buổi, tỷ lệ vắng là " + formatRate(computed.absenceRate())
+                + "% và tỷ lệ điểm danh là " + formatRate(computed.attendanceRate())
+                + "%.";
+    }
+
+    private String policyWarningBody(SourceSessionInfo sourceSession, AttendancePolicySnapshot snapshot) {
+        AttendancePolicyStudentAggregateProjection aggregate = snapshot.aggregate();
+        AttendancePolicyComputation.ComputedPolicyStatus computed = snapshot.computed();
+
+        return "Bạn đang ở mức cảnh báo chuyên cần " + coursePhrase(sourceSession)
+                + ", " + classPhrase(sourceSession)
+                + " sau " + sessionPhrase(sourceSession)
+                + startAtPhrase(sourceSession, " ngày")
+                + "."
+                + locationSentence(sourceSession)
+                + " Hiện bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
+                + "/" + computed.eligibleSessionCount()
+                + " buổi (" + formatRate(computed.absenceRate())
+                + "%). Vui lòng điểm danh đầy đủ các buổi tiếp theo.";
+    }
+
+    private String policyCriticalBody(SourceSessionInfo sourceSession, AttendancePolicySnapshot snapshot) {
+        AttendancePolicyStudentAggregateProjection aggregate = snapshot.aggregate();
+        AttendancePolicyComputation.ComputedPolicyStatus computed = snapshot.computed();
+
+        return "Bạn đang ở mức nguy cơ nghiêm trọng về chuyên cần " + coursePhrase(sourceSession)
+                + ", " + classPhrase(sourceSession)
+                + " sau " + sessionPhrase(sourceSession)
+                + startAtPhrase(sourceSession, " ngày")
+                + "."
+                + locationSentence(sourceSession)
+                + " Hiện bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
+                + "/" + computed.eligibleSessionCount()
+                + " buổi (" + formatRate(computed.absenceRate())
+                + "%), gần ngưỡng không đủ điều kiện dự thi.";
+    }
+
+    private String policyExamBannedBody(
+            SourceSessionInfo sourceSession,
+            AttendancePolicySnapshot snapshot,
+            AttendancePolicyService.EffectivePolicy policy
+    ) {
+        AttendancePolicyStudentAggregateProjection aggregate = snapshot.aggregate();
+        AttendancePolicyComputation.ComputedPolicyStatus computed = snapshot.computed();
+
+        return "Bạn có thể không đủ điều kiện dự thi " + coursePhrase(sourceSession)
+                + ", " + classPhrase(sourceSession)
+                + ". Sau " + sessionPhrase(sourceSession)
+                + startAtPhrase(sourceSession, " ngày")
+                + ", bạn đã vắng " + nullSafe(aggregate.getAbsentCount())
+                + "/" + computed.eligibleSessionCount()
+                + " buổi (" + formatRate(computed.absenceRate())
+                + "%), đạt hoặc vượt ngưỡng cấm thi "
+                + formatRate(policy.examBanAbsenceRate()) + "%."
+                + locationSentence(sourceSession);
+    }
+
     private NotificationType notificationType(AttendancePolicyStatus status) {
         return switch (status) {
             case WARNING -> NotificationType.ATTENDANCE_POLICY_WARNING;
@@ -174,21 +310,26 @@ public class AttendancePolicyNotificationOrchestrator {
         };
     }
 
-    private NotificationContent notificationContent(AttendancePolicyStatus status) {
+    private NotificationContent notificationContent(
+            AttendancePolicyStatus status,
+            AttendancePolicyService.EffectivePolicy policy,
+            AttendancePolicySnapshot snapshot,
+            SourceSessionInfo sourceSession
+    ) {
         return switch (status) {
             case WARNING -> new NotificationContent(
                     "Cảnh báo chuyên cần",
-                    "Tỷ lệ vắng của bạn đã chạm mức cảnh báo.",
+                    policyWarningBody(sourceSession, snapshot),
                     NotificationSeverity.WARNING
             );
             case CRITICAL -> new NotificationContent(
                     "Nguy cơ nghiêm trọng về chuyên cần",
-                    "Tình trạng chuyên cần của bạn đang ở mức nguy cơ nghiêm trọng.",
+                    policyCriticalBody(sourceSession, snapshot),
                     NotificationSeverity.CRITICAL
             );
             case EXAM_BANNED -> new NotificationContent(
                     "Không đủ điều kiện dự thi",
-                    "Bạn không đủ điều kiện dự thi theo chính sách chuyên cần hiện tại.",
+                    policyExamBannedBody(sourceSession, snapshot, policy),
                     NotificationSeverity.CRITICAL
             );
             case NO_DATA, NORMAL -> throw new IllegalArgumentException("No notification content for status " + status);
@@ -200,13 +341,67 @@ public class AttendancePolicyNotificationOrchestrator {
             return SourceSessionInfo.empty();
         }
 
+        if (userId == null) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = entityManager.createNativeQuery("""
+                    select
+                        BIN_TO_UUID(g.id, 1) as group_id,
+                        g.name as group_name,
+                        g.code as group_code,
+                        g.class_code,
+                        g.course_code,
+                        BIN_TO_UUID(s.id, 1) as session_id,
+                        s.title,
+                        s.start_at,
+                        s.end_at,
+                        s.session_date,
+                        g.room,
+                        g.campus,
+                        lecturer.full_name as lecturer_name,
+                        'ABSENT' as attendance_status
+                    from attendance_sessions s
+                    join class_groups g
+                      on g.id = s.group_id
+                     and g.deleted_at is null
+                    left join users lecturer
+                      on lecturer.id = g.owner_user_id
+                     and lecturer.deleted_at is null
+                    where s.id = UUID_TO_BIN(:sessionId, 1)
+                      and s.group_id = UUID_TO_BIN(:groupId, 1)
+                      and s.deleted_at is null
+                    limit 1
+                    """)
+                    .setParameter("groupId", groupId.toString())
+                    .setParameter("sessionId", sourceSessionId.toString())
+                    .getResultList();
+
+            return toSourceSessionInfo(rows);
+        }
+
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager.createNativeQuery("""
                 select
+                    BIN_TO_UUID(g.id, 1) as group_id,
+                    g.name as group_name,
+                    g.code as group_code,
+                    g.class_code,
+                    g.course_code,
+                    BIN_TO_UUID(s.id, 1) as session_id,
                     s.title,
                     s.start_at,
+                    s.end_at,
+                    s.session_date,
+                    g.room,
+                    g.campus,
+                    lecturer.full_name as lecturer_name,
                     coalesce(sa.attendance_status, 'ABSENT') as attendance_status
                 from attendance_sessions s
+                join class_groups g
+                  on g.id = s.group_id
+                 and g.deleted_at is null
+                left join users lecturer
+                  on lecturer.id = g.owner_user_id
+                 and lecturer.deleted_at is null
                 left join session_attendance sa
                   on sa.session_id = s.id
                  and sa.user_id = UUID_TO_BIN(:userId, 1)
@@ -220,16 +415,65 @@ public class AttendancePolicyNotificationOrchestrator {
                 .setParameter("sessionId", sourceSessionId.toString())
                 .getResultList();
 
+        return toSourceSessionInfo(rows);
+    }
+
+    private SourceSessionInfo toSourceSessionInfo(List<Object[]> rows) {
         if (rows.isEmpty()) {
             return SourceSessionInfo.empty();
         }
 
         Object[] row = rows.get(0);
         return new SourceSessionInfo(
-                row[0] == null ? null : row[0].toString(),
-                toInstant(row[1]),
-                row[2] == null ? null : row[2].toString()
+                toUuid(row[0]),
+                clean(row[1]),
+                clean(row[2]),
+                clean(row[3]),
+                null,
+                clean(row[4]),
+                toUuid(row[5]),
+                clean(row[6]),
+                toInstant(row[7]),
+                toInstant(row[8]),
+                toLocalDate(row[9]),
+                clean(row[10]),
+                buildLocation(row[10], row[11]),
+                clean(row[12]),
+                clean(row[13])
         );
+    }
+
+    private List<SessionClosureMemberStatus> findSessionClosureMemberStatuses(UUID groupId, UUID sourceSessionId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                select
+                    BIN_TO_UUID(gm.user_id, 1) as user_id,
+                    coalesce(sa.attendance_status, 'ABSENT') as attendance_status
+                from group_members gm
+                join attendance_sessions s
+                  on s.group_id = gm.group_id
+                 and s.id = UUID_TO_BIN(:sessionId, 1)
+                 and s.status = 'CLOSED'
+                 and s.deleted_at is null
+                 and s.start_at >= coalesce(gm.joined_at, gm.created_at)
+                left join session_attendance sa
+                  on sa.session_id = s.id
+                 and sa.user_id = gm.user_id
+                where gm.group_id = UUID_TO_BIN(:groupId, 1)
+                  and gm.member_status = 'APPROVED'
+                  and gm.role = 'MEMBER'
+                order by gm.user_id
+                """)
+                .setParameter("groupId", groupId.toString())
+                .setParameter("sessionId", sourceSessionId.toString())
+                .getResultList();
+
+        return rows.stream()
+                .map(row -> new SessionClosureMemberStatus(
+                        UUID.fromString(row[0].toString()),
+                        row[1] == null ? "ABSENT" : row[1].toString()
+                ))
+                .toList();
     }
 
     private void putThresholds(ObjectNode payload, AttendancePolicyService.EffectivePolicy policy) {
@@ -248,11 +492,68 @@ public class AttendancePolicyNotificationOrchestrator {
         putNullableInteger(examBan, "absentCount", policy.examBanAbsentCount());
     }
 
+    private void putAcademicContext(
+            ObjectNode payload,
+            UUID fallbackGroupId,
+            UUID fallbackSessionId,
+            SourceSessionInfo sourceSession
+    ) {
+        UUID groupId = sourceSession.groupId() == null ? fallbackGroupId : sourceSession.groupId();
+        UUID sessionId = sourceSession.sessionId() == null ? fallbackSessionId : sourceSession.sessionId();
+        String groupName = clean(sourceSession.groupName());
+        String groupCode = clean(sourceSession.groupCode());
+        String classCode = clean(sourceSession.classCode());
+        String courseName = clean(sourceSession.courseName());
+        String courseCode = clean(sourceSession.courseCode());
+
+        putNullableUuid(payload, "groupId", groupId);
+        putNullableString(payload, "groupName", groupName);
+        putNullableString(payload, "className", groupName);
+        putNullableString(payload, "groupCode", groupCode);
+        putNullableString(payload, "classCode", firstText(classCode, groupCode));
+        putNullableString(payload, "courseName", courseName);
+        putNullableString(payload, "subjectName", courseName);
+        putNullableString(payload, "courseCode", courseCode);
+        putNullableString(payload, "subjectCode", courseCode);
+
+        putNullableUuid(payload, "sessionId", sessionId);
+        putNullableString(payload, "sessionTitle", clean(sourceSession.title()));
+        putNullableString(payload, "sessionName", clean(sourceSession.title()));
+        putNullableInstant(payload, "sessionStartAt", sourceSession.startAt());
+        putNullableInstant(payload, "sessionEndAt", sourceSession.endAt());
+        if (sourceSession.sessionDate() == null) {
+            payload.putNull("sessionDate");
+        } else {
+            payload.put("sessionDate", sourceSession.sessionDate().toString());
+        }
+
+        putNullableString(payload, "room", clean(sourceSession.room()));
+        putNullableString(payload, "location", clean(sourceSession.location()));
+        putNullableString(payload, "lecturerName", clean(sourceSession.lecturerName()));
+        putNullableString(payload, "attendanceStatus", clean(sourceSession.attendanceStatus()));
+    }
+
     private void putNullableString(ObjectNode node, String field, String value) {
         if (value == null) {
             node.putNull(field);
         } else {
             node.put(field, value);
+        }
+    }
+
+    private void putNullableUuid(ObjectNode node, String field, UUID value) {
+        if (value == null) {
+            node.putNull(field);
+        } else {
+            node.put(field, value.toString());
+        }
+    }
+
+    private void putNullableInstant(ObjectNode node, String field, Instant value) {
+        if (value == null) {
+            node.putNull(field);
+        } else {
+            node.put(field, value.toString());
         }
     }
 
@@ -288,6 +589,95 @@ public class AttendancePolicyNotificationOrchestrator {
         throw new IllegalStateException("Unsupported timestamp type: " + value.getClass());
     }
 
+    private LocalDate toLocalDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate();
+        }
+        if (value instanceof Timestamp ts) {
+            return ts.toLocalDateTime().toLocalDate();
+        }
+        if (value instanceof java.util.Date d) {
+            return new java.sql.Date(d.getTime()).toLocalDate();
+        }
+        return LocalDate.parse(value.toString());
+    }
+
+    private UUID toUuid(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return UUID.fromString(value.toString());
+    }
+
+    private String buildLocation(Object room, Object campus) {
+        String roomText = clean(room);
+        String campusText = clean(campus);
+        if (roomText == null) {
+            return campusText;
+        }
+        if (campusText == null) {
+            return roomText;
+        }
+        return roomText + ", " + campusText;
+    }
+
+    private String sessionPhrase(SourceSessionInfo sourceSession) {
+        String title = clean(sourceSession.title());
+        return title == null ? "buổi học này" : "buổi \"" + title + "\"";
+    }
+
+    private String coursePhrase(SourceSessionInfo sourceSession) {
+        String courseName = clean(sourceSession.courseName());
+        return courseName == null ? "môn học này" : "môn " + courseName;
+    }
+
+    private String classPhrase(SourceSessionInfo sourceSession) {
+        String className = clean(sourceSession.groupName());
+        return className == null ? "lớp học này" : "lớp " + className;
+    }
+
+    private String startAtPhrase(SourceSessionInfo sourceSession, String prefix) {
+        if (sourceSession.startAt() == null) {
+            return "";
+        }
+        return prefix + " " + sourceSession.startAt();
+    }
+
+    private String locationSentence(SourceSessionInfo sourceSession) {
+        String location = firstText(sourceSession.location(), sourceSession.room());
+        return location == null ? "" : " Địa điểm: " + location + ".";
+    }
+
+    private String formatRate(BigDecimal value) {
+        if (value == null) {
+            return "0";
+        }
+        BigDecimal stripped = value.stripTrailingZeros();
+        if (stripped.scale() < 0) {
+            stripped = stripped.setScale(0);
+        }
+        return stripped.toPlainString();
+    }
+
+    private String firstText(String first, String second) {
+        String cleanFirst = clean(first);
+        return cleanFirst == null ? clean(second) : cleanFirst;
+    }
+
+    private String clean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : text;
+    }
+
     private String buildPolicyDedupKey(
             NotificationType type,
             UUID recipientUserId,
@@ -300,6 +690,20 @@ public class AttendancePolicyNotificationOrchestrator {
                 recipientUserId.toString(),
                 groupId.toString(),
                 sourceSessionId == null ? "null" : sourceSessionId.toString()
+        );
+        return sha256Hex(raw);
+    }
+
+    private String buildAbsenceDedupKey(
+            UUID recipientUserId,
+            UUID groupId,
+            UUID sourceSessionId
+    ) {
+        String raw = String.join("|",
+                "absence",
+                recipientUserId.toString(),
+                groupId.toString(),
+                sourceSessionId.toString()
         );
         return sha256Hex(raw);
     }
@@ -326,9 +730,54 @@ public class AttendancePolicyNotificationOrchestrator {
     private record NotificationContent(String title, String body, NotificationSeverity severity) {
     }
 
-    private record SourceSessionInfo(String title, Instant startAt, String attendanceStatus) {
+    private record AttendancePolicySnapshot(
+            AttendancePolicyStudentAggregateProjection aggregate,
+            AttendancePolicyComputation.ComputedPolicyStatus computed
+    ) {
+    }
+
+    private record SourceSessionInfo(
+            UUID groupId,
+            String groupName,
+            String groupCode,
+            String classCode,
+            String courseName,
+            String courseCode,
+            UUID sessionId,
+            String title,
+            Instant startAt,
+            Instant endAt,
+            LocalDate sessionDate,
+            String room,
+            String location,
+            String lecturerName,
+            String attendanceStatus
+    ) {
         static SourceSessionInfo empty() {
-            return new SourceSessionInfo(null, null, null);
+            return new SourceSessionInfo(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         }
+
+        SourceSessionInfo withAttendanceStatus(String value) {
+            return new SourceSessionInfo(
+                    groupId,
+                    groupName,
+                    groupCode,
+                    classCode,
+                    courseName,
+                    courseCode,
+                    sessionId,
+                    title,
+                    startAt,
+                    endAt,
+                    sessionDate,
+                    room,
+                    location,
+                    lecturerName,
+                    value
+            );
+        }
+    }
+
+    private record SessionClosureMemberStatus(UUID userId, String attendanceStatus) {
     }
 }

@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -79,6 +80,32 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
     default boolean existsOpenByGroupId(UUID groupId) {
         return existsByGroupIdAndStatusAndDeletedAtIsNull(groupId, SessionStatus.OPEN);
     }
+
+    @Query("""
+            select s.id
+            from AttendanceSession s
+            where s.status = com.attendance.backend.domain.enums.SessionStatus.OPEN
+              and s.deletedAt is null
+              and s.checkinCloseAt is not null
+              and s.checkinCloseAt <= :now
+            order by s.checkinCloseAt asc, s.createdAt asc
+            """)
+    List<UUID> findExpiredOpenSessionIds(@Param("now") Instant now);
+
+    @Query("""
+            select s.id
+            from AttendanceSession s
+            where s.groupId = :groupId
+              and s.status = com.attendance.backend.domain.enums.SessionStatus.OPEN
+              and s.deletedAt is null
+              and s.checkinCloseAt is not null
+              and s.checkinCloseAt <= :now
+            order by s.checkinCloseAt asc, s.createdAt asc
+            """)
+    List<UUID> findExpiredOpenSessionIdsByGroupId(
+            @Param("groupId") UUID groupId,
+            @Param("now") Instant now
+    );
 
     @Query("""
             select s

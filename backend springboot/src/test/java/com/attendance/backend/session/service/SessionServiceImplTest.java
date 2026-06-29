@@ -1,6 +1,7 @@
 package com.attendance.backend.session.service;
 
 import com.attendance.backend.attendance.repository.AttendanceSessionRepository;
+import com.attendance.backend.attendance.service.AttendancePolicyNotificationOrchestrator;
 import com.attendance.backend.common.exception.ApiException;
 import com.attendance.backend.domain.entity.AttendanceSession;
 import com.attendance.backend.domain.entity.ClassGroup;
@@ -48,6 +49,9 @@ class SessionServiceImplTest {
 
     @Mock
     private GroupMemberRepository groupMemberRepository;
+
+    @Mock
+    private AttendancePolicyNotificationOrchestrator attendancePolicyNotificationOrchestrator;
 
     @InjectMocks
     private SessionServiceImpl sessionService;
@@ -476,6 +480,7 @@ class SessionServiceImplTest {
         assertEquals(SessionStatus.CLOSED, response.status());
 
         verify(attendanceSessionRepository).saveAndFlush(session);
+        verify(attendancePolicyNotificationOrchestrator).reevaluateClosedSession(groupId, sessionId);
     }
 
     @Test

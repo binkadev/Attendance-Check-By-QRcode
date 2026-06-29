@@ -1,5 +1,6 @@
 package com.attendance.backend.session.api;
 
+import com.attendance.backend.attendance.service.AttendancePolicyNotificationOrchestrator;
 import com.attendance.backend.security.UserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,10 +29,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -54,6 +57,9 @@ class SessionControllerIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private AttendancePolicyNotificationOrchestrator attendancePolicyNotificationOrchestrator;
 
     @BeforeEach
     void setUp() {
@@ -489,6 +495,302 @@ class SessionControllerIT {
     }
 
     @Test
+    void close_session_absent_below_warning_should_create_absence_warning_only_and_return_in_me_notifications() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID studentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-absence-below@example.com", "Owner Absence Below");
+        insertUser(studentUserId, "student-absence-below@example.com", "Student Absence Below");
+        insertGroup(groupId, ownerUserId, "Thông báo vắng", "ABW001", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertMember(groupId, studentUserId, "MEMBER", "APPROVED");
+
+        Instant baseStartAt = Instant.now().plusSeconds(3600);
+        seedClosedHistory(groupId, ownerUserId, studentUserId, baseStartAt, "PRESENT", "PRESENT", "PRESENT", "PRESENT", "PRESENT");
+        insertSession(sessionId, groupId, ownerUserId, "Phiên vắng dưới ngưỡng", "OPEN", baseStartAt.plusSeconds(21600), null);
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("CLOSED")));
+
+        assertEquals(1L, countNotification(studentUserId, "ABSENCE_WARNING", sessionId));
+        assertEquals(0L, countAnyPolicyNotification(studentUserId, sessionId));
+
+        Map<String, Object> row = findNotificationRow(studentUserId, "ABSENCE_WARNING", sessionId);
+        assertEquals("WARNING", row.get("severity"));
+        assertEquals("ATTENDANCE_SESSION", row.get("source_type"));
+        assertEquals("Bạn đã vắng buổi học", row.get("title"));
+        assertEquals(sessionId.toString(), row.get("source_ref_id"));
+
+        String body = row.get("body").toString();
+        assertContains(body, "Phiên vắng dưới ngưỡng");
+        assertContains(body, "môn học này");
+        assertContains(body, "lớp Thông báo vắng");
+        assertContains(body, "Địa điểm: A101, CS Thu Duc");
+        assertContains(body, "1/6");
+        assertContains(body, "16.67%");
+        assertContains(body, "83.33%");
+        assertDoesNotContain(body, "null");
+        assertDoesNotContain(body, "undefined");
+
+        JsonNode payload = notificationPayload(row);
+        assertEquals(groupId.toString(), payload.get("groupId").asText());
+        assertEquals("Thông báo vắng", payload.get("groupName").asText());
+        assertEquals("Thông báo vắng", payload.get("className").asText());
+        assertEquals("ABW001", payload.get("groupCode").asText());
+        assertEquals("D22CQCNPM02-N", payload.get("classCode").asText());
+        assertTrue(payload.get("courseName").isNull());
+        assertTrue(payload.get("subjectName").isNull());
+        assertEquals("INT1348", payload.get("courseCode").asText());
+        assertEquals("INT1348", payload.get("subjectCode").asText());
+        assertEquals(sessionId.toString(), payload.get("sessionId").asText());
+        assertEquals("Phiên vắng dưới ngưỡng", payload.get("sessionTitle").asText());
+        assertEquals("Phiên vắng dưới ngưỡng", payload.get("sessionName").asText());
+        assertNotNull(payload.get("sessionStartAt").asText(null));
+        assertNotNull(payload.get("sessionEndAt").asText(null));
+        assertNotNull(payload.get("sessionDate").asText(null));
+        assertEquals("A101", payload.get("room").asText());
+        assertEquals("A101, CS Thu Duc", payload.get("location").asText());
+        assertEquals("Owner Absence Below", payload.get("lecturerName").asText());
+        assertEquals("ABSENT", payload.get("attendanceStatus").asText());
+        assertEquals(1, payload.get("absentCount").asInt());
+        assertEquals(6, payload.get("eligibleSessionCount").asInt());
+        assertEquals("16.67", decimalText(payload.get("absenceRate")));
+        assertEquals("83.33", decimalText(payload.get("attendanceRate")));
+        assertEquals("NORMAL", payload.get("policyStatus").asText());
+        assertEquals("NORMAL", payload.get("riskLevel").asText());
+        assertEquals("ELIGIBLE", payload.get("examEligibility").asText());
+        assertEquals("20", decimalText(payload.get("warningAbsenceRate")));
+        assertEquals("25", decimalText(payload.get("criticalAbsenceRate")));
+        assertEquals("30", decimalText(payload.get("examBanAbsenceRate")));
+
+        mockMvc.perform(get("/api/v1/me/notifications")
+                        .with(auth(studentUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].type", hasItem("ABSENCE_WARNING")))
+                .andExpect(jsonPath("$.items[?(@.type == 'ABSENCE_WARNING')].title", hasItem("Bạn đã vắng buổi học")));
+    }
+
+    @Test
+    void close_session_absent_reaching_warning_should_create_absence_and_policy_warning() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID studentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-absence-warning@example.com", "Owner Absence Warning");
+        insertUser(studentUserId, "student-absence-warning@example.com", "Student Absence Warning");
+        insertGroup(groupId, ownerUserId, "Thông báo cảnh báo", "ABW002", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertMember(groupId, studentUserId, "MEMBER", "APPROVED");
+
+        Instant baseStartAt = Instant.now().plusSeconds(3600);
+        seedClosedHistory(groupId, ownerUserId, studentUserId, baseStartAt, "PRESENT", "PRESENT", "PRESENT", "PRESENT");
+        insertSession(sessionId, groupId, ownerUserId, "Phiên chạm cảnh báo", "OPEN", baseStartAt.plusSeconds(21600), null);
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isOk());
+
+        assertEquals(1L, countNotification(studentUserId, "ABSENCE_WARNING", sessionId));
+        assertEquals(1L, countNotification(studentUserId, "ATTENDANCE_POLICY_WARNING", sessionId));
+        assertEquals(0L, countNotification(studentUserId, "ATTENDANCE_POLICY_CRITICAL", sessionId));
+        assertEquals(0L, countNotification(studentUserId, "ATTENDANCE_POLICY_EXAM_BANNED", sessionId));
+
+        Map<String, Object> policyRow = findNotificationRow(studentUserId, "ATTENDANCE_POLICY_WARNING", sessionId);
+        String policyBody = policyRow.get("body").toString();
+        assertContains(policyBody, "cảnh báo chuyên cần");
+        assertContains(policyBody, "Phiên chạm cảnh báo");
+        assertContains(policyBody, "môn học này");
+        assertContains(policyBody, "lớp Thông báo cảnh báo");
+        assertContains(policyBody, "Địa điểm: A101, CS Thu Duc");
+        assertContains(policyBody, "1/5");
+        assertContains(policyBody, "20%");
+        assertDoesNotContain(policyBody, "Tỷ lệ điểm danh của bạn đang ở mức cảnh báo");
+        assertDoesNotContain(policyBody, "null");
+        assertDoesNotContain(policyBody, "undefined");
+
+        JsonNode policyPayload = notificationPayload(policyRow);
+        assertEquals(groupId.toString(), policyPayload.get("groupId").asText());
+        assertEquals("Thông báo cảnh báo", policyPayload.get("className").asText());
+        assertEquals("Phiên chạm cảnh báo", policyPayload.get("sessionTitle").asText());
+        assertEquals("ABSENT", policyPayload.get("attendanceStatus").asText());
+        assertEquals(1, policyPayload.get("absentCount").asInt());
+        assertEquals(5, policyPayload.get("eligibleSessionCount").asInt());
+        assertEquals("20", decimalText(policyPayload.get("absenceRate")));
+        assertEquals("80", decimalText(policyPayload.get("attendanceRate")));
+        assertEquals("WARNING", policyPayload.get("policyStatus").asText());
+        assertEquals("WARNING", policyPayload.get("riskLevel").asText());
+        assertEquals("AT_RISK", policyPayload.get("examEligibility").asText());
+    }
+
+    @Test
+    void close_session_absent_reaching_exam_ban_should_create_absence_and_exam_banned_policy_notification() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID studentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-absence-exam@example.com", "Owner Absence Exam");
+        insertUser(studentUserId, "student-absence-exam@example.com", "Student Absence Exam");
+        insertGroup(groupId, ownerUserId, "Thông báo cấm thi", "ABW003", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertMember(groupId, studentUserId, "MEMBER", "APPROVED");
+
+        Instant baseStartAt = Instant.now().plusSeconds(3600);
+        seedClosedHistory(
+                groupId,
+                ownerUserId,
+                studentUserId,
+                baseStartAt,
+                "PRESENT",
+                "PRESENT",
+                "PRESENT",
+                "PRESENT",
+                "PRESENT",
+                "PRESENT",
+                "PRESENT",
+                "ABSENT",
+                "ABSENT"
+        );
+        insertSession(sessionId, groupId, ownerUserId, "Phiên chạm cấm thi", "OPEN", baseStartAt.plusSeconds(43200), null);
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isOk());
+
+        assertEquals(1L, countNotification(studentUserId, "ABSENCE_WARNING", sessionId));
+        assertEquals(1L, countNotification(studentUserId, "ATTENDANCE_POLICY_EXAM_BANNED", sessionId));
+        assertEquals(0L, countNotification(studentUserId, "ATTENDANCE_POLICY_WARNING", sessionId));
+        assertEquals(0L, countNotification(studentUserId, "ATTENDANCE_POLICY_CRITICAL", sessionId));
+
+        Map<String, Object> policyRow = findNotificationRow(studentUserId, "ATTENDANCE_POLICY_EXAM_BANNED", sessionId);
+        String policyBody = policyRow.get("body").toString();
+        assertContains(policyBody, "không đủ điều kiện dự thi");
+        assertContains(policyBody, "Phiên chạm cấm thi");
+        assertContains(policyBody, "môn học này");
+        assertContains(policyBody, "lớp Thông báo cấm thi");
+        assertContains(policyBody, "3/10");
+        assertContains(policyBody, "30%");
+        assertContains(policyBody, "ngưỡng cấm thi 30%");
+        assertDoesNotContain(policyBody, "null");
+        assertDoesNotContain(policyBody, "undefined");
+
+        JsonNode policyPayload = notificationPayload(policyRow);
+        assertEquals("EXAM_BANNED", policyPayload.get("policyStatus").asText());
+        assertEquals("EXAM_BANNED", policyPayload.get("riskLevel").asText());
+        assertEquals("BANNED", policyPayload.get("examEligibility").asText());
+        assertEquals(3, policyPayload.get("absentCount").asInt());
+        assertEquals(10, policyPayload.get("eligibleSessionCount").asInt());
+        assertEquals("30", decimalText(policyPayload.get("absenceRate")));
+        assertEquals("30", decimalText(policyPayload.get("examBanAbsenceRate")));
+    }
+
+    @Test
+    void reevaluate_policy_notification_with_missing_context_should_use_body_fallbacks() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID studentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-absence-fallback@example.com", "Owner Absence Fallback");
+        insertUser(studentUserId, "student-absence-fallback@example.com", "Student Absence Fallback");
+        insertGroup(groupId, ownerUserId, "Fallback thông báo", "ABW006", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertMember(groupId, studentUserId, "MEMBER", "APPROVED");
+
+        Instant baseStartAt = Instant.now().plusSeconds(3600);
+        seedClosedHistory(groupId, ownerUserId, studentUserId, baseStartAt, "PRESENT", "PRESENT", "PRESENT", "PRESENT", "ABSENT");
+
+        attendancePolicyNotificationOrchestrator.reevaluateOne(groupId, studentUserId, null);
+
+        Map<String, Object> row = findNotificationRowWithoutSession(studentUserId, "ATTENDANCE_POLICY_WARNING");
+        String body = row.get("body").toString();
+        assertContains(body, "buổi học này");
+        assertContains(body, "môn học này");
+        assertContains(body, "lớp học này");
+        assertContains(body, "1/5");
+        assertContains(body, "20%");
+        assertDoesNotContain(body, "null");
+        assertDoesNotContain(body, "undefined");
+
+        JsonNode payload = notificationPayload(row);
+        assertEquals(groupId.toString(), payload.get("groupId").asText());
+        assertTrue(payload.get("groupName").isNull());
+        assertTrue(payload.get("className").isNull());
+        assertTrue(payload.get("courseName").isNull());
+        assertTrue(payload.get("subjectName").isNull());
+        assertTrue(payload.get("sessionId").isNull());
+        assertTrue(payload.get("sessionTitle").isNull());
+        assertTrue(payload.get("sessionName").isNull());
+        assertTrue(payload.get("attendanceStatus").isNull());
+        assertEquals("WARNING", payload.get("policyStatus").asText());
+    }
+
+    @Test
+    void close_session_present_late_excused_students_should_not_receive_absence_warning() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID presentUserId = UUID.randomUUID();
+        UUID lateUserId = UUID.randomUUID();
+        UUID excusedUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-no-absence@example.com", "Owner No Absence");
+        insertUser(presentUserId, "present-no-absence@example.com", "Present No Absence");
+        insertUser(lateUserId, "late-no-absence@example.com", "Late No Absence");
+        insertUser(excusedUserId, "excused-no-absence@example.com", "Excused No Absence");
+        insertGroup(groupId, ownerUserId, "Không thông báo vắng", "ABW004", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertMember(groupId, presentUserId, "MEMBER", "APPROVED");
+        insertMember(groupId, lateUserId, "MEMBER", "APPROVED");
+        insertMember(groupId, excusedUserId, "MEMBER", "APPROVED");
+
+        Instant startAt = Instant.now().plusSeconds(3600);
+        insertSession(sessionId, groupId, ownerUserId, "Phiên không vắng", "OPEN", startAt, null);
+        insertAttendance(sessionId, presentUserId, "PRESENT");
+        insertAttendance(sessionId, lateUserId, "LATE");
+        insertAttendance(sessionId, excusedUserId, "EXCUSED");
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isOk());
+
+        assertEquals(0L, countNotification(presentUserId, "ABSENCE_WARNING", sessionId));
+        assertEquals(0L, countNotification(lateUserId, "ABSENCE_WARNING", sessionId));
+        assertEquals(0L, countNotification(excusedUserId, "ABSENCE_WARNING", sessionId));
+    }
+
+    @Test
+    void close_session_absence_warning_should_be_deduplicated_when_finalize_repeats() throws Exception {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID studentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        insertUser(ownerUserId, "owner-absence-dedup@example.com", "Owner Absence Dedup");
+        insertUser(studentUserId, "student-absence-dedup@example.com", "Student Absence Dedup");
+        insertGroup(groupId, ownerUserId, "Chống trùng thông báo", "ABW005", "ACTIVE");
+        insertMember(groupId, ownerUserId, "OWNER", "APPROVED");
+        insertMember(groupId, studentUserId, "MEMBER", "APPROVED");
+
+        Instant baseStartAt = Instant.now().plusSeconds(3600);
+        seedClosedHistory(groupId, ownerUserId, studentUserId, baseStartAt, "PRESENT", "PRESENT", "PRESENT", "PRESENT", "PRESENT");
+        insertSession(sessionId, groupId, ownerUserId, "Phiên vắng chống trùng", "OPEN", baseStartAt.plusSeconds(21600), null);
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", sessionId)
+                        .with(auth(ownerUserId)))
+                .andExpect(status().isOk());
+
+        attendancePolicyNotificationOrchestrator.reevaluateClosedSession(groupId, sessionId);
+        attendancePolicyNotificationOrchestrator.reevaluateClosedSession(groupId, sessionId);
+
+        assertEquals(1L, countNotification(studentUserId, "ABSENCE_WARNING", sessionId));
+    }
+
+    @Test
     void close_session_forbidden_member_returns_403() throws Exception {
         UUID ownerUserId = UUID.randomUUID();
         UUID memberUserId = UUID.randomUUID();
@@ -823,7 +1125,187 @@ class SessionControllerIT {
         );
     }
 
+    private void insertAttendance(UUID sessionId, UUID userId, String attendanceStatus) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO session_attendance (
+                    session_id,
+                    user_id,
+                    attendance_status,
+                    check_in_at,
+                    check_in_method,
+                    qr_token_id,
+                    device_id,
+                    ip_address,
+                    user_agent,
+                    geo_lat,
+                    geo_lng,
+                    distance_meter,
+                    suspicious_flag,
+                    suspicious_reason,
+                    excused_by_request_id,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    UUID_TO_BIN(?, 1),
+                    UUID_TO_BIN(?, 1),
+                    ?,
+                    CASE WHEN ? IN ('PRESENT', 'LATE') THEN UTC_TIMESTAMP(6) ELSE NULL END,
+                    'MANUAL',
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    0,
+                    NULL,
+                    NULL,
+                    UTC_TIMESTAMP(6),
+                    UTC_TIMESTAMP(6)
+                )
+                """,
+                sessionId.toString(),
+                userId.toString(),
+                attendanceStatus,
+                attendanceStatus
+        );
+    }
+
+    private void seedClosedHistory(
+            UUID groupId,
+            UUID ownerUserId,
+            UUID studentUserId,
+            Instant firstStartAt,
+            String... attendanceStatuses
+    ) {
+        for (int i = 0; i < attendanceStatuses.length; i++) {
+            UUID historySessionId = UUID.randomUUID();
+            Instant startAt = firstStartAt.plusSeconds(i * 3600L);
+            insertSession(
+                    historySessionId,
+                    groupId,
+                    ownerUserId,
+                    "Lịch sử điểm danh " + (i + 1),
+                    "CLOSED",
+                    startAt,
+                    startAt.plusSeconds(5400)
+            );
+            insertAttendance(historySessionId, studentUserId, attendanceStatuses[i]);
+        }
+    }
+
+    private long countNotification(UUID recipientUserId, String type, UUID sessionId) {
+        Number n = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM notifications
+                WHERE recipient_user_id = UUID_TO_BIN(?, 1)
+                  AND type = ?
+                  AND session_id = UUID_TO_BIN(?, 1)
+                """,
+                Number.class,
+                recipientUserId.toString(),
+                type,
+                sessionId.toString()
+        );
+        return n == null ? 0L : n.longValue();
+    }
+
+    private long countAnyPolicyNotification(UUID recipientUserId, UUID sessionId) {
+        Number n = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM notifications
+                WHERE recipient_user_id = UUID_TO_BIN(?, 1)
+                  AND session_id = UUID_TO_BIN(?, 1)
+                  AND type IN (
+                    'ATTENDANCE_POLICY_WARNING',
+                    'ATTENDANCE_POLICY_CRITICAL',
+                    'ATTENDANCE_POLICY_EXAM_BANNED'
+                  )
+                """,
+                Number.class,
+                recipientUserId.toString(),
+                sessionId.toString()
+        );
+        return n == null ? 0L : n.longValue();
+    }
+
+    private Map<String, Object> findNotificationRow(UUID recipientUserId, String type, UUID sessionId) {
+        return jdbcTemplate.queryForMap(
+                """
+                SELECT
+                    BIN_TO_UUID(id, 1) AS id,
+                    title,
+                    body,
+                    severity,
+                    source_type,
+                    BIN_TO_UUID(source_ref_id, 1) AS source_ref_id,
+                    dedup_key,
+                    CAST(payload_json AS CHAR) AS payload_json
+                FROM notifications
+                WHERE recipient_user_id = UUID_TO_BIN(?, 1)
+                  AND type = ?
+                  AND session_id = UUID_TO_BIN(?, 1)
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                recipientUserId.toString(),
+                type,
+                sessionId.toString()
+        );
+    }
+
+    private Map<String, Object> findNotificationRowWithoutSession(UUID recipientUserId, String type) {
+        return jdbcTemplate.queryForMap(
+                """
+                SELECT
+                    BIN_TO_UUID(id, 1) AS id,
+                    title,
+                    body,
+                    severity,
+                    source_type,
+                    source_ref_id,
+                    dedup_key,
+                    CAST(payload_json AS CHAR) AS payload_json
+                FROM notifications
+                WHERE recipient_user_id = UUID_TO_BIN(?, 1)
+                  AND type = ?
+                  AND session_id IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                recipientUserId.toString(),
+                type
+        );
+    }
+
+    private JsonNode notificationPayload(Map<String, Object> notificationRow) throws Exception {
+        return objectMapper.readTree(notificationRow.get("payload_json").toString());
+    }
+
+    private String decimalText(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return node.decimalValue().stripTrailingZeros().toPlainString();
+    }
+
+    private void assertContains(String value, String expected) {
+        assertTrue(value.contains(expected), () -> "Expected text to contain [" + expected + "] but was [" + value + "]");
+    }
+
+    private void assertDoesNotContain(String value, String unexpected) {
+        assertTrue(!value.contains(unexpected), () -> "Expected text not to contain [" + unexpected + "] but was [" + value + "]");
+    }
+
     private void cleanupTables() {
+        jdbcTemplate.update("DELETE FROM notification_deliveries");
+        jdbcTemplate.update("DELETE FROM notifications");
+        jdbcTemplate.update("DELETE FROM session_attendance");
+        jdbcTemplate.update("DELETE FROM attendance_policies");
         jdbcTemplate.update("DELETE FROM attendance_sessions");
         jdbcTemplate.update("DELETE FROM group_members");
         jdbcTemplate.update("DELETE FROM class_groups");
