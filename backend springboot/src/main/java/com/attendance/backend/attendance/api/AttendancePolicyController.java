@@ -55,8 +55,10 @@ public class AttendancePolicyController {
                         req.lateWeight(),
                         req.warningBelowRate(),
                         req.criticalBelowRate(),
+                        req.examBanAbsenceRate(),
                         req.warningAbsentCount(),
                         req.criticalAbsentCount(),
+                        req.examBanAbsentCount(),
                         req.requireLocation(),
                         req.locationLat(),
                         req.locationLng(),
@@ -88,8 +90,10 @@ public class AttendancePolicyController {
                 v.lateWeight(),
                 v.warningBelowRate(),
                 v.criticalBelowRate(),
+                v.examBanAbsenceRate(),
                 v.warningAbsentCount(),
                 v.criticalAbsentCount(),
+                v.examBanAbsentCount(),
                 v.requireLocation(),
                 v.locationLat(),
                 v.locationLng(),
@@ -118,7 +122,10 @@ public class AttendancePolicyController {
                 v.excusedCount(),
                 v.earnedAttendancePoints(),
                 v.attendanceRate(),
+                v.absenceRate(),
                 v.policyStatus(),
+                v.riskLevel(),
+                v.examEligibility(),
                 v.breachReasons()
         );
     }
@@ -138,11 +145,18 @@ public class AttendancePolicyController {
             @DecimalMax("100.0")
             BigDecimal criticalBelowRate,
 
+            @DecimalMin("0.0")
+            @DecimalMax("100.0")
+            BigDecimal examBanAbsenceRate,
+
             @Positive
             Integer warningAbsentCount,
 
             @Positive
             Integer criticalAbsentCount,
+
+            @Positive
+            Integer examBanAbsentCount,
 
             Boolean requireLocation,
 
@@ -165,8 +179,10 @@ public class AttendancePolicyController {
             BigDecimal lateWeight,
             BigDecimal warningBelowRate,
             BigDecimal criticalBelowRate,
+            BigDecimal examBanAbsenceRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            Integer examBanAbsentCount,
             boolean requireLocation,
             BigDecimal locationLat,
             BigDecimal locationLng,
@@ -194,7 +210,10 @@ public class AttendancePolicyController {
             long excusedCount,
             BigDecimal earnedAttendancePoints,
             BigDecimal attendanceRate,
+            BigDecimal absenceRate,
             AttendancePolicyStatus policyStatus,
+            String riskLevel,
+            String examEligibility,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }

@@ -469,14 +469,16 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                 ownerId,
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("40.00"),
-                2,
-                4
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
-        UUID closedPresentSessionId = UUID.randomUUID();
-        seedClosedSession(closedPresentSessionId, isolatedGroupId, ownerId, "Policy closed present");
-        seedSessionAttendance(closedPresentSessionId, policyStudentId, "PRESENT");
+        for (int i = 1; i <= 4; i++) {
+            UUID closedPresentSessionId = UUID.randomUUID();
+            seedClosedSession(closedPresentSessionId, isolatedGroupId, ownerId, "Policy closed present " + i);
+            seedSessionAttendance(closedPresentSessionId, policyStudentId, "PRESENT");
+        }
 
         UUID closedAbsentSessionId = UUID.randomUUID();
         seedClosedSession(closedAbsentSessionId, isolatedGroupId, ownerId, "Policy closed absent");
@@ -523,12 +525,13 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
 
         JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
         assertThat(payload.get("policyStatus").asText()).isEqualTo("WARNING");
-        assertThat(payload.get("closedSessionCount").asLong()).isEqualTo(3L);
-        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(2L);
-        assertThat(payload.get("presentCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("closedSessionCount").asLong()).isEqualTo(6L);
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(5L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(4L);
         assertThat(payload.get("absentCount").asLong()).isEqualTo(1L);
         assertThat(payload.get("excusedCount").asLong()).isEqualTo(1L);
-        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("50.00");
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("80.00");
+        assertThat(payload.get("absenceRate").decimalValue()).isEqualByComparingTo("20.00");
     }
 
     @Test
@@ -576,9 +579,9 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                 ownerId,
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("40.00"),
-                1,
-                2
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
         UUID closedPresent1 = UUID.randomUUID();
@@ -589,9 +592,9 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
         seedClosedSession(closedPresent2, policyGroupId, ownerId, "Policy present 2");
         seedSessionAttendance(closedPresent2, policyStudentId, "PRESENT");
 
-        UUID closedAbsent = UUID.randomUUID();
-        seedClosedSession(closedAbsent, policyGroupId, ownerId, "Policy absent 1");
-        seedSessionAttendance(closedAbsent, policyStudentId, "ABSENT");
+        UUID closedPresent3 = UUID.randomUUID();
+        seedClosedSession(closedPresent3, policyGroupId, ownerId, "Policy present 3");
+        seedSessionAttendance(closedPresent3, policyStudentId, "PRESENT");
 
         UUID linkedClosedSessionId = UUID.randomUUID();
         seedClosedSession(linkedClosedSessionId, policyGroupId, ownerId, "Policy linked excused");
@@ -640,10 +643,11 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
         JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
         assertThat(payload.get("policyStatus").asText()).isEqualTo("CRITICAL");
         assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(4L);
-        assertThat(payload.get("presentCount").asLong()).isEqualTo(2L);
-        assertThat(payload.get("absentCount").asLong()).isEqualTo(2L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(3L);
+        assertThat(payload.get("absentCount").asLong()).isEqualTo(1L);
         assertThat(payload.get("excusedCount").asLong()).isEqualTo(0L);
-        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("50.00");
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("75.00");
+        assertThat(payload.get("absenceRate").decimalValue()).isEqualByComparingTo("25.00");
     }
 
     @Test
@@ -830,7 +834,11 @@ class AbsenceRequestControllerIT extends AbstractMySqlIntegrationTest {
                 select count(*)
                 from notifications
                 where recipient_user_id = UUID_TO_BIN(?, 1)
-                  and type in ('ATTENDANCE_POLICY_WARNING', 'ATTENDANCE_POLICY_CRITICAL')
+                  and type in (
+                      'ATTENDANCE_POLICY_WARNING',
+                      'ATTENDANCE_POLICY_CRITICAL',
+                      'ATTENDANCE_POLICY_EXAM_BANNED'
+                  )
                 """,
                 Number.class,
                 recipientUserId.toString()

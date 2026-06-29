@@ -73,7 +73,10 @@ public class AttendancePolicyQueryService {
                 item.excusedCount(),
                 item.earnedAttendancePoints(),
                 item.attendanceRate(),
+                item.absenceRate(),
                 item.policyStatus(),
+                item.riskLevel(),
+                item.examEligibility(),
                 item.breachReasons()
         );
     }
@@ -162,8 +165,10 @@ public class AttendancePolicyQueryService {
                         normalizeWeight(defaults.getLateWeight()),
                         normalizePercent(defaults.getWarningBelowRate()),
                         normalizeNullablePercent(defaults.getCriticalBelowRate()),
+                        normalizeNullablePercent(defaults.getExamBanAbsenceRate()),
                         defaults.getWarningAbsentCount(),
                         defaults.getCriticalAbsentCount(),
+                        defaults.getExamBanAbsentCount(),
                         EXCUSED_HANDLING,
                         SESSION_SCOPE,
                         MEMBERSHIP_SCOPE,
@@ -181,8 +186,14 @@ public class AttendancePolicyQueryService {
                 normalizeWeight(policy.lateWeight),
                 normalizePercent(policy.warningBelowRate),
                 normalizeNullablePercent(policy.criticalBelowRate),
+                normalizeNullablePercent(policy.examBanAbsenceRate != null
+                        ? policy.examBanAbsenceRate
+                        : defaults.getExamBanAbsenceRate()),
                 policy.warningAbsentCount,
                 policy.criticalAbsentCount,
+                policy.examBanAbsentCount != null
+                        ? policy.examBanAbsentCount
+                        : defaults.getExamBanAbsentCount(),
                 EXCUSED_HANDLING,
                 SESSION_SCOPE,
                 MEMBERSHIP_SCOPE,
@@ -225,7 +236,10 @@ public class AttendancePolicyQueryService {
                 excusedCount,
                 computed.earnedAttendancePoints(),
                 computed.attendanceRate(),
+                computed.absenceRate(),
                 computed.policyStatus(),
+                computed.riskLevel(),
+                computed.examEligibility(),
                 computed.breachReasons()
         );
     }

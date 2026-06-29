@@ -93,8 +93,10 @@ public class AttendancePolicyService {
         policy.lateWeight = normalizeWeight(cmd.lateWeight());
         policy.warningBelowRate = normalizePercent(cmd.warningBelowRate());
         policy.criticalBelowRate = normalizeNullablePercent(cmd.criticalBelowRate());
+        policy.examBanAbsenceRate = normalizeNullablePercent(cmd.examBanAbsenceRate());
         policy.warningAbsentCount = cmd.warningAbsentCount();
         policy.criticalAbsentCount = cmd.criticalAbsentCount();
+        policy.examBanAbsentCount = cmd.examBanAbsentCount();
         policy.requireLocation = cmd.requireLocation();
         policy.locationLat = normalizeNullableLatitude(cmd.locationLat());
         policy.locationLng = normalizeNullableLongitude(cmd.locationLng());
@@ -276,8 +278,20 @@ public class AttendancePolicyService {
                 canonicalizeResolvedWeight(policy.lateWeight, AttendancePolicySource.GROUP_POLICY, "lateWeight"),
                 canonicalizeResolvedPercent(policy.warningBelowRate, AttendancePolicySource.GROUP_POLICY, "warningBelowRate", false),
                 canonicalizeResolvedPercent(policy.criticalBelowRate, AttendancePolicySource.GROUP_POLICY, "criticalBelowRate", true),
+                canonicalizeResolvedPercent(
+                        policy.examBanAbsenceRate != null ? policy.examBanAbsenceRate : defaults.getExamBanAbsenceRate(),
+                        AttendancePolicySource.GROUP_POLICY,
+                        "examBanAbsenceRate",
+                        true
+                ),
                 canonicalizeResolvedAbsentCount(policy.warningAbsentCount, AttendancePolicySource.GROUP_POLICY, "warningAbsentCount", true),
                 canonicalizeResolvedAbsentCount(policy.criticalAbsentCount, AttendancePolicySource.GROUP_POLICY, "criticalAbsentCount", true),
+                canonicalizeResolvedAbsentCount(
+                        policy.examBanAbsentCount != null ? policy.examBanAbsentCount : defaults.getExamBanAbsentCount(),
+                        AttendancePolicySource.GROUP_POLICY,
+                        "examBanAbsentCount",
+                        true
+                ),
                 Boolean.TRUE.equals(policy.requireLocation),
                 canonicalizeResolvedLatitude(policy.locationLat, AttendancePolicySource.GROUP_POLICY, "locationLat", true),
                 canonicalizeResolvedLongitude(policy.locationLng, AttendancePolicySource.GROUP_POLICY, "locationLng", true),
@@ -295,8 +309,10 @@ public class AttendancePolicyService {
                 canonicalizeResolvedWeight(defaults.getLateWeight(), AttendancePolicySource.SYSTEM_DEFAULT, "lateWeight"),
                 canonicalizeResolvedPercent(defaults.getWarningBelowRate(), AttendancePolicySource.SYSTEM_DEFAULT, "warningBelowRate", false),
                 canonicalizeResolvedPercent(defaults.getCriticalBelowRate(), AttendancePolicySource.SYSTEM_DEFAULT, "criticalBelowRate", true),
+                canonicalizeResolvedPercent(defaults.getExamBanAbsenceRate(), AttendancePolicySource.SYSTEM_DEFAULT, "examBanAbsenceRate", true),
                 canonicalizeResolvedAbsentCount(defaults.getWarningAbsentCount(), AttendancePolicySource.SYSTEM_DEFAULT, "warningAbsentCount", true),
                 canonicalizeResolvedAbsentCount(defaults.getCriticalAbsentCount(), AttendancePolicySource.SYSTEM_DEFAULT, "criticalAbsentCount", true),
+                canonicalizeResolvedAbsentCount(defaults.getExamBanAbsentCount(), AttendancePolicySource.SYSTEM_DEFAULT, "examBanAbsentCount", true),
                 false,
                 null,
                 null,
@@ -315,8 +331,10 @@ public class AttendancePolicyService {
                 effectivePolicy.lateWeight(),
                 effectivePolicy.warningBelowRate(),
                 effectivePolicy.criticalBelowRate(),
+                effectivePolicy.examBanAbsenceRate(),
                 effectivePolicy.warningAbsentCount(),
                 effectivePolicy.criticalAbsentCount(),
+                effectivePolicy.examBanAbsentCount(),
                 effectivePolicy.requireLocation(),
                 effectivePolicy.locationLat(),
                 effectivePolicy.locationLng(),
@@ -351,11 +369,34 @@ public class AttendancePolicyService {
             );
         }
 
+        if (policy.examBanAbsentCount() != null && policy.examBanAbsentCount() < 1) {
+            throw new IllegalStateException(
+                    "Resolved attendance policy is invalid: examBanAbsentCount must be >= 1"
+            );
+        }
+
         if (policy.warningAbsentCount() != null
                 && policy.criticalAbsentCount() != null
                 && policy.criticalAbsentCount() <= policy.warningAbsentCount()) {
             throw new IllegalStateException(
                     "Resolved attendance policy is invalid: criticalAbsentCount must be greater than warningAbsentCount"
+            );
+        }
+
+        if (policy.criticalAbsentCount() != null
+                && policy.examBanAbsentCount() != null
+                && policy.examBanAbsentCount() <= policy.criticalAbsentCount()) {
+            throw new IllegalStateException(
+                    "Resolved attendance policy is invalid: examBanAbsentCount must be greater than criticalAbsentCount"
+            );
+        }
+
+        if (policy.criticalAbsentCount() == null
+                && policy.warningAbsentCount() != null
+                && policy.examBanAbsentCount() != null
+                && policy.examBanAbsentCount() <= policy.warningAbsentCount()) {
+            throw new IllegalStateException(
+                    "Resolved attendance policy is invalid: examBanAbsentCount must be greater than warningAbsentCount"
             );
         }
 
@@ -521,46 +562,14 @@ public class AttendancePolicyService {
             Instant joinedAt,
             AttendanceCounts counts
     ) {
-        BigDecimal earnedAttendancePoints = BigDecimal.valueOf(counts.presentCount())
-                .add(policy.lateWeight().multiply(BigDecimal.valueOf(counts.lateCount())))
-                .setScale(2, RoundingMode.HALF_UP);
-
-        BigDecimal attendanceRate = null;
-        AttendancePolicyStatus status = AttendancePolicyStatus.NO_DATA;
-        List<AttendancePolicyBreachReason> reasons = new ArrayList<>();
-
-        if (counts.eligibleSessionCount() > 0) {
-            attendanceRate = earnedAttendancePoints
-                    .multiply(new BigDecimal("100"))
-                    .divide(BigDecimal.valueOf(counts.eligibleSessionCount()), 2, RoundingMode.HALF_UP);
-
-            boolean critical = false;
-            boolean warning = false;
-
-            if (policy.criticalBelowRate() != null && attendanceRate.compareTo(policy.criticalBelowRate()) < 0) {
-                reasons.add(AttendancePolicyBreachReason.RATE_BELOW_CRITICAL);
-                critical = true;
-            } else if (attendanceRate.compareTo(policy.warningBelowRate()) < 0) {
-                reasons.add(AttendancePolicyBreachReason.RATE_BELOW_WARNING);
-                warning = true;
-            }
-
-            if (policy.criticalAbsentCount() != null && counts.absentCount() >= policy.criticalAbsentCount()) {
-                reasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_CRITICAL);
-                critical = true;
-            } else if (policy.warningAbsentCount() != null && counts.absentCount() >= policy.warningAbsentCount()) {
-                reasons.add(AttendancePolicyBreachReason.ABSENT_COUNT_WARNING);
-                warning = true;
-            }
-
-            if (critical) {
-                status = AttendancePolicyStatus.CRITICAL;
-            } else if (warning) {
-                status = AttendancePolicyStatus.WARNING;
-            } else {
-                status = AttendancePolicyStatus.NORMAL;
-            }
-        }
+        AttendancePolicyComputation.ComputedPolicyStatus computed =
+                AttendancePolicyComputation.compute(
+                        policy,
+                        counts.presentCount(),
+                        counts.lateCount(),
+                        counts.absentCount(),
+                        counts.excusedCount()
+                );
 
         return new StudentPolicyStatusView(
                 userId,
@@ -573,10 +582,13 @@ public class AttendancePolicyService {
                 counts.lateCount(),
                 counts.absentCount(),
                 counts.excusedCount(),
-                earnedAttendancePoints,
-                attendanceRate,
-                status,
-                reasons
+                computed.earnedAttendancePoints(),
+                computed.attendanceRate(),
+                computed.absenceRate(),
+                computed.policyStatus(),
+                computed.riskLevel(),
+                computed.examEligibility(),
+                computed.breachReasons()
         );
     }
 
@@ -623,6 +635,7 @@ public class AttendancePolicyService {
         BigDecimal lateWeight = normalizeWeight(cmd.lateWeight());
         BigDecimal warningBelowRate = normalizePercent(cmd.warningBelowRate());
         BigDecimal criticalBelowRate = normalizeNullablePercent(cmd.criticalBelowRate());
+        normalizeNullablePercent(cmd.examBanAbsenceRate());
 
         if (criticalBelowRate != null && criticalBelowRate.compareTo(warningBelowRate) >= 0) {
             throw ApiException.unprocessable(
@@ -645,12 +658,38 @@ public class AttendancePolicyService {
             );
         }
 
+        if (cmd.examBanAbsentCount() != null && cmd.examBanAbsentCount() < 1) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_EXAM_BAN_ABSENT_INVALID",
+                    "examBanAbsentCount must be >= 1"
+            );
+        }
+
         if (cmd.warningAbsentCount() != null
                 && cmd.criticalAbsentCount() != null
                 && cmd.criticalAbsentCount() <= cmd.warningAbsentCount()) {
             throw ApiException.unprocessable(
                     "ATTENDANCE_POLICY_ABSENT_ORDER_INVALID",
                     "criticalAbsentCount must be greater than warningAbsentCount"
+            );
+        }
+
+        if (cmd.criticalAbsentCount() != null
+                && cmd.examBanAbsentCount() != null
+                && cmd.examBanAbsentCount() <= cmd.criticalAbsentCount()) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_EXAM_BAN_ABSENT_ORDER_INVALID",
+                    "examBanAbsentCount must be greater than criticalAbsentCount"
+            );
+        }
+
+        if (cmd.criticalAbsentCount() == null
+                && cmd.warningAbsentCount() != null
+                && cmd.examBanAbsentCount() != null
+                && cmd.examBanAbsentCount() <= cmd.warningAbsentCount()) {
+            throw ApiException.unprocessable(
+                    "ATTENDANCE_POLICY_EXAM_BAN_ABSENT_ORDER_INVALID",
+                    "examBanAbsentCount must be greater than warningAbsentCount"
             );
         }
 
@@ -933,8 +972,10 @@ public class AttendancePolicyService {
             BigDecimal lateWeight,
             BigDecimal warningBelowRate,
             BigDecimal criticalBelowRate,
+            BigDecimal examBanAbsenceRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            Integer examBanAbsentCount,
             Boolean requireLocation,
             BigDecimal locationLat,
             BigDecimal locationLng,
@@ -947,8 +988,10 @@ public class AttendancePolicyService {
             BigDecimal lateWeight,
             BigDecimal warningBelowRate,
             BigDecimal criticalBelowRate,
+            BigDecimal examBanAbsenceRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            Integer examBanAbsentCount,
             boolean requireLocation,
             BigDecimal locationLat,
             BigDecimal locationLng,
@@ -966,8 +1009,10 @@ public class AttendancePolicyService {
             BigDecimal lateWeight,
             BigDecimal warningBelowRate,
             BigDecimal criticalBelowRate,
+            BigDecimal examBanAbsenceRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            Integer examBanAbsentCount,
             boolean requireLocation,
             BigDecimal locationLat,
             BigDecimal locationLng,
@@ -995,7 +1040,10 @@ public class AttendancePolicyService {
             long excusedCount,
             BigDecimal earnedAttendancePoints,
             BigDecimal attendanceRate,
+            BigDecimal absenceRate,
             AttendancePolicyStatus policyStatus,
+            String riskLevel,
+            String examEligibility,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }

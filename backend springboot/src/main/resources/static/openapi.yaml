@@ -2704,15 +2704,19 @@ components:
 
     AttendancePolicyStatus:
       type: string
-      enum: [ NO_DATA, NORMAL, WARNING, CRITICAL ]
+      enum: [ NO_DATA, NORMAL, WARNING, CRITICAL, EXAM_BANNED ]
 
     AttendancePolicyBreachReason:
       type: string
       enum:
         - RATE_BELOW_WARNING
         - RATE_BELOW_CRITICAL
+        - ABSENCE_RATE_WARNING
+        - ABSENCE_RATE_CRITICAL
+        - ABSENCE_RATE_EXAM_BANNED
         - ABSENT_COUNT_WARNING
         - ABSENT_COUNT_CRITICAL
+        - ABSENT_COUNT_EXAM_BANNED
 
     AttendancePolicyView:
       type: object
@@ -2732,10 +2736,17 @@ components:
           type: number
           format: double
           nullable: true
+        examBanAbsenceRate:
+          type: number
+          format: double
+          nullable: true
         warningAbsentCount:
           type: integer
           nullable: true
         criticalAbsentCount:
+          type: integer
+          nullable: true
+        examBanAbsentCount:
           type: integer
           nullable: true
         excusedHandling:
@@ -2792,11 +2803,21 @@ components:
           minimum: 0
           maximum: 100
           nullable: true
+        examBanAbsenceRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          nullable: true
         warningAbsentCount:
           type: integer
           minimum: 1
           nullable: true
         criticalAbsentCount:
+          type: integer
+          minimum: 1
+          nullable: true
+        examBanAbsentCount:
           type: integer
           minimum: 1
           nullable: true
@@ -2822,10 +2843,17 @@ components:
           type: number
           format: double
           nullable: true
+        examBanAbsenceRate:
+          type: number
+          format: double
+          nullable: true
         warningAbsentCount:
           type: integer
           nullable: true
         criticalAbsentCount:
+          type: integer
+          nullable: true
+        examBanAbsentCount:
           type: integer
           nullable: true
         excusedHandling:
@@ -2905,8 +2933,17 @@ components:
           type: number
           format: double
           nullable: true
+        absenceRate:
+          type: number
+          format: double
+          nullable: true
         policyStatus:
           $ref: '#/components/schemas/AttendancePolicyStatus'
+        riskLevel:
+          type: string
+        examEligibility:
+          type: string
+          enum: [ ELIGIBLE, AT_RISK, BANNED ]
         breachReasons:
           type: array
           items:
@@ -2920,6 +2957,8 @@ components:
         - excusedCount
         - earnedAttendancePoints
         - policyStatus
+        - riskLevel
+        - examEligibility
         - breachReasons
 
     PageAttendancePolicyStudentStatusResponse:
@@ -3058,8 +3097,17 @@ components:
           type: number
           format: double
           nullable: true
+        absenceRate:
+          type: number
+          format: double
+          nullable: true
         policyStatus:
           $ref: '#/components/schemas/AttendancePolicyStatus'
+        riskLevel:
+          type: string
+        examEligibility:
+          type: string
+          enum: [ ELIGIBLE, AT_RISK, BANNED ]
         breachReasons:
           type: array
           items:
@@ -3076,6 +3124,8 @@ components:
         - excusedCount
         - earnedAttendancePoints
         - policyStatus
+        - riskLevel
+        - examEligibility
         - breachReasons
 
     WarningLevel:

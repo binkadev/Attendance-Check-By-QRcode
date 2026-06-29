@@ -41,11 +41,17 @@ public class AttendancePolicy {
     @Column(name = "critical_below_rate", precision = 5, scale = 2)
     public BigDecimal criticalBelowRate;
 
+    @Column(name = "exam_ban_absence_rate", precision = 5, scale = 2)
+    public BigDecimal examBanAbsenceRate;
+
     @Column(name = "warning_absent_count")
     public Integer warningAbsentCount;
 
     @Column(name = "critical_absent_count")
     public Integer criticalAbsentCount;
+
+    @Column(name = "exam_ban_absent_count")
+    public Integer examBanAbsentCount;
 
     @Column(name = "require_location", nullable = false)
     public Boolean requireLocation = false;

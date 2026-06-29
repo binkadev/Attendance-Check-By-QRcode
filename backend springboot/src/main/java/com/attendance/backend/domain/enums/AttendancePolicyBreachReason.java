@@ -3,6 +3,10 @@ package com.attendance.backend.domain.enums;
 public enum AttendancePolicyBreachReason {
     RATE_BELOW_WARNING,
     RATE_BELOW_CRITICAL,
+    ABSENCE_RATE_WARNING,
+    ABSENCE_RATE_CRITICAL,
+    ABSENCE_RATE_EXAM_BANNED,
     ABSENT_COUNT_WARNING,
-    ABSENT_COUNT_CRITICAL
+    ABSENT_COUNT_CRITICAL,
+    ABSENT_COUNT_EXAM_BANNED
 }

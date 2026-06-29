@@ -4,5 +4,6 @@ public enum AttendancePolicyStatus {
     NO_DATA,
     NORMAL,
     WARNING,
-    CRITICAL
+    CRITICAL,
+    EXAM_BANNED
 }

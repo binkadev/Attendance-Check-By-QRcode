@@ -679,7 +679,8 @@ export default function StudentsTab({ classId }) {
       const rate = student.attendanceRate !== undefined ? `${student.attendanceRate}%` : 'Chưa cập nhật';
       const statusTrans = student.attendanceStatus === 'Good' ? 'Tốt' : 
                           student.attendanceStatus === 'Flagged' ? 'Nghi vấn' : 
-                          student.attendanceStatus === 'At-Risk' ? 'Nguy cơ' : 'Chưa cập nhật';
+                          student.attendanceStatus === 'At-Risk' ? 'Nguy cơ' :
+                          student.attendanceStatus === 'Banned' ? 'Không đủ điều kiện' : 'Chưa cập nhật';
       
       const memberStatusTrans = student.memberStatus === 'ACTIVE' ? 'Hoạt động' : 
                                 student.memberStatus === 'PENDING' ? 'Chờ duyệt' : 'Không hoạt động';
@@ -828,9 +829,10 @@ export default function StudentsTab({ classId }) {
           const policyStatus = item.policyStatus || 'NO_DATA';
           let attendanceStatus;
           if (policyStatus === 'NO_DATA') attendanceStatus = 'Chưa cập nhật';
-          else if (policyStatus === 'OK') attendanceStatus = 'Good';
+          else if (policyStatus === 'OK' || policyStatus === 'NORMAL') attendanceStatus = 'Good';
           else if (policyStatus === 'WARNING') attendanceStatus = 'Flagged';
           else if (policyStatus === 'CRITICAL') attendanceStatus = 'At-Risk';
+          else if (policyStatus === 'EXAM_BANNED') attendanceStatus = 'Banned';
           else attendanceStatus = policyStatus;
 
           return {
@@ -976,18 +978,24 @@ export default function StudentsTab({ classId }) {
       'Good': 'bg-emerald-50 text-emerald-700 border border-emerald-200',
       'At-Risk': 'bg-red-50 text-red-700 border border-red-200',
       'Flagged': 'bg-amber-50 text-amber-700 border border-amber-200',
+      'Banned': 'bg-rose-50 text-rose-700 border border-rose-200',
     };
     const labels = {
       'Good': '✓ Tốt',
       'At-Risk': '⚠ Nguy cơ',
       'Flagged': '⚡ Cảnh báo',
+      'Banned': 'Không đủ điều kiện',
     };
 
     const breachLabel = {
       'RATE_BELOW_WARNING': 'TL thấp',
       'RATE_BELOW_CRITICAL': 'TL nguy hiểm',
-      'ABSENT_ABOVE_WARNING': 'Vắng nhiều',
-      'ABSENT_ABOVE_CRITICAL': 'Vắng nguy hiểm',
+      'ABSENCE_RATE_WARNING': 'Vắng cảnh báo',
+      'ABSENCE_RATE_CRITICAL': 'Vắng nguy hiểm',
+      'ABSENCE_RATE_EXAM_BANNED': 'Cấm thi',
+      'ABSENT_COUNT_WARNING': 'Vắng nhiều',
+      'ABSENT_COUNT_CRITICAL': 'Vắng nguy hiểm',
+      'ABSENT_COUNT_EXAM_BANNED': 'Cấm thi',
     };
 
     return (
@@ -1033,15 +1041,20 @@ export default function StudentsTab({ classId }) {
   const maxAbsentAllowed = attendancePolicy?.maxAbsentSessions ?? attendancePolicy?.maxAbsentAllowed ?? 3;
 
   const bannedStudents = students.filter(s =>
-    s.policyStatus === 'CRITICAL' ||
-    s.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
-    s.breachReasons?.includes('RATE_BELOW_CRITICAL')
+    s.policyStatus === 'EXAM_BANNED' ||
+    s.breachReasons?.includes('ABSENCE_RATE_EXAM_BANNED') ||
+    s.breachReasons?.includes('ABSENT_COUNT_EXAM_BANNED')
   );
 
   const warningStudents = students.filter(s =>
     (s.policyStatus === 'WARNING' ||
-    s.breachReasons?.includes('ABSENT_ABOVE_WARNING') ||
-    s.breachReasons?.includes('RATE_BELOW_WARNING')) &&
+    s.policyStatus === 'CRITICAL' ||
+    s.breachReasons?.includes('ABSENCE_RATE_WARNING') ||
+    s.breachReasons?.includes('ABSENCE_RATE_CRITICAL') ||
+    s.breachReasons?.includes('ABSENT_COUNT_WARNING') ||
+    s.breachReasons?.includes('ABSENT_COUNT_CRITICAL') ||
+    s.breachReasons?.includes('RATE_BELOW_WARNING') ||
+    s.breachReasons?.includes('RATE_BELOW_CRITICAL')) &&
     !bannedStudents.some(b => (b.rawId || b.id) === (s.rawId || s.id))
   );
 
@@ -1049,8 +1062,9 @@ export default function StudentsTab({ classId }) {
     const absentCount = s.absentCount ?? 0;
     const remaining = maxAbsentAllowed - absentCount;
     return remaining > 0 && remaining <= 2 &&
-      s.policyStatus !== 'CRITICAL' &&
-      !s.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') &&
+      s.policyStatus !== 'EXAM_BANNED' &&
+      !s.breachReasons?.includes('ABSENCE_RATE_EXAM_BANNED') &&
+      !s.breachReasons?.includes('ABSENT_COUNT_EXAM_BANNED') &&
       !bannedStudents.some(b => (b.rawId || b.id) === (s.rawId || s.id));
   });
 
@@ -1072,16 +1086,16 @@ export default function StudentsTab({ classId }) {
   });
 
   const bannedOnlyList = atRiskList.filter(s => 
-      s.policyStatus === 'CRITICAL' ||
-      s.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
-      s.breachReasons?.includes('RATE_BELOW_CRITICAL')
+      s.policyStatus === 'EXAM_BANNED' ||
+      s.breachReasons?.includes('ABSENCE_RATE_EXAM_BANNED') ||
+      s.breachReasons?.includes('ABSENT_COUNT_EXAM_BANNED')
   );
   const warningOnlyList = atRiskList.filter(s => !bannedOnlyList.includes(s));
 
   const handleEmailWarning = async (student) => {
-    const isBanned = student.policyStatus === 'CRITICAL' ||
-                     student.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
-                     student.breachReasons?.includes('RATE_BELOW_CRITICAL');
+    const isBanned = student.policyStatus === 'EXAM_BANNED' ||
+                     student.breachReasons?.includes('ABSENCE_RATE_EXAM_BANNED') ||
+                     student.breachReasons?.includes('ABSENT_COUNT_EXAM_BANNED');
                      
     const loadingToast = toast.loading(`Đang tổng hợp dữ liệu vắng mặt của ${student.name}...`);
     try {
@@ -1225,6 +1239,7 @@ export default function StudentsTab({ classId }) {
               <option value="Good">Tốt</option>
               <option value="Flagged">Nghi vấn</option>
               <option value="At-Risk">Nguy cơ</option>
+              <option value="Banned">Không đủ điều kiện</option>
             </select>
             {/* Nút Refresh thủ công: cập nhật ngay không cần chờ polling 10s */}
             <button
@@ -1309,13 +1324,18 @@ export default function StudentsTab({ classId }) {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {students.map((student, idx) => {
-                  const isBanned = student.policyStatus === 'CRITICAL' ||
-                                   student.breachReasons?.includes('ABSENT_ABOVE_CRITICAL') ||
-                                   student.breachReasons?.includes('RATE_BELOW_CRITICAL');
+                  const isBanned = student.policyStatus === 'EXAM_BANNED' ||
+                                   student.breachReasons?.includes('ABSENCE_RATE_EXAM_BANNED') ||
+                                   student.breachReasons?.includes('ABSENT_COUNT_EXAM_BANNED');
                   
                   const isWarning = !isBanned && (student.policyStatus === 'WARNING' ||
-                                   student.breachReasons?.includes('ABSENT_ABOVE_WARNING') ||
-                                   student.breachReasons?.includes('RATE_BELOW_WARNING'));
+                                   student.policyStatus === 'CRITICAL' ||
+                                   student.breachReasons?.includes('ABSENCE_RATE_WARNING') ||
+                                   student.breachReasons?.includes('ABSENCE_RATE_CRITICAL') ||
+                                   student.breachReasons?.includes('ABSENT_COUNT_WARNING') ||
+                                   student.breachReasons?.includes('ABSENT_COUNT_CRITICAL') ||
+                                   student.breachReasons?.includes('RATE_BELOW_WARNING') ||
+                                   student.breachReasons?.includes('RATE_BELOW_CRITICAL'));
                                    
                   const absentCount = student.absentCount ?? 0;
                   const maxAbsentAllowed = attendancePolicy?.maxAbsentSessions ?? attendancePolicy?.maxAbsentAllowed ?? 3;

@@ -10,12 +10,18 @@ import com.attendance.backend.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -25,6 +31,9 @@ public class AttendancePolicyNotificationOrchestrator {
     private final AttendancePolicyQueryRepository attendancePolicyQueryRepository;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     public AttendancePolicyNotificationOrchestrator(
             AttendancePolicyService attendancePolicyService,
@@ -63,56 +72,56 @@ public class AttendancePolicyNotificationOrchestrator {
 
         UUID recipientUserId = UUID.fromString(aggregate.getUserId());
 
-        if (computed.policyStatus() == AttendancePolicyStatus.WARNING) {
-            notificationService.createOne(new NotificationService.CreateNotificationCommand(
-                    recipientUserId,
-                    groupId,
-                    sourceSessionId,
-                    NotificationType.ATTENDANCE_POLICY_WARNING,
-                    "Cảnh báo điểm danh",
-                    "Tỷ lệ điểm danh của bạn đang ở mức cảnh báo.",
-                    buildPayload(policy, aggregate, computed),
-                    NotificationSeverity.WARNING,
-                    NotificationSourceType.ATTENDANCE_POLICY,
-                    sourceSessionId,
-                    buildPolicyDedupKey(
-                            NotificationType.ATTENDANCE_POLICY_WARNING,
-                            recipientUserId,
-                            groupId,
-                            sourceSessionId
-                    )
-            ));
+        NotificationType notificationType = notificationType(computed.policyStatus());
+        if (notificationType == null) {
             return;
         }
 
-        if (computed.policyStatus() == AttendancePolicyStatus.CRITICAL) {
-            notificationService.createOne(new NotificationService.CreateNotificationCommand(
-                    recipientUserId,
-                    groupId,
-                    sourceSessionId,
-                    NotificationType.ATTENDANCE_POLICY_CRITICAL,
-                    "Nguy cơ vi phạm điểm danh",
-                    "Tình trạng điểm danh của bạn đã ở mức nghiêm trọng.",
-                    buildPayload(policy, aggregate, computed),
-                    NotificationSeverity.CRITICAL,
-                    NotificationSourceType.ATTENDANCE_POLICY,
-                    sourceSessionId,
-                    buildPolicyDedupKey(
-                            NotificationType.ATTENDANCE_POLICY_CRITICAL,
-                            recipientUserId,
-                            groupId,
-                            sourceSessionId
-                    )
-            ));
-        }
+        NotificationContent content = notificationContent(computed.policyStatus());
+        SourceSessionInfo sourceSession = findSourceSessionInfo(groupId, recipientUserId, sourceSessionId);
+
+        notificationService.createOne(new NotificationService.CreateNotificationCommand(
+                recipientUserId,
+                groupId,
+                sourceSessionId,
+                notificationType,
+                content.title(),
+                content.body(),
+                buildPayload(policy, aggregate, computed, sourceSessionId, sourceSession),
+                content.severity(),
+                NotificationSourceType.ATTENDANCE_POLICY,
+                sourceSessionId,
+                buildPolicyDedupKey(
+                        notificationType,
+                        recipientUserId,
+                        groupId,
+                        sourceSessionId
+                )
+        ));
     }
 
     private ObjectNode buildPayload(
             AttendancePolicyService.EffectivePolicy policy,
             AttendancePolicyStudentAggregateProjection aggregate,
-            AttendancePolicyComputation.ComputedPolicyStatus computed
+            AttendancePolicyComputation.ComputedPolicyStatus computed,
+            UUID sourceSessionId,
+            SourceSessionInfo sourceSession
     ) {
         ObjectNode payload = objectMapper.createObjectNode();
+
+        if (sourceSessionId != null) {
+            payload.put("sessionId", sourceSessionId.toString());
+        } else {
+            payload.putNull("sessionId");
+        }
+        putNullableString(payload, "sessionTitle", sourceSession.title());
+        putNullableString(payload, "sessionName", sourceSession.title());
+        if (sourceSession.startAt() != null) {
+            payload.put("sessionStartAt", sourceSession.startAt().toString());
+        } else {
+            payload.putNull("sessionStartAt");
+        }
+        putNullableString(payload, "attendanceStatus", sourceSession.attendanceStatus());
 
         payload.put("userId", aggregate.getUserId());
         payload.put("fullName", aggregate.getFullName());
@@ -127,13 +136,12 @@ public class AttendancePolicyNotificationOrchestrator {
         payload.put("eligibleSessionCount", computed.eligibleSessionCount());
         payload.put("earnedAttendancePoints", computed.earnedAttendancePoints());
 
-        if (computed.attendanceRate() != null) {
-            payload.put("attendanceRate", computed.attendanceRate());
-        } else {
-            payload.putNull("attendanceRate");
-        }
+        putNullableDecimal(payload, "attendanceRate", computed.attendanceRate());
+        putNullableDecimal(payload, "absenceRate", computed.absenceRate());
 
         payload.put("policyStatus", computed.policyStatus().name());
+        payload.put("riskLevel", computed.riskLevel());
+        payload.put("examEligibility", computed.examEligibility());
 
         ArrayNode reasons = payload.putArray("breachReasons");
         for (var reason : computed.breachReasons()) {
@@ -142,26 +150,142 @@ public class AttendancePolicyNotificationOrchestrator {
 
         payload.put("lateWeight", policy.lateWeight());
         payload.put("warningBelowRate", policy.warningBelowRate());
+        putNullableDecimal(payload, "warningAbsenceRate", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.warningBelowRate()));
 
-        if (policy.criticalBelowRate() != null) {
-            payload.put("criticalBelowRate", policy.criticalBelowRate());
-        } else {
-            payload.putNull("criticalBelowRate");
-        }
+        putNullableDecimal(payload, "criticalBelowRate", policy.criticalBelowRate());
+        putNullableDecimal(payload, "criticalAbsenceRate", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.criticalBelowRate()));
+        putNullableDecimal(payload, "examBanAbsenceRate", policy.examBanAbsenceRate());
 
-        if (policy.warningAbsentCount() != null) {
-            payload.put("warningAbsentCount", policy.warningAbsentCount());
-        } else {
-            payload.putNull("warningAbsentCount");
-        }
+        putNullableInteger(payload, "warningAbsentCount", policy.warningAbsentCount());
+        putNullableInteger(payload, "criticalAbsentCount", policy.criticalAbsentCount());
+        putNullableInteger(payload, "examBanAbsentCount", policy.examBanAbsentCount());
 
-        if (policy.criticalAbsentCount() != null) {
-            payload.put("criticalAbsentCount", policy.criticalAbsentCount());
-        } else {
-            payload.putNull("criticalAbsentCount");
-        }
+        putThresholds(payload, policy);
 
         return payload;
+    }
+
+    private NotificationType notificationType(AttendancePolicyStatus status) {
+        return switch (status) {
+            case WARNING -> NotificationType.ATTENDANCE_POLICY_WARNING;
+            case CRITICAL -> NotificationType.ATTENDANCE_POLICY_CRITICAL;
+            case EXAM_BANNED -> NotificationType.ATTENDANCE_POLICY_EXAM_BANNED;
+            case NO_DATA, NORMAL -> null;
+        };
+    }
+
+    private NotificationContent notificationContent(AttendancePolicyStatus status) {
+        return switch (status) {
+            case WARNING -> new NotificationContent(
+                    "Cảnh báo chuyên cần",
+                    "Tỷ lệ vắng của bạn đã chạm mức cảnh báo.",
+                    NotificationSeverity.WARNING
+            );
+            case CRITICAL -> new NotificationContent(
+                    "Nguy cơ nghiêm trọng về chuyên cần",
+                    "Tình trạng chuyên cần của bạn đang ở mức nguy cơ nghiêm trọng.",
+                    NotificationSeverity.CRITICAL
+            );
+            case EXAM_BANNED -> new NotificationContent(
+                    "Không đủ điều kiện dự thi",
+                    "Bạn không đủ điều kiện dự thi theo chính sách chuyên cần hiện tại.",
+                    NotificationSeverity.CRITICAL
+            );
+            case NO_DATA, NORMAL -> throw new IllegalArgumentException("No notification content for status " + status);
+        };
+    }
+
+    private SourceSessionInfo findSourceSessionInfo(UUID groupId, UUID userId, UUID sourceSessionId) {
+        if (sourceSessionId == null) {
+            return SourceSessionInfo.empty();
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                select
+                    s.title,
+                    s.start_at,
+                    coalesce(sa.attendance_status, 'ABSENT') as attendance_status
+                from attendance_sessions s
+                left join session_attendance sa
+                  on sa.session_id = s.id
+                 and sa.user_id = UUID_TO_BIN(:userId, 1)
+                where s.id = UUID_TO_BIN(:sessionId, 1)
+                  and s.group_id = UUID_TO_BIN(:groupId, 1)
+                  and s.deleted_at is null
+                limit 1
+                """)
+                .setParameter("groupId", groupId.toString())
+                .setParameter("userId", userId.toString())
+                .setParameter("sessionId", sourceSessionId.toString())
+                .getResultList();
+
+        if (rows.isEmpty()) {
+            return SourceSessionInfo.empty();
+        }
+
+        Object[] row = rows.get(0);
+        return new SourceSessionInfo(
+                row[0] == null ? null : row[0].toString(),
+                toInstant(row[1]),
+                row[2] == null ? null : row[2].toString()
+        );
+    }
+
+    private void putThresholds(ObjectNode payload, AttendancePolicyService.EffectivePolicy policy) {
+        ObjectNode warning = payload.putObject("warningThresholds");
+        putNullableDecimal(warning, "belowRate", policy.warningBelowRate());
+        putNullableDecimal(warning, "absenceRate", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.warningBelowRate()));
+        putNullableInteger(warning, "absentCount", policy.warningAbsentCount());
+
+        ObjectNode critical = payload.putObject("criticalThresholds");
+        putNullableDecimal(critical, "belowRate", policy.criticalBelowRate());
+        putNullableDecimal(critical, "absenceRate", AttendancePolicyComputation.absenceRateThresholdForBelowRate(policy.criticalBelowRate()));
+        putNullableInteger(critical, "absentCount", policy.criticalAbsentCount());
+
+        ObjectNode examBan = payload.putObject("examBanThresholds");
+        putNullableDecimal(examBan, "absenceRate", policy.examBanAbsenceRate());
+        putNullableInteger(examBan, "absentCount", policy.examBanAbsentCount());
+    }
+
+    private void putNullableString(ObjectNode node, String field, String value) {
+        if (value == null) {
+            node.putNull(field);
+        } else {
+            node.put(field, value);
+        }
+    }
+
+    private void putNullableDecimal(ObjectNode node, String field, BigDecimal value) {
+        if (value == null) {
+            node.putNull(field);
+        } else {
+            node.put(field, value);
+        }
+    }
+
+    private void putNullableInteger(ObjectNode node, String field, Integer value) {
+        if (value == null) {
+            node.putNull(field);
+        } else {
+            node.put(field, value);
+        }
+    }
+
+    private Instant toInstant(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Timestamp ts) {
+            return ts.toInstant();
+        }
+        if (value instanceof java.util.Date d) {
+            return d.toInstant();
+        }
+        if (value instanceof Instant instant) {
+            return instant;
+        }
+        throw new IllegalStateException("Unsupported timestamp type: " + value.getClass());
     }
 
     private String buildPolicyDedupKey(
@@ -197,5 +321,14 @@ public class AttendancePolicyNotificationOrchestrator {
 
     private long nullSafe(Long value) {
         return value == null ? 0L : value;
+    }
+
+    private record NotificationContent(String title, String body, NotificationSeverity severity) {
+    }
+
+    private record SourceSessionInfo(String title, Instant startAt, String attendanceStatus) {
+        static SourceSessionInfo empty() {
+            return new SourceSessionInfo(null, null, null);
+        }
     }
 }

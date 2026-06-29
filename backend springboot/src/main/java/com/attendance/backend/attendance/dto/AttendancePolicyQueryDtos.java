@@ -20,8 +20,10 @@ public final class AttendancePolicyQueryDtos {
             BigDecimal lateWeight,
             BigDecimal warningBelowRate,
             BigDecimal criticalBelowRate,
+            BigDecimal examBanAbsenceRate,
             Integer warningAbsentCount,
             Integer criticalAbsentCount,
+            Integer examBanAbsentCount,
             String excusedHandling,
             String sessionScope,
             String membershipScope,
@@ -45,7 +47,10 @@ public final class AttendancePolicyQueryDtos {
             long excusedCount,
             BigDecimal earnedAttendancePoints,
             BigDecimal attendanceRate,
+            BigDecimal absenceRate,
             AttendancePolicyStatus policyStatus,
+            String riskLevel,
+            String examEligibility,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }
@@ -72,7 +77,10 @@ public final class AttendancePolicyQueryDtos {
             long excusedCount,
             BigDecimal earnedAttendancePoints,
             BigDecimal attendanceRate,
+            BigDecimal absenceRate,
             AttendancePolicyStatus policyStatus,
+            String riskLevel,
+            String examEligibility,
             List<AttendancePolicyBreachReason> breachReasons
     ) {
     }

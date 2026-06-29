@@ -73,14 +73,15 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
                 s.ownerId(),
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("50.00"),
-                2,
-                4
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
         seedClosedSessionWithAttendance(s, "Policy closed #1", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy closed #2", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy closed #3", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy closed #4", "PRESENT");
 
         makeAttendancePresentQrLike(s.sessionId(), s.targetStudentId(), s.ownerId());
 
@@ -116,10 +117,13 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
 
         JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
         assertThat(payload.get("policyStatus").asText()).isEqualTo("WARNING");
-        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(4L);
-        assertThat(payload.get("presentCount").asLong()).isEqualTo(3L);
+        assertThat(payload.get("riskLevel").asText()).isEqualTo("WARNING");
+        assertThat(payload.get("examEligibility").asText()).isEqualTo("AT_RISK");
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(5L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(4L);
         assertThat(payload.get("absentCount").asLong()).isEqualTo(1L);
-        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("75.00");
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("80.00");
+        assertThat(payload.get("absenceRate").decimalValue()).isEqualByComparingTo("20.00");
     }
 
     @Test
@@ -131,15 +135,14 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
                 s.ownerId(),
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("50.00"),
-                2,
-                4
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
         seedClosedSessionWithAttendance(s, "Policy critical #1", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy critical #2", "PRESENT");
-        seedClosedSessionWithAttendance(s, "Policy critical #3", "ABSENT");
-        seedClosedSessionWithAttendance(s, "Policy critical #4", "ABSENT");
+        seedClosedSessionWithAttendance(s, "Policy critical #3", "PRESENT");
 
         makeAttendancePresentQrLike(s.sessionId(), s.targetStudentId(), s.ownerId());
 
@@ -174,10 +177,82 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
 
         JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
         assertThat(payload.get("policyStatus").asText()).isEqualTo("CRITICAL");
-        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(5L);
-        assertThat(payload.get("presentCount").asLong()).isEqualTo(2L);
+        assertThat(payload.get("riskLevel").asText()).isEqualTo("CRITICAL");
+        assertThat(payload.get("examEligibility").asText()).isEqualTo("AT_RISK");
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(4L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(3L);
+        assertThat(payload.get("absentCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("75.00");
+        assertThat(payload.get("absenceRate").decimalValue()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void manual_mark_closed_session_should_create_exam_banned_policy_notification() throws Exception {
+        Scenario s = seedScenario("CLOSED", true);
+
+        replacePolicy(
+                s.groupId(),
+                s.ownerId(),
+                new BigDecimal("1.00"),
+                new BigDecimal("80.00"),
+                new BigDecimal("75.00"),
+                10,
+                20
+        );
+
+        for (int i = 1; i <= 7; i++) {
+            seedClosedSessionWithAttendance(s, "Policy exam present #" + i, "PRESENT");
+        }
+        seedClosedSessionWithAttendance(s, "Policy exam absent #1", "ABSENT");
+        seedClosedSessionWithAttendance(s, "Policy exam absent #2", "ABSENT");
+
+        makeAttendancePresentQrLike(s.sessionId(), s.targetStudentId(), s.ownerId());
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/attendance/{userId}", s.sessionId(), s.targetStudentId())
+                        .with(authAs(s.ownerId(), s.ownerEmail()))
+                        .with(csrf())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "status": "ABSENT",
+                                  "note": "Manual correction to absent for exam ban policy"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attendanceStatus").value("ABSENT"));
+
+        assertThat(countPolicyNotifications(
+                s.targetStudentId(),
+                "ATTENDANCE_POLICY_EXAM_BANNED",
+                s.sessionId()
+        )).isEqualTo(1L);
+
+        Map<String, Object> row = findPolicyNotificationRow(
+                s.targetStudentId(),
+                "ATTENDANCE_POLICY_EXAM_BANNED",
+                s.sessionId()
+        );
+
+        assertThat(row.get("title")).isEqualTo("Không đủ điều kiện dự thi");
+        assertThat(row.get("severity")).isEqualTo("CRITICAL");
+        assertThat(row.get("source_type")).isEqualTo("ATTENDANCE_POLICY");
+        assertThat(row.get("source_ref_id")).isEqualTo(s.sessionId().toString());
+
+        JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
+        assertThat(payload.get("sessionId").asText()).isEqualTo(s.sessionId().toString());
+        assertThat(payload.get("sessionTitle").asText()).isEqualTo("CLOSED session");
+        assertThat(payload.get("attendanceStatus").asText()).isEqualTo("ABSENT");
+        assertThat(payload.get("policyStatus").asText()).isEqualTo("EXAM_BANNED");
+        assertThat(payload.get("riskLevel").asText()).isEqualTo("EXAM_BANNED");
+        assertThat(payload.get("examEligibility").asText()).isEqualTo("BANNED");
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(10L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(7L);
         assertThat(payload.get("absentCount").asLong()).isEqualTo(3L);
-        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("40.00");
+        assertThat(payload.get("attendanceRate").decimalValue()).isEqualByComparingTo("70.00");
+        assertThat(payload.get("absenceRate").decimalValue()).isEqualByComparingTo("30.00");
+        assertThat(payload.get("warningThresholds").get("absenceRate").decimalValue()).isEqualByComparingTo("20.00");
+        assertThat(payload.get("criticalThresholds").get("absenceRate").decimalValue()).isEqualByComparingTo("25.00");
+        assertThat(payload.get("examBanThresholds").get("absenceRate").decimalValue()).isEqualByComparingTo("30.00");
     }
 
     @Test
@@ -189,9 +264,9 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
                 s.ownerId(),
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("50.00"),
-                2,
-                4
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
         seedClosedSessionWithAttendance(s, "Policy baseline #1", "PRESENT");
@@ -224,14 +299,15 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
                 s.ownerId(),
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("50.00"),
-                2,
-                4
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
         seedClosedSessionWithAttendance(s, "Policy reset #1", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy reset #2", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy reset #3", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy reset #4", "PRESENT");
 
         makeAttendancePresentQrLike(s.sessionId(), s.targetStudentId(), s.ownerId());
 
@@ -249,6 +325,73 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
     }
 
     @Test
+    void policy_notification_should_not_be_created_when_absence_below_warning() {
+        Scenario s = seedScenario("CLOSED", true);
+
+        replacePolicy(
+                s.groupId(),
+                s.ownerId(),
+                new BigDecimal("1.00"),
+                new BigDecimal("80.00"),
+                new BigDecimal("75.00"),
+                10,
+                20
+        );
+
+        for (int i = 1; i <= 5; i++) {
+            seedClosedSessionWithAttendance(s, "Policy normal present #" + i, "PRESENT");
+        }
+
+        attendancePolicyNotificationOrchestrator.reevaluateOne(s.groupId(), s.targetStudentId(), s.sessionId());
+
+        assertThat(countAnyPolicyNotifications(s.targetStudentId())).isZero();
+    }
+
+    @Test
+    void policy_notification_should_exclude_excused_sessions_from_absence_rate_denominator() throws Exception {
+        Scenario s = seedScenario("CLOSED", true);
+
+        replacePolicy(
+                s.groupId(),
+                s.ownerId(),
+                new BigDecimal("1.00"),
+                new BigDecimal("80.00"),
+                new BigDecimal("75.00"),
+                10,
+                20
+        );
+
+        seedClosedSessionWithAttendance(s, "Policy excused present #1", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy excused present #2", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy excused present #3", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy excused present #4", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy excused excluded", "EXCUSED");
+
+        attendancePolicyNotificationOrchestrator.reevaluateOne(s.groupId(), s.targetStudentId(), s.sessionId());
+
+        assertThat(countPolicyNotifications(
+                s.targetStudentId(),
+                "ATTENDANCE_POLICY_WARNING",
+                s.sessionId()
+        )).isEqualTo(1L);
+
+        Map<String, Object> row = findPolicyNotificationRow(
+                s.targetStudentId(),
+                "ATTENDANCE_POLICY_WARNING",
+                s.sessionId()
+        );
+
+        JsonNode payload = objectMapper.readTree((String) row.get("payload_json"));
+        assertThat(payload.get("closedSessionCount").asLong()).isEqualTo(6L);
+        assertThat(payload.get("eligibleSessionCount").asLong()).isEqualTo(5L);
+        assertThat(payload.get("presentCount").asLong()).isEqualTo(4L);
+        assertThat(payload.get("absentCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("excusedCount").asLong()).isEqualTo(1L);
+        assertThat(payload.get("absenceRate").decimalValue()).isEqualByComparingTo("20.00");
+        assertThat(payload.get("policyStatus").asText()).isEqualTo("WARNING");
+    }
+
+    @Test
     @DisplayName("same source session reevaluate chỉ tạo 1 notification row")
     void policy_notification_dedup_same_source_session_should_create_single_row() {
         Scenario s = seedScenario("CLOSED", true);
@@ -258,14 +401,15 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
                 s.ownerId(),
                 new BigDecimal("1.00"),
                 new BigDecimal("80.00"),
-                new BigDecimal("50.00"),
-                2,
-                4
+                new BigDecimal("75.00"),
+                10,
+                20
         );
 
         seedClosedSessionWithAttendance(s, "Policy dedup #1", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy dedup #2", "PRESENT");
         seedClosedSessionWithAttendance(s, "Policy dedup #3", "PRESENT");
+        seedClosedSessionWithAttendance(s, "Policy dedup #4", "PRESENT");
 
         attendancePolicyNotificationOrchestrator.reevaluateOne(s.groupId(), s.targetStudentId(), s.sessionId());
         attendancePolicyNotificationOrchestrator.reevaluateOne(s.groupId(), s.targetStudentId(), s.sessionId());
@@ -408,7 +552,11 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
                 select count(*)
                 from notifications
                 where recipient_user_id = UUID_TO_BIN(?, 1)
-                  and type in ('ATTENDANCE_POLICY_WARNING', 'ATTENDANCE_POLICY_CRITICAL')
+                  and type in (
+                      'ATTENDANCE_POLICY_WARNING',
+                      'ATTENDANCE_POLICY_CRITICAL',
+                      'ATTENDANCE_POLICY_EXAM_BANNED'
+                  )
                 """,
                 Number.class,
                 recipientUserId.toString()
@@ -420,6 +568,8 @@ class AttendanceAdminManualOverrideIT extends AbstractMySqlIntegrationTest {
         return jdbcTemplate.queryForMap("""
                 select
                     BIN_TO_UUID(id, 1) as id,
+                    title,
+                    body,
                     severity,
                     source_type,
                     BIN_TO_UUID(source_ref_id, 1) as source_ref_id,
