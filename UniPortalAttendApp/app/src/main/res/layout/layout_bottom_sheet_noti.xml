@@ -6,22 +6,42 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="24dp"
-    android:background="@drawable/bg_bottom_sheet"> <View
-    android:layout_width="40dp"
-    android:layout_height="4dp"
-    android:background="#D1D5DB"
-    android:layout_gravity="center_horizontal"
-    android:layout_marginBottom="16dp"/>
+    android:background="@drawable/bg_bottom_sheet">
 
-    <TextView
-        android:id="@+id/bsTitle"
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:background="#D1D5DB"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="24dp"/>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Tiêu đề thông báo"
-        android:textColor="#0A2540"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp"/>
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <ImageView
+            android:id="@+id/bsIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="8dp"
+            android:src="@drawable/ic_announcement"
+            app:tint="#3B82F6"
+            android:background="@drawable/bg_icon_circle_blue"
+            android:layout_marginEnd="16dp"/>
+
+        <TextView
+            android:id="@+id/bsTitle"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="Tiêu đề thông báo"
+            android:textColor="#0A2540"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/bsMessage"
@@ -30,8 +50,36 @@
         android:text="Nội dung chi tiết của thông báo..."
         android:textColor="#4B5563"
         android:textSize="15sp"
-        android:lineSpacingExtra="4dp"
+        android:lineSpacingMultiplier="1.2"
         android:layout_marginBottom="24dp"/>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/bsDetailsCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="#E5E7EB"
+        app:cardBackgroundColor="#F9FAFB">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/bsDetailsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Chi tiết thông số..."
+                android:textColor="#374151"
+                android:textSize="14sp"
+                android:lineSpacingExtra="6dp"/>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/bsBtnClose"
